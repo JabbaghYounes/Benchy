@@ -1,0 +1,116 @@
+Edge AI Benchmark Suite PRD + Agent Task Plan
+This document combines the original PRD with a structured agent task plan to enable step-by-step
+implementation of the benchmark suite. The PRD remains authoritative, while the task plan breaks it down
+into explicit, sequential tasks suitable for automated agents.
+
+PRD Overview
+(unchanged — refer to previous sections for full PRD including goals, scope, workloads, metrics, dashboard,
+CLI, execution pipeline, and repository structure)
+
+Agent Task Plan
+General Instructions for Agent
+1. Follow the PRD strictly; do not invent or deviate from the specifications.
+2. Only perform one task at a time.
+3. Stop after completing a task and output only the specified files or artifacts.
+4. Ensure outputs conform to the JSON/CSV schemas and directory structure defined in the PRD.
+5. Log any assumptions clearly but keep outputs reproducible.
+
+Phase 0 — Guardrails
+Task 0.1: Setup context for agent - Read and internalize the full PRD. - Validate understanding of target
+platforms, workloads, metrics, and output expectations.
+
+Phase 1 — Repository & Contracts
+Task 1.1: Scaffold repository - Implement folder structure:
+
+edge-ai-benchmark/
+├─ benchmark/
+│
+
+├─ cli.py
+
+│
+
+├─ setup/
+
+│
+
+├─ workloads/
+
+│
+
+│
+
+├─ yolo/
+
+│
+
+│
+
+├─ llm/
+
+│
+
+├─ metrics/
+
+│
+
+├─ aggregation/
+
+1
+
+│
+
+├─ reporting/
+
+├─ configs/
+├─ results/
+├─ scripts/
+├─ README.md
+- No logic yet, just folders and empty files where needed.
+Task 1.2: Implement result schema writers - JSON writer for raw per-run results - CSV aggregation writers
+(YOLO + LLM) - Include schema validation (fail if output does not conform) - Write example dummy outputs
+for one model per workload
+
+Phase 2 — Core Workloads
+Task 2.1: YOLO benchmark runner - Start with YOLOv8, Detection task, 'n' model size - Load model, run
+inference on validation dataset - Implement warm-up (3 runs) and measured runs (10 runs) - Emit JSON per
+run conforming to schema - Log platform metadata per PRD
+Task 2.2: LLM benchmark runner - Start with 7B group, llama2:7b - Run deterministic prompts as per PRD Implement warm-up + measured runs - Capture metrics: TTFT, tokens/sec, total latency, memory usage,
+power - Emit JSON per run conforming to schema
+
+Phase 3 — Aggregation & Reporting
+Task 3.1: Aggregate results - Consume raw JSON outputs - Produce aggregated CSVs for YOLO and LLM as
+per PRD schema - Include statistical metrics (mean, std, min/max)
+Task 3.2: Generate dashboard - Static HTML (or notebook) showing: - System overview - YOLO
+performance charts (latency, FPS, accuracy, power) - YOLO scaling analysis - LLM performance and efficiency
+charts - Stability/variance plots - Include download links for raw/aggregated data
+
+Phase 4 — Full Coverage & Platform Integration
+Task 4.1: Extend YOLO runner - Add all YOLO versions (v8, v11, v26) - Add all tasks (Detection,
+Segmentation, Pose, OBB, Classification) - Add all model sizes (n, s, m, l, x) - Verify results conform to
+schema
+Task 4.2: Extend LLM runner - Add remaining 7B and all 8B / 9B models - Use deterministic prompts
+consistently - Record quantization and version info - Verify schema compliance
+Task 4.3: Platform-specific setup scripts - Jetson Nano setup - Raspberry Pi AI HAT+ setup - Raspberry Pi AI
+HAT+ 2 setup - Ensure native installation, Python venv, dependency pinning - Validate reproducibility
+
+2
+
+Phase 5 — Validation & Finalization
+Task 5.1: Full pipeline test - Run full-profile benchmark on one platform - Validate raw JSON, aggregated
+CSVs, and dashboard output - Ensure warm-up and measured runs correctly handled
+Task 5.2: Documentation - Update README.md with instructions for setup, run, and dashboard - Include
+profile explanations (default vs full) - Note reproducibility and assumptions
+
+Task Execution Notes
+• Agents must complete each task fully before moving to the next.
+• Partial outputs are only acceptable if explicitly logged as intermediate steps.
+• All metrics, logs, and outputs must match PRD definitions.
+• Any new models or workloads added in the future should follow the same task structure.
+
+With this task plan, an agent can reliably implement the benchmark suite step by step without
+misinterpreting the PRD.
+
+3
+
+

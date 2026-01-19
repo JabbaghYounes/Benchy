@@ -596,6 +596,7 @@ class DashboardGenerator:
         # YOLO table rows
         yolo_rows = ""
         for m in self.yolo_metrics[:20]:  # Limit to 20 rows
+            map_value = f"{m.map_mean:.4f}" if m.map_mean is not None else "N/A"
             yolo_rows += f"""
             <tr>
                 <td>{m.model_name}</td>
@@ -603,13 +604,14 @@ class DashboardGenerator:
                 <td>{m.task}</td>
                 <td>{m.throughput_mean_fps:.2f}</td>
                 <td>{m.latency_mean_ms:.2f}</td>
-                <td>{m.map_mean:.4f if m.map_mean else 'N/A'}</td>
+                <td>{map_value}</td>
                 <td>{m.num_runs}</td>
             </tr>"""
 
         # LLM table rows
         llm_rows = ""
         for m in self.llm_metrics[:20]:  # Limit to 20 rows
+            memory_value = f"{m.memory_used_mb_mean:.1f}" if m.memory_used_mb_mean is not None else "N/A"
             llm_rows += f"""
             <tr>
                 <td>{m.model_name}</td>
@@ -617,7 +619,7 @@ class DashboardGenerator:
                 <td>{m.prompt_id}</td>
                 <td>{m.tps_mean:.2f}</td>
                 <td>{m.ttft_mean_ms:.2f}</td>
-                <td>{m.memory_used_mb_mean:.1f if m.memory_used_mb_mean else 'N/A'}</td>
+                <td>{memory_value}</td>
                 <td>{m.num_runs}</td>
             </tr>"""
 

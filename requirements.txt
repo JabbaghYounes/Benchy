@@ -1,0 +1,13 @@
+# Edge AI Benchmark Suite Dependencies
+
+# Core dependencies
+psutil>=5.9.0
+requests>=2.28.0
+pyyaml>=6.0
+numpy>=1.21.0
+
+# YOLO benchmarks (Ultralytics)
+ultralytics>=8.0.0
+
+# Optional: For enhanced progress display
+tqdm>=4.64.0

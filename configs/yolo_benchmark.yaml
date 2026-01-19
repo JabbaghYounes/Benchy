@@ -1,0 +1,138 @@
+# YOLO Benchmark Configuration
+# Edge AI Benchmark Suite
+
+# Benchmark methodology settings
+benchmark:
+  warmup_runs: 3
+  measured_runs: 10
+  input_resolution: 640
+
+# Default profile - minimal testing (yolov8n detection only)
+default:
+  yolo_versions: ["v8"]
+  tasks: ["detection"]
+  model_sizes: ["n"]
+
+# Full profile - comprehensive benchmarking
+full:
+  yolo_versions: ["v8", "v11", "v26"]
+  tasks:
+    - detection
+    - segmentation
+    - pose
+    - obb
+    - classification
+  model_sizes: ["n", "s", "m", "l", "x"]
+
+# Model definitions by version and task
+models:
+  v8:
+    detection:
+      - yolov8n.pt
+      - yolov8s.pt
+      - yolov8m.pt
+      - yolov8l.pt
+      - yolov8x.pt
+    segmentation:
+      - yolov8n-seg.pt
+      - yolov8s-seg.pt
+      - yolov8m-seg.pt
+      - yolov8l-seg.pt
+      - yolov8x-seg.pt
+    pose:
+      - yolov8n-pose.pt
+      - yolov8s-pose.pt
+      - yolov8m-pose.pt
+      - yolov8l-pose.pt
+      - yolov8x-pose.pt
+      - yolov8x-pose-p6.pt
+    obb:
+      - yolov8n-obb.pt
+      - yolov8s-obb.pt
+      - yolov8m-obb.pt
+      - yolov8l-obb.pt
+      - yolov8x-obb.pt
+    classification:
+      - yolov8n-cls.pt
+      - yolov8s-cls.pt
+      - yolov8m-cls.pt
+      - yolov8l-cls.pt
+      - yolov8x-cls.pt
+
+  v11:
+    detection:
+      - yolo11n.pt
+      - yolo11s.pt
+      - yolo11m.pt
+      - yolo11l.pt
+      - yolo11x.pt
+    segmentation:
+      - yolo11n-seg.pt
+      - yolo11s-seg.pt
+      - yolo11m-seg.pt
+      - yolo11l-seg.pt
+      - yolo11x-seg.pt
+    pose:
+      - yolo11n-pose.pt
+      - yolo11s-pose.pt
+      - yolo11m-pose.pt
+      - yolo11l-pose.pt
+      - yolo11x-pose.pt
+    obb:
+      - yolo11n-obb.pt
+      - yolo11s-obb.pt
+      - yolo11m-obb.pt
+      - yolo11l-obb.pt
+      - yolo11x-obb.pt
+    classification:
+      - yolo11n-cls.pt
+      - yolo11s-cls.pt
+      - yolo11m-cls.pt
+      - yolo11l-cls.pt
+      - yolo11x-cls.pt
+
+  v26:
+    detection:
+      - yolo26n.pt
+      - yolo26s.pt
+      - yolo26m.pt
+      - yolo26l.pt
+      - yolo26x.pt
+    segmentation:
+      - yolo26n-seg.pt
+      - yolo26s-seg.pt
+      - yolo26m-seg.pt
+      - yolo26l-seg.pt
+      - yolo26x-seg.pt
+    pose:
+      - yolo26n-pose.pt
+      - yolo26s-pose.pt
+      - yolo26m-pose.pt
+      - yolo26l-pose.pt
+      - yolo26x-pose.pt
+    obb:
+      - yolo26n-obb.pt
+      - yolo26s-obb.pt
+      - yolo26m-obb.pt
+      - yolo26l-obb.pt
+      - yolo26x-obb.pt
+    classification:
+      - yolo26n-cls.pt
+      - yolo26s-cls.pt
+      - yolo26m-cls.pt
+      - yolo26l-cls.pt
+      - yolo26x-cls.pt
+
+# Datasets per task type
+datasets:
+  detection: coco128.yaml
+  segmentation: coco128-seg.yaml
+  pose: coco8-pose.yaml
+  obb: dota8.yaml
+  classification: imagenet10
+
+# Inference settings
+inference:
+  conf_threshold: 0.25
+  iou_threshold: 0.45
+  device: "0"  # GPU device ID, or "cpu"

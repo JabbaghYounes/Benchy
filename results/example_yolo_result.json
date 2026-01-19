@@ -1,0 +1,48 @@
+{
+  "system_info": {
+    "platform": "jetson_nano",
+    "cpu_model": "ARMv8 Processor rev 1 (v8l)",
+    "accelerator": "NVIDIA Tegra X1 (nvgpu)/integrated",
+    "ram_size_gb": 4.0,
+    "storage_type": "SD Card",
+    "cooling_config": "Active (Fan)",
+    "power_mode": "MAXN",
+    "os_version": "Ubuntu 20.04.6 LTS",
+    "kernel_version": "4.9.337-tegra",
+    "hostname": "jetson-nano",
+    "timestamp": "2024-01-15T10:30:00.000000"
+  },
+  "results": [
+    {
+      "model_name": "yolov8n.pt",
+      "yolo_version": "v8",
+      "task": "detection",
+      "input_resolution": "640x640",
+      "latency": {
+        "first_inference_ms": 245.678,
+        "mean_ms": 125.432,
+        "std_ms": 5.234,
+        "min_ms": 118.901,
+        "max_ms": 138.765,
+        "p50_ms": 124.567,
+        "p95_ms": 135.234,
+        "p99_ms": 137.890
+      },
+      "throughput_fps": 7.97,
+      "map_score": 0.372,
+      "precision": 0.685,
+      "recall": 0.512,
+      "resource_utilization": {
+        "cpu_percent": 45.2,
+        "accelerator_percent": 89.5,
+        "memory_used_mb": 2456.8,
+        "memory_total_mb": 4096.0,
+        "power_watts": 8.5
+      },
+      "power_idle_watts": 3.2,
+      "power_inference_watts": 8.5,
+      "warmup_runs": 3,
+      "measured_runs": 10
+    }
+  ]
+}

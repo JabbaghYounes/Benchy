@@ -1,0 +1,78 @@
+# LLM Benchmark Configuration
+# Edge AI Benchmark Suite
+
+# Benchmark methodology settings
+benchmark:
+  warmup_runs: 3
+  measured_runs: 10
+
+# Ollama API settings
+ollama:
+  api_base: "http://localhost:11434"
+
+# Default profile - minimal testing (llama2:7b only)
+default:
+  model_groups: ["7B"]
+  models: ["llama2:7b"]
+
+# Full profile - all models
+full:
+  model_groups: ["7B", "8B", "9B"]
+
+# Model definitions by size group
+models:
+  7B:
+    - llama2:7b
+    - mistral:7b
+    - olmo2:7b
+  8B:
+    - llama3.1:8b
+    - dolphin3:8b
+    - dolphin-llama3:8b
+  9B:
+    - gemma2:9b
+
+# Deterministic generation settings
+generation:
+  temperature: 0.0
+  top_p: 1.0
+  top_k: 1
+  seed: 42
+  max_tokens: 256
+
+# Fixed, version-controlled prompt set
+prompts:
+  - id: simple_qa
+    prompt: "What is the capital of France? Answer in one word."
+    description: "Simple factual question"
+    expected_tokens: 10
+
+  - id: reasoning
+    prompt: "If a train travels at 60 mph for 2 hours, how far does it travel? Show your calculation step by step."
+    description: "Mathematical reasoning"
+    expected_tokens: 100
+
+  - id: code_generation
+    prompt: "Write a Python function that checks if a number is prime. Include a docstring."
+    description: "Code generation task"
+    expected_tokens: 150
+
+  - id: summarization
+    prompt: "Summarize the concept of machine learning in exactly three sentences."
+    description: "Summarization task"
+    expected_tokens: 80
+
+  - id: creative
+    prompt: "Write a haiku about artificial intelligence."
+    description: "Creative writing"
+    expected_tokens: 30
+
+# Metrics to capture
+metrics:
+  - time_to_first_token_ms
+  - tokens_per_second
+  - total_latency_ms
+  - output_tokens
+  - cpu_percent
+  - memory_used_mb
+  - power_watts

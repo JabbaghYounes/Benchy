@@ -1,0 +1,101 @@
+{
+  "system_info": {
+    "platform": "jetson_nano",
+    "cpu_model": "ARMv8 Processor rev 1 (v8l)",
+    "accelerator": "NVIDIA Tegra X1 (nvgpu)/integrated",
+    "ram_size_gb": 4.0,
+    "storage_type": "SD Card",
+    "cooling_config": "Active (Fan)",
+    "power_mode": "MAXN",
+    "os_version": "Ubuntu 20.04.6 LTS",
+    "kernel_version": "4.9.337-tegra",
+    "hostname": "jetson-nano",
+    "timestamp": "2024-01-15T11:00:00.000000"
+  },
+  "results": [
+    {
+      "model_name": "llama2:7b",
+      "model_size": "7B",
+      "model_hash": "78e26419b446",
+      "quantization": "Q4_0",
+      "prompt_id": "simple_qa",
+      "prompt_tokens": 12,
+      "output_tokens": 5,
+      "time_to_first_token_ms": 1245.67,
+      "tokens_per_second": 4.85,
+      "total_latency_ms": 2275.43,
+      "resource_utilization": {
+        "cpu_percent": 78.5,
+        "accelerator_percent": 65.2,
+        "memory_used_mb": 3456.7,
+        "memory_total_mb": 4096.0,
+        "power_watts": 9.8
+      },
+      "power_watts": 9.8,
+      "warmup_runs": 3,
+      "measured_runs": 10,
+      "ttft_mean_ms": 1256.34,
+      "ttft_std_ms": 45.67,
+      "tps_mean": 4.82,
+      "tps_std": 0.23,
+      "latency_mean_ms": 2289.56,
+      "latency_std_ms": 89.34
+    },
+    {
+      "model_name": "llama2:7b",
+      "model_size": "7B",
+      "model_hash": "78e26419b446",
+      "quantization": "Q4_0",
+      "prompt_id": "reasoning",
+      "prompt_tokens": 28,
+      "output_tokens": 87,
+      "time_to_first_token_ms": 1312.45,
+      "tokens_per_second": 4.56,
+      "total_latency_ms": 20385.67,
+      "resource_utilization": {
+        "cpu_percent": 82.3,
+        "accelerator_percent": 71.8,
+        "memory_used_mb": 3512.4,
+        "memory_total_mb": 4096.0,
+        "power_watts": 10.2
+      },
+      "power_watts": 10.2,
+      "warmup_runs": 3,
+      "measured_runs": 10,
+      "ttft_mean_ms": 1325.78,
+      "ttft_std_ms": 52.34,
+      "tps_mean": 4.51,
+      "tps_std": 0.19,
+      "latency_mean_ms": 20456.89,
+      "latency_std_ms": 156.78
+    },
+    {
+      "model_name": "llama2:7b",
+      "model_size": "7B",
+      "model_hash": "78e26419b446",
+      "quantization": "Q4_0",
+      "prompt_id": "code_generation",
+      "prompt_tokens": 18,
+      "output_tokens": 142,
+      "time_to_first_token_ms": 1289.12,
+      "tokens_per_second": 4.67,
+      "total_latency_ms": 31678.45,
+      "resource_utilization": {
+        "cpu_percent": 85.6,
+        "accelerator_percent": 75.4,
+        "memory_used_mb": 3598.2,
+        "memory_total_mb": 4096.0,
+        "power_watts": 10.5
+      },
+      "power_watts": 10.5,
+      "warmup_runs": 3,
+      "measured_runs": 10,
+      "ttft_mean_ms": 1298.56,
+      "ttft_std_ms": 48.92,
+      "tps_mean": 4.62,
+      "tps_std": 0.21,
+      "latency_mean_ms": 31845.23,
+      "latency_std_ms": 198.45
+    }
+  ]
+}

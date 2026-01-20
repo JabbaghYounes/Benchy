@@ -288,6 +288,8 @@ class DashboardGenerator:
         .badge-blue { background: #dbeafe; color: #1e40af; }
         .badge-green { background: #dcfce7; color: #166534; }
         .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-purple { background: #ede9fe; color: #5b21b6; }
+        .badge-orange { background: #ffedd5; color: #9a3412; }
 
         .download-links {
             display: flex;
@@ -354,16 +356,47 @@ class DashboardGenerator:
     </style>"""
 
     def _generate_filters_section(self) -> str:
-        """Generate global filters section."""
+        """Generate global filters section.
+
+        Model Expansion PRD - Phase 6 Task 6.2: Add 1B/3B selectors, MoE/dense/code filters.
+        """
         platforms = [s.platform for s in self.platform_summaries]
         yolo_versions = list(set(m.yolo_version for m in self.yolo_metrics))
         tasks = list(set(m.task for m in self.yolo_metrics))
         llm_sizes = list(set(m.model_size for m in self.llm_metrics))
 
+        # Phase 6: Extract new filter dimensions
+        llm_param_groups = list(set(
+            m.parameter_group for m in self.llm_metrics
+            if m.parameter_group
+        ))
+        llm_architectures = list(set(
+            m.architecture for m in self.llm_metrics
+            if m.architecture
+        ))
+        llm_specializations = list(set(
+            m.specialization for m in self.llm_metrics
+            if m.specialization
+        ))
+
         platform_options = "".join(f'<option value="{p}">{p.replace("_", " ").title()}</option>' for p in platforms)
         version_options = "".join(f'<option value="{v}">{v}</option>' for v in sorted(yolo_versions))
         task_options = "".join(f'<option value="{t}">{t.title()}</option>' for t in sorted(tasks))
         size_options = "".join(f'<option value="{s}">{s}</option>' for s in sorted(llm_sizes))
+
+        # Phase 6: New filter options
+        param_group_options = "".join(
+            f'<option value="{pg}">{pg}</option>'
+            for pg in sorted(llm_param_groups, key=lambda x: int(x.rstrip('B')) if x.rstrip('B').isdigit() else 999)
+        )
+        arch_options = "".join(
+            f'<option value="{a}">{a.upper() if a == "moe" else a.title()}</option>'
+            for a in sorted(llm_architectures)
+        )
+        spec_options = "".join(
+            f'<option value="{s}">{s.title()}</option>'
+            for s in sorted(llm_specializations)
+        )
 
         return f"""
         <section id="filters">
@@ -395,6 +428,27 @@ class DashboardGenerator:
                     <select id="filter-llm-size" onchange="applyFilters()">
                         <option value="all">All Sizes</option>
                         {size_options}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Parameter Group:</label>
+                    <select id="filter-param-group" onchange="applyFilters()">
+                        <option value="all">All Groups</option>
+                        {param_group_options}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Architecture:</label>
+                    <select id="filter-architecture" onchange="applyFilters()">
+                        <option value="all">All (Dense + MoE)</option>
+                        {arch_options}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Specialization:</label>
+                    <select id="filter-specialization" onchange="applyFilters()">
+                        <option value="all">All (General + Code)</option>
+                        {spec_options}
                     </select>
                 </div>
                 <button onclick="resetFilters()">Reset</button>
@@ -592,7 +646,10 @@ class DashboardGenerator:
         </section>"""
 
     def _generate_raw_data_section(self) -> str:
-        """Generate raw data tables section."""
+        """Generate raw data tables section.
+
+        Model Expansion PRD - Phase 6 Task 6.2: Separate MoE and dense labeling.
+        """
         # YOLO table rows
         yolo_rows = ""
         for m in self.yolo_metrics[:20]:  # Limit to 20 rows
@@ -608,17 +665,36 @@ class DashboardGenerator:
                 <td>{m.num_runs}</td>
             </tr>"""
 
-        # LLM table rows
+        # LLM table rows with Phase 6 badges
         llm_rows = ""
         for m in self.llm_metrics[:20]:  # Limit to 20 rows
             memory_value = f"{m.memory_used_mb_mean:.1f}" if m.memory_used_mb_mean is not None else "N/A"
+
+            # Phase 6: Add architecture and specialization badges
+            badges = ""
+            if m.architecture == "moe":
+                badges += '<span class="badge badge-purple">MoE</span> '
+            if m.specialization == "code":
+                badges += '<span class="badge badge-orange">Code</span> '
+
+            # Parameter group badge
+            param_group = m.parameter_group or m.model_size
+            param_group_class = {
+                "1B": "badge-green",
+                "3B": "badge-blue",
+                "7B": "badge-blue",
+                "8B": "badge-blue",
+                "9B": "badge-red",
+            }.get(param_group, "badge-blue")
+
             llm_rows += f"""
             <tr>
-                <td>{m.model_name}</td>
-                <td>{m.model_size}</td>
+                <td>{m.model_name} {badges}</td>
+                <td><span class="badge {param_group_class}">{param_group}</span></td>
                 <td>{m.prompt_id}</td>
                 <td>{m.tps_mean:.2f}</td>
                 <td>{m.ttft_mean_ms:.2f}</td>
+                <td>{m.ttft_median_ms:.2f}</td>
                 <td>{memory_value}</td>
                 <td>{m.num_runs}</td>
             </tr>"""
@@ -652,16 +728,17 @@ class DashboardGenerator:
                     <thead>
                         <tr>
                             <th>Model</th>
-                            <th>Size</th>
+                            <th>Group</th>
                             <th>Prompt</th>
                             <th>TPS</th>
-                            <th>TTFT (ms)</th>
+                            <th>TTFT Mean (ms)</th>
+                            <th>TTFT Median (ms)</th>
                             <th>Memory (MB)</th>
                             <th>Runs</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {llm_rows if llm_rows else '<tr><td colspan="7" class="no-data">No data</td></tr>'}
+                        {llm_rows if llm_rows else '<tr><td colspan="8" class="no-data">No data</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -1048,6 +1125,10 @@ class DashboardGenerator:
             const yoloVersion = document.getElementById('filter-yolo-version').value;
             const task = document.getElementById('filter-task').value;
             const llmSize = document.getElementById('filter-llm-size').value;
+            // Phase 6: New filter values
+            const paramGroup = document.getElementById('filter-param-group')?.value || 'all';
+            const architecture = document.getElementById('filter-architecture')?.value || 'all';
+            const specialization = document.getElementById('filter-specialization')?.value || 'all';
 
             // Filter YOLO data
             let filteredYolo = yoloData;
@@ -1063,6 +1144,16 @@ class DashboardGenerator:
             if (llmSize !== 'all') {{
                 filteredLlm = filteredLlm.filter(d => d.model_size === llmSize);
             }}
+            // Phase 6: Apply new filters
+            if (paramGroup !== 'all') {{
+                filteredLlm = filteredLlm.filter(d => (d.parameter_group || d.model_size) === paramGroup);
+            }}
+            if (architecture !== 'all') {{
+                filteredLlm = filteredLlm.filter(d => d.architecture === architecture);
+            }}
+            if (specialization !== 'all') {{
+                filteredLlm = filteredLlm.filter(d => d.specialization === specialization);
+            }}
 
             // Update charts with filtered data
             updateChartsWithData(filteredYolo, filteredLlm);
@@ -1073,6 +1164,16 @@ class DashboardGenerator:
             document.getElementById('filter-yolo-version').value = 'all';
             document.getElementById('filter-task').value = 'all';
             document.getElementById('filter-llm-size').value = 'all';
+            // Phase 6: Reset new filters
+            if (document.getElementById('filter-param-group')) {{
+                document.getElementById('filter-param-group').value = 'all';
+            }}
+            if (document.getElementById('filter-architecture')) {{
+                document.getElementById('filter-architecture').value = 'all';
+            }}
+            if (document.getElementById('filter-specialization')) {{
+                document.getElementById('filter-specialization').value = 'all';
+            }}
             updateChartsWithData(yoloData, llmData);
         }}
 

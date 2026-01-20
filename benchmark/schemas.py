@@ -129,7 +129,16 @@ class YOLOResult:
 
 @dataclass
 class LLMResult:
-    """Results from an LLM (Ollama) benchmark run."""
+    """Results from an LLM (Ollama) benchmark run.
+
+    Model Expansion PRD additions:
+    - parameter_group: Model size group (1B, 3B, 7B, 8B, 9B)
+    - architecture: Model architecture (dense, moe)
+    - specialization: Model specialization (general, code)
+    - peak_memory_mb: Peak memory usage during inference
+    - truncated: Whether output was truncated
+    - prompt_category: Category of the prompt (general, code)
+    """
     model_name: str
     model_size: str
     model_hash: Optional[str] = None
@@ -151,6 +160,21 @@ class LLMResult:
     tps_std: Optional[float] = None
     latency_mean_ms: Optional[float] = None
     latency_std_ms: Optional[float] = None
+    # Model Expansion PRD - Phase 1 metadata
+    parameter_group: Optional[str] = None  # "1B", "3B", "7B", etc.
+    architecture: Optional[str] = None  # "dense" or "moe"
+    specialization: Optional[str] = None  # "general" or "code"
+    # Model Expansion PRD - Phase 5 metrics
+    peak_memory_mb: Optional[float] = None
+    truncated: bool = False
+    prompt_category: Optional[str] = None  # "general" or "code"
+    # Phase 6 aggregation additions
+    ttft_median_ms: Optional[float] = None
+    ttft_min_ms: Optional[float] = None
+    ttft_max_ms: Optional[float] = None
+    tps_median: Optional[float] = None
+    tps_min: Optional[float] = None
+    tps_max: Optional[float] = None
 
     def to_dict(self) -> dict:
         result = {
@@ -174,6 +198,19 @@ class LLMResult:
             "tps_std": self.tps_std,
             "latency_mean_ms": self.latency_mean_ms,
             "latency_std_ms": self.latency_std_ms,
+            # Model Expansion PRD fields
+            "parameter_group": self.parameter_group,
+            "architecture": self.architecture,
+            "specialization": self.specialization,
+            "peak_memory_mb": self.peak_memory_mb,
+            "truncated": self.truncated,
+            "prompt_category": self.prompt_category,
+            "ttft_median_ms": self.ttft_median_ms,
+            "ttft_min_ms": self.ttft_min_ms,
+            "ttft_max_ms": self.ttft_max_ms,
+            "tps_median": self.tps_median,
+            "tps_min": self.tps_min,
+            "tps_max": self.tps_max,
         }
         return result
 

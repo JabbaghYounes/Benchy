@@ -83,7 +83,11 @@ class YOLOAggregatedMetrics:
 
 @dataclass
 class LLMAggregatedMetrics:
-    """Aggregated metrics for an LLM model across multiple runs."""
+    """Aggregated metrics for an LLM model across multiple runs.
+
+    Model Expansion PRD - Phase 6: Group-safe aggregation.
+    Includes metadata for parameter_group, architecture, and specialization.
+    """
 
     model_name: str
     model_size: str
@@ -94,11 +98,13 @@ class LLMAggregatedMetrics:
     ttft_std_ms: float = 0.0
     ttft_min_ms: float = 0.0
     ttft_max_ms: float = 0.0
+    ttft_median_ms: float = 0.0
     # Tokens per second aggregates
     tps_mean: float = 0.0
     tps_std: float = 0.0
     tps_min: float = 0.0
     tps_max: float = 0.0
+    tps_median: float = 0.0
     # Latency aggregates
     latency_mean_ms: float = 0.0
     latency_std_ms: float = 0.0
@@ -107,6 +113,14 @@ class LLMAggregatedMetrics:
     # Token counts
     prompt_tokens_mean: float = 0.0
     output_tokens_mean: float = 0.0
+    # Model Expansion PRD - Phase 1 metadata
+    parameter_group: Optional[str] = None  # "1B", "3B", "7B", "8B", "9B"
+    architecture: Optional[str] = None  # "dense" or "moe"
+    specialization: Optional[str] = None  # "general" or "code"
+    prompt_category: Optional[str] = None  # "general" or "code"
+    # Model Expansion PRD - Phase 5 metrics
+    peak_memory_mb_mean: Optional[float] = None
+    truncation_rate: float = 0.0  # Fraction of results that were truncated
     # Resource utilization aggregates
     cpu_percent_mean: Optional[float] = None
     accelerator_percent_mean: Optional[float] = None
@@ -123,16 +137,25 @@ class LLMAggregatedMetrics:
             "ttft_std_ms": self.ttft_std_ms,
             "ttft_min_ms": self.ttft_min_ms,
             "ttft_max_ms": self.ttft_max_ms,
+            "ttft_median_ms": self.ttft_median_ms,
             "tps_mean": self.tps_mean,
             "tps_std": self.tps_std,
             "tps_min": self.tps_min,
             "tps_max": self.tps_max,
+            "tps_median": self.tps_median,
             "latency_mean_ms": self.latency_mean_ms,
             "latency_std_ms": self.latency_std_ms,
             "latency_min_ms": self.latency_min_ms,
             "latency_max_ms": self.latency_max_ms,
             "prompt_tokens_mean": self.prompt_tokens_mean,
             "output_tokens_mean": self.output_tokens_mean,
+            # Model Expansion PRD fields
+            "parameter_group": self.parameter_group,
+            "architecture": self.architecture,
+            "specialization": self.specialization,
+            "prompt_category": self.prompt_category,
+            "peak_memory_mb_mean": self.peak_memory_mb_mean,
+            "truncation_rate": self.truncation_rate,
             "cpu_percent_mean": self.cpu_percent_mean,
             "accelerator_percent_mean": self.accelerator_percent_mean,
             "memory_used_mb_mean": self.memory_used_mb_mean,
@@ -295,7 +318,10 @@ class ResultsAggregator:
         )
 
     def _parse_llm_result(self, data: dict) -> LLMResult:
-        """Parse LLMResult from dict."""
+        """Parse LLMResult from dict.
+
+        Model Expansion PRD - Phase 6: Handle new metadata and metrics fields.
+        """
         return LLMResult(
             model_name=data.get("model_name", ""),
             model_size=data.get("model_size", ""),
@@ -317,6 +343,21 @@ class ResultsAggregator:
             tps_std=data.get("tps_std"),
             latency_mean_ms=data.get("latency_mean_ms"),
             latency_std_ms=data.get("latency_std_ms"),
+            # Model Expansion PRD - Phase 1 metadata
+            parameter_group=data.get("parameter_group"),
+            architecture=data.get("architecture"),
+            specialization=data.get("specialization"),
+            # Model Expansion PRD - Phase 5 metrics
+            peak_memory_mb=data.get("peak_memory_mb"),
+            truncated=data.get("truncated", False),
+            prompt_category=data.get("prompt_category"),
+            # Phase 6 aggregation fields
+            ttft_median_ms=data.get("ttft_median_ms"),
+            ttft_min_ms=data.get("ttft_min_ms"),
+            ttft_max_ms=data.get("ttft_max_ms"),
+            tps_median=data.get("tps_median"),
+            tps_min=data.get("tps_min"),
+            tps_max=data.get("tps_max"),
         )
 
     def _parse_benchmark_run(self, data: dict) -> BenchmarkRun:
@@ -446,13 +487,128 @@ class ResultsAggregator:
 
         return aggregated
 
+    def aggregate_llm_results_by_parameter_group(
+        self,
+        parameter_group: Optional[str] = None,
+    ) -> dict[str, list[LLMAggregatedMetrics]]:
+        """Aggregate LLM results with group-safe aggregation per PRD.
+
+        Model Expansion PRD - Phase 6 Task 6.1: Group-safe aggregation.
+        Only aggregates within the same parameter group.
+
+        Args:
+            parameter_group: Optional filter for specific group ("1B", "3B", etc.)
+
+        Returns:
+            Dict mapping parameter_group to list of aggregated metrics
+        """
+        # Group results by parameter_group first
+        by_param_group: dict[str, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+
+        for system_info, result in self.raw_llm_results:
+            # Use model_size as fallback if parameter_group not set
+            pg = result.parameter_group or result.model_size
+            by_param_group[pg].append((system_info, result))
+
+        # Filter if specific group requested
+        if parameter_group:
+            by_param_group = {k: v for k, v in by_param_group.items() if k == parameter_group}
+
+        # Aggregate within each parameter group
+        result_dict: dict[str, list[LLMAggregatedMetrics]] = {}
+
+        for pg, results in by_param_group.items():
+            # Sub-group by model_name and prompt_id within the parameter group
+            sub_groups: dict[tuple, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+            for system_info, result in results:
+                key = (result.model_name, result.prompt_id or "unknown")
+                sub_groups[key].append((system_info, result))
+
+            aggregated = []
+            for key, group_results in sub_groups.items():
+                metrics = self._aggregate_llm_group(
+                    group_results,
+                    ["model_name", "prompt_id"],
+                    key,
+                )
+                aggregated.append(metrics)
+
+            result_dict[pg] = aggregated
+
+        return result_dict
+
+    def get_llm_summary_by_architecture(self) -> dict[str, list[LLMAggregatedMetrics]]:
+        """Get LLM results grouped by architecture (dense vs moe).
+
+        Model Expansion PRD - Phase 6 Task 6.2: Separate MoE and dense labeling.
+
+        Returns:
+            Dict mapping architecture to list of aggregated metrics
+        """
+        by_arch: dict[str, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+
+        for system_info, result in self.raw_llm_results:
+            arch = result.architecture or "unknown"
+            by_arch[arch].append((system_info, result))
+
+        result_dict: dict[str, list[LLMAggregatedMetrics]] = {}
+
+        for arch, results in by_arch.items():
+            sub_groups: dict[tuple, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+            for system_info, result in results:
+                key = (result.model_name, result.prompt_id or "unknown")
+                sub_groups[key].append((system_info, result))
+
+            aggregated = []
+            for key, group_results in sub_groups.items():
+                metrics = self._aggregate_llm_group(group_results, ["model_name", "prompt_id"], key)
+                aggregated.append(metrics)
+
+            result_dict[arch] = aggregated
+
+        return result_dict
+
+    def get_llm_summary_by_specialization(self) -> dict[str, list[LLMAggregatedMetrics]]:
+        """Get LLM results grouped by specialization (general vs code).
+
+        Model Expansion PRD - Phase 6 Task 6.2: Separate code vs general views.
+
+        Returns:
+            Dict mapping specialization to list of aggregated metrics
+        """
+        by_spec: dict[str, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+
+        for system_info, result in self.raw_llm_results:
+            spec = result.specialization or "general"
+            by_spec[spec].append((system_info, result))
+
+        result_dict: dict[str, list[LLMAggregatedMetrics]] = {}
+
+        for spec, results in by_spec.items():
+            sub_groups: dict[tuple, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
+            for system_info, result in results:
+                key = (result.model_name, result.prompt_id or "unknown")
+                sub_groups[key].append((system_info, result))
+
+            aggregated = []
+            for key, group_results in sub_groups.items():
+                metrics = self._aggregate_llm_group(group_results, ["model_name", "prompt_id"], key)
+                aggregated.append(metrics)
+
+            result_dict[spec] = aggregated
+
+        return result_dict
+
     def _aggregate_llm_group(
         self,
         results: list[tuple[SystemInfo, LLMResult]],
         group_by: list[str],
         key: tuple,
     ) -> LLMAggregatedMetrics:
-        """Aggregate a group of LLM results."""
+        """Aggregate a group of LLM results.
+
+        Model Expansion PRD - Phase 6: Group-safe aggregation with median, min, max.
+        """
         first_result = results[0][1]
 
         # Extract values - use aggregated stats if available, otherwise raw values
@@ -479,6 +635,11 @@ class ResultsAggregator:
         prompt_tokens = [r.prompt_tokens for _, r in results]
         output_tokens = [r.output_tokens for _, r in results]
 
+        # Phase 5 - Peak memory and truncation
+        peak_memories = [r.peak_memory_mb for _, r in results if r.peak_memory_mb is not None]
+        truncated_count = sum(1 for _, r in results if r.truncated)
+        truncation_rate = truncated_count / len(results) if results else 0.0
+
         # Resource utilization
         cpu_percents = [r.resource_utilization.cpu_percent for _, r in results
                        if r.resource_utilization]
@@ -493,20 +654,35 @@ class ResultsAggregator:
             model_size=first_result.model_size,
             prompt_id=first_result.prompt_id or "unknown",
             num_runs=len(results),
+            # TTFT aggregates with median (Phase 6)
             ttft_mean_ms=round(statistics.mean(ttfts), 2),
             ttft_std_ms=round(statistics.stdev(ttfts), 2) if len(ttfts) > 1 else 0.0,
             ttft_min_ms=round(min(ttfts), 2),
             ttft_max_ms=round(max(ttfts), 2),
+            ttft_median_ms=round(statistics.median(ttfts), 2) if ttfts else 0.0,
+            # TPS aggregates with median (Phase 6)
             tps_mean=round(statistics.mean(tps_values), 2),
             tps_std=round(statistics.stdev(tps_values), 2) if len(tps_values) > 1 else 0.0,
             tps_min=round(min(tps_values), 2),
             tps_max=round(max(tps_values), 2),
+            tps_median=round(statistics.median(tps_values), 2) if tps_values else 0.0,
+            # Latency aggregates
             latency_mean_ms=round(statistics.mean(latencies), 2),
             latency_std_ms=round(statistics.stdev(latencies), 2) if len(latencies) > 1 else 0.0,
             latency_min_ms=round(min(latencies), 2),
             latency_max_ms=round(max(latencies), 2),
+            # Token counts
             prompt_tokens_mean=round(statistics.mean(prompt_tokens), 1),
             output_tokens_mean=round(statistics.mean(output_tokens), 1),
+            # Model Expansion PRD - Phase 1 metadata
+            parameter_group=first_result.parameter_group,
+            architecture=first_result.architecture,
+            specialization=first_result.specialization,
+            prompt_category=first_result.prompt_category,
+            # Model Expansion PRD - Phase 5 metrics
+            peak_memory_mb_mean=round(statistics.mean(peak_memories), 1) if peak_memories else None,
+            truncation_rate=round(truncation_rate, 3),
+            # Resource utilization
             cpu_percent_mean=round(statistics.mean(cpu_percents), 1) if cpu_percents else None,
             accelerator_percent_mean=round(statistics.mean(accel_percents), 1) if accel_percents else None,
             memory_used_mb_mean=round(statistics.mean(memory_usages), 1) if memory_usages else None,

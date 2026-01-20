@@ -1,0 +1,292 @@
+Phase 0 — Context & Validation
+Task 0.1 — PRD ingestion
+
+Read and internalize the Hailo Acceleration PRD
+
+Identify supported platforms, models, tasks, and constraints
+
+Validate required external tools:
+
+Ultralytics
+
+ONNX
+
+Hailo SDK
+
+HailoRT
+
+Dataflow Compiler
+
+Exit criteria
+
+Agent can list supported YOLO versions and tasks
+
+Agent can describe full conversion pipeline end-to-end
+
+Phase 1 — Backend Architecture
+Task 1.1 — Backend abstraction layer
+
+Create a formal backend interface:
+
+YOLOBackend
+├── prepare_model()
+├── run_inference()
+├── collect_metrics()
+├── cleanup()
+
+
+Backends:
+
+PyTorchBackend
+
+HailoBackend
+
+Exit criteria
+
+Backends are swappable
+
+CLI/backend auto-selection supported
+
+Task 1.2 — Platform detection
+
+Detect Hailo devices (AI HAT+, AI HAT+ 2)
+
+Detect Hailo-8 vs Hailo-8L
+
+Expose platform metadata to benchmark runner
+
+Exit criteria
+
+Platform correctly identified at runtime
+
+Backend automatically selected unless overridden
+
+Phase 2 — Model Conversion Pipeline
+Task 2.1 — ONNX export
+
+Export .pt → .onnx using Ultralytics
+
+Enforce:
+
+Fixed input resolution
+
+Static batch size
+
+Store ONNX deterministically
+
+Exit criteria
+
+ONNX file generated and validated
+
+Export is repeatable
+
+Task 2.2 — HAR generation
+
+Parse ONNX into Hailo Archive (HAR)
+
+Use official Hailo parser / Model Zoo tooling
+
+Validate graph compatibility
+
+Exit criteria
+
+HAR file created successfully
+
+Unsupported ops detected early
+
+Task 2.3 — HEF compilation
+
+Compile HAR → HEF using Hailo Dataflow Compiler
+
+Target correct chip (Hailo-8 or 8L)
+
+Record compiler metadata
+
+Exit criteria
+
+HEF generated
+
+Compilation errors fail hard
+
+Task 2.4 — Artifact caching
+
+Implement deterministic cache layout:
+
+models/hailo/{yolo_version}/{task}/{model}/
+
+
+Cache invalidation on:
+
+SDK version change
+
+Compiler version change
+
+Model version change
+
+Exit criteria
+
+Re-runs reuse HEF
+
+No recompilation when unchanged
+
+Phase 3 — Calibration & Validation
+Task 3.1 — Calibration dataset handling
+
+Load Ultralytics validation dataset
+
+Select fixed subset (e.g., 100 images)
+
+Deterministic ordering
+
+Exit criteria
+
+Same calibration data used across runs
+
+Task 3.2 — Model sanity check
+
+Run single inference on Hailo
+
+Validate output tensor shapes
+
+Validate class count
+
+Exit criteria
+
+Model produces valid outputs
+
+Errors detected before benchmarking
+
+Phase 4 — Hailo Runtime Execution
+Task 4.1 — HailoRT inference runner
+
+Load HEF via HailoRT
+
+Execute inference fully on NPU
+
+Perform post-processing (NMS):
+
+Prefer Hailo-supported path
+
+CPU post-processing acceptable in v1
+
+Exit criteria
+
+No PyTorch inference on Hailo platforms
+
+Inference confirmed on NPU
+
+Task 4.2 — Metric collection
+
+Measure:
+
+Inference latency (ms)
+
+FPS
+
+Power (if available)
+
+Host + device memory
+
+Accuracy (where supported)
+
+Exclude:
+
+Compilation time
+
+Exit criteria
+
+Metrics match global benchmark schema
+
+Phase 5 — Benchmark Execution Logic
+Task 5.1 — Warm-up & measured runs
+
+Warm-up runs: 3
+
+Measured runs: 10
+
+Enforce consistent execution order
+
+Exit criteria
+
+Warm-up excluded from metrics
+
+Measured runs aggregated correctly
+
+Task 5.2 — Error & fallback enforcement
+
+If model/task unsupported:
+
+Abort run
+
+Log reason
+
+CPU fallback NOT allowed by default
+
+Exit criteria
+
+No silent degradation
+
+Clear failure messages
+
+Phase 6 — Integration with Existing Suite
+Task 6.1 — CLI integration
+
+Extend CLI to support:
+
+--backend hailo
+--force-recompile
+--list-supported-models
+
+
+Exit criteria
+
+CLI triggers Hailo path correctly
+
+Task 6.2 — Result compatibility
+
+Ensure Hailo results:
+
+Share schema with CPU/GPU runs
+
+Are labeled with backend = hailo
+
+Exit criteria
+
+Dashboard accepts Hailo data without changes
+
+Phase 7 — Validation & Benchmark Integrity
+Task 7.1 — Cross-platform verification
+
+Run same YOLO model on:
+
+Jetson (GPU)
+
+RPi + Hailo (NPU)
+
+Validate results are comparable
+
+Exit criteria
+
+Clear performance deltas visible
+
+No misleading comparisons
+
+Task 7.2 — Documentation update
+
+Document:
+
+Supported models
+
+Known limitations
+
+Compilation requirements
+
+Explicitly state:
+
+CPU inference on Hailo is invalid
+
+Exit criteria
+
+README updated
+
+PRD compliance documented

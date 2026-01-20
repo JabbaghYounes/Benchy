@@ -1,0 +1,256 @@
+PRD: Full Hailo NPU Acceleration for YOLO Benchmarks
+1. Title
+
+Hailo-Accelerated YOLO Inference Pipeline for Edge AI Benchmark Suite
+
+2. Background & Motivation
+
+The current Edge AI Benchmark Suite installs Hailo drivers and runtime on Raspberry Pi AI HAT+ and AI HAT+ 2 devices but executes YOLO inference using PyTorch CPU-based models (.pt), leaving the Hailo NPU unused.
+
+This results in:
+
+Misleading benchmark results
+
+Invalid platform comparisons
+
+Underutilization of dedicated AI acceleration hardware
+
+This PRD defines the implementation of full Hailo NPU acceleration, including automatic model conversion, compilation, and runtime execution using Hailo’s SDK and runtime.
+
+3. Goals
+Primary Goals
+
+Enable true Hailo NPU–accelerated YOLO inference
+
+Automatically convert YOLO models into Hailo-compatible formats
+
+Integrate Hailo inference seamlessly into the benchmark suite
+
+Preserve comparability with Jetson Nano benchmarks
+
+Secondary Goals
+
+Cache compiled artifacts to avoid recompilation
+
+Support reproducible and deterministic benchmarking
+
+Minimize user intervention
+
+4. Non-Goals
+
+Supporting custom YOLO architectures outside Ultralytics
+
+Training or fine-tuning YOLO models
+
+Optimizing Hailo compiler parameters beyond defaults
+
+Supporting non-YOLO models on Hailo
+
+Real-time video pipelines (camera input)
+
+5. Target Platforms
+Platform	Accelerator	Required Support
+Raspberry Pi AI HAT+	Hailo-8	YES
+Raspberry Pi AI HAT+ 2	Hailo-8L	YES
+Jetson Nano	NVIDIA GPU	NO (out of scope)
+6. Supported Models
+YOLO Versions
+
+YOLOv8
+
+YOLOv11
+
+YOLOv26
+
+Supported Tasks (Initial Scope)
+Task	Support Level
+Detection	REQUIRED
+Classification	OPTIONAL
+Segmentation	FUTURE
+Pose	FUTURE
+OBB	FUTURE
+
+Detection models are mandatory for initial delivery. Other tasks may be added incrementally.
+
+7. Functional Requirements
+7.1 Backend Selection
+
+The benchmark suite SHALL automatically select the inference backend:
+
+Platform	Backend
+Jetson Nano	PyTorch / CUDA
+RPi + Hailo	HailoRT
+
+Backend selection must be automatic and overrideable via CLI flag.
+
+7.2 Automatic Model Conversion Pipeline
+
+On Hailo platforms, the system SHALL perform the following steps automatically if no cached artifact exists:
+
+.pt (Ultralytics)
+  → ONNX (Ultralytics export)
+      → HAR (Hailo parser / Model Zoo)
+          → HEF (Hailo Dataflow Compiler)
+
+Requirements:
+
+Conversion runs only once per model + platform
+
+Artifacts must be cached
+
+Failures must be logged clearly
+
+Conversion must be deterministic
+
+7.3 Model Artifact Caching
+
+Compiled artifacts SHALL be stored using a deterministic directory structure:
+
+models/
+└── hailo/
+    └── yolov8/
+        └── detection/
+            └── yolov8n/
+                ├── model.onnx
+                ├── model.har
+                └── model.hef
+
+
+Cache invalidation must occur if:
+
+SDK version changes
+
+Model version changes
+
+Compiler version changes
+
+7.4 Calibration Dataset
+
+Use Ultralytics-provided validation dataset
+
+Fixed subset size (e.g. 100 images)
+
+Deterministic ordering
+
+No user-provided datasets in v1
+
+7.5 Hailo Runtime Execution
+
+The system SHALL:
+
+Load .hef using HailoRT
+
+Perform inference on the NPU
+
+Execute post-processing (NMS) either:
+
+On-device (preferred), or
+
+On CPU (acceptable for v1)
+
+Measure inference latency excluding compilation time
+
+8. Metrics & Measurement
+Required Metrics
+
+End-to-end inference latency (ms)
+
+Throughput (FPS)
+
+Power consumption (if available)
+
+Memory usage (host + device)
+
+Accuracy (mAP where supported)
+
+Benchmark Rules
+
+Warm-up runs: 3
+
+Measured runs: 10
+
+No compilation time included
+
+All metrics emitted in the same schema as non-Hailo runs
+
+9. CLI & UX Requirements
+Example CLI Usage
+benchmark yolo \
+  --model yolov8n \
+  --task detection \
+  --backend hailo
+
+Expected Behavior
+
+Automatically triggers compilation if missing
+
+Reuses cached HEF if present
+
+Emits warnings if falling back to CPU
+
+10. Error Handling & Fallbacks
+
+If compilation fails:
+
+The run SHALL fail explicitly
+
+CPU fallback is NOT allowed by default
+
+Unsupported model/task combinations must be detected early
+
+All failures must be logged with actionable messages
+
+11. Logging & Observability
+
+Logs must include:
+
+SDK versions
+
+Compiler versions
+
+Model hash
+
+Calibration dataset hash
+
+HEF generation timestamp
+
+Device model (Hailo-8 vs Hailo-8L)
+
+12. Security & Safety
+
+No network access during compilation
+
+No execution of untrusted binaries
+
+All tools must come from official Hailo SDK
+
+13. Performance Expectations (Non-binding)
+Model	Expected Speedup vs CPU
+YOLOv8n	5–10×
+YOLOv8s	4–8×
+YOLOv8m	3–6×
+14. Risks & Mitigations
+Risk	Mitigation
+Model unsupported by Hailo	Detect early, skip
+Compilation failures	Clear error output
+SDK incompatibility	Version pinning
+Benchmark bias	Explicit backend labeling
+15. Success Criteria
+
+YOLO inference runs fully on Hailo NPU
+
+No .pt inference on Hailo platforms
+
+Compiled models reused across runs
+
+Metrics clearly show NPU acceleration
+
+Results accepted by developers as fair and transparent
+
+16. Open Questions (Explicitly Tracked)
+
+Should segmentation / pose be supported in v1?
+
+Should HEF artifacts be prebuilt and distributed?
+
+Should Hailo post-processing be benchmarked separately?

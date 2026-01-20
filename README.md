@@ -95,6 +95,29 @@ python -m benchmark run yolo --backend hailo
 python -m benchmark run yolo --backend hailo --force-recompile
 ```
 
+#### Run Lightweight LLM Benchmarks (1B/3B Models)
+
+```bash
+# Run benchmarks for all lightweight models (1B and 3B)
+python -m benchmark run llm --profile lightweight
+
+# Run benchmarks for specific parameter group
+python -m benchmark run llm --model-group 1B
+python -m benchmark run llm --model-group 3B
+
+# Run a specific lightweight model
+python -m benchmark run llm --model llama3.2:1b
+
+# Run with custom output directory
+python -m benchmark run llm --profile lightweight --output ./lightweight_results
+```
+
+**Note:** Lightweight models (1B/3B) use different benchmark parameters than standard models:
+- 2 warmup runs (vs 3 for 7B+)
+- Non-streaming inference
+- Temperature 0.2, top_p 0.95
+- Prompt batching (3 prompts per batch)
+
 #### Show System Information
 
 ```bash
@@ -387,8 +410,25 @@ The HTML dashboard includes:
 - LLM performance charts (tokens/sec, TTFT)
 - LLM efficiency charts (memory usage, TPS vs memory trade-off)
 - Stability/variance analysis
-- Raw data tables
+- Raw data tables with model metadata badges
 - Data download links
+
+**Dashboard Filters:**
+
+| Filter | Options | Description |
+|--------|---------|-------------|
+| Platform | All, Jetson Nano, RPi AI HAT+, etc. | Filter by hardware platform |
+| YOLO Version | All, v8, v11, v26 | Filter YOLO results by version |
+| Task | All, Detection, Classification, etc. | Filter by YOLO task type |
+| LLM Size | All, 1B, 3B, 7B, 8B, 9B | Filter by model size |
+| Parameter Group | All, 1B, 3B, 7B, 8B, 9B | Filter by parameter group (same as size) |
+| Architecture | All, Dense, MoE | Filter by model architecture |
+| Specialization | All, General, Code | Filter by model specialization |
+
+**Visual Indicators:**
+- **MoE Badge** (purple): Indicates Mixture of Experts models (e.g., granite3.1-moe)
+- **Code Badge** (orange): Indicates code-specialized models (e.g., starcoder2)
+- **Parameter Group Badge**: Color-coded by size (green=1B, blue=3B/7B/8B, red=9B)
 
 Open in browser:
 ```bash
@@ -522,6 +562,47 @@ To ensure reproducible results:
 5. **Multiple runs**
    - Run benchmarks multiple times
    - Use aggregation to analyze variance
+
+### Reproducibility Verification
+
+The benchmark suite includes built-in reproducibility verification to ensure metrics variance is within acceptable bounds.
+
+**Programmatic Verification:**
+
+```python
+from benchmark.workloads.llm.runner import (
+    verify_reproducibility,
+    verify_parameter_group_reproducibility,
+)
+
+# Verify a specific model
+result = verify_reproducibility(
+    model_name="llama3.2:1b",
+    model_size="1B",
+    num_runs=3,
+    variance_threshold=0.15,  # 15% max coefficient of variation
+)
+print(f"Passed: {result['passed']}")
+print(f"TTFT CV: {result['metrics']['ttft']['cv']:.2%}")
+print(f"TPS CV: {result['metrics']['tps']['cv']:.2%}")
+
+# Verify one model per parameter group
+result = verify_parameter_group_reproducibility(
+    parameter_group="1B",
+    variance_threshold=0.15,
+)
+```
+
+**Acceptance Criteria:**
+- Coefficient of Variation (CV) for TTFT and TPS must be ≤ 15%
+- CV = standard deviation / mean
+- Lower CV indicates more consistent results
+
+**Factors Affecting Reproducibility:**
+- Thermal throttling (allow cooldown between runs)
+- Background processes (minimize system load)
+- Power state (use consistent power mode)
+- Model warm-up (use adequate warmup runs)
 
 ## Troubleshooting
 

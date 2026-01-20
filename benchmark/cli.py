@@ -14,6 +14,7 @@ from benchmark.schemas import (
     Platform,
     WorkloadType,
     YOLOTask,
+    Backend,
     BenchmarkRun,
     SystemInfo,
 )
@@ -43,6 +44,8 @@ def run_yolo_benchmark(
     output_dir: Path,
     system_info: SystemInfo,
     skip_validation: bool = False,
+    backend: Optional[str] = None,
+    force_recompile: bool = False,
 ) -> list:
     """Run YOLO benchmarks based on configuration.
 
@@ -52,6 +55,8 @@ def run_yolo_benchmark(
         output_dir: Output directory for results
         system_info: System information
         skip_validation: Skip accuracy validation
+        backend: Backend to use (pytorch, hailo, or None for auto)
+        force_recompile: Force recompilation of Hailo models
 
     Returns:
         List of YOLOResult objects
@@ -97,13 +102,15 @@ def run_yolo_benchmark(
                     device=inference_settings.get("device", "0"),
                     conf_threshold=inference_settings.get("conf_threshold", 0.25),
                     iou_threshold=inference_settings.get("iou_threshold", 0.45),
+                    backend=backend,
+                    force_recompile=force_recompile,
                 )
 
                 try:
                     runner = YOLOBenchmarkRunner(bench_config)
                     result = runner.run()
                     all_results.append(result)
-                    logger.info(f"  Throughput: {result.throughput_fps:.2f} FPS, Latency: {result.latency.mean_ms:.2f}ms")
+                    logger.info(f"  [{result.backend}] Throughput: {result.throughput_fps:.2f} FPS, Latency: {result.latency.mean_ms:.2f}ms")
                 except Exception as e:
                     logger.error(f"  Failed: {e}")
 
@@ -220,6 +227,8 @@ def cmd_benchmark(args) -> int:
                 args.output,
                 system_info,
                 args.skip_validation,
+                backend=getattr(args, "backend", None),
+                force_recompile=getattr(args, "force_recompile", False),
             )
         else:
             logger.warning(f"YOLO config not found: {config_path}")
@@ -518,6 +527,17 @@ def main():
         "--skip-validation",
         action="store_true",
         help="Skip accuracy validation for YOLO benchmarks",
+    )
+    bench_parser.add_argument(
+        "--backend",
+        choices=["pytorch", "hailo", "auto"],
+        default=None,
+        help="Inference backend (default: auto-select based on platform)",
+    )
+    bench_parser.add_argument(
+        "--force-recompile",
+        action="store_true",
+        help="Force recompilation of Hailo models (ignore cache)",
     )
 
     # Info command

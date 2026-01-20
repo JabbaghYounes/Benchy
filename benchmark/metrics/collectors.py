@@ -79,6 +79,24 @@ def get_accelerator_info() -> str:
         pass
 
     # Check for Hailo NPU
+    hailo_info = detect_hailo_device()
+    if hailo_info:
+        return hailo_info
+
+    return "None"
+
+
+def detect_hailo_device() -> Optional[str]:
+    """Detect Hailo NPU and return device information.
+
+    Returns:
+        Device string (e.g., "Hailo-8 (26 TOPS)") or None
+    """
+    # Check for device node
+    hailo_devices = list(Path("/dev").glob("hailo*"))
+    if not hailo_devices:
+        return None
+
     try:
         result = subprocess.run(
             ["hailortcli", "fw-control", "identify"],
@@ -87,14 +105,76 @@ def get_accelerator_info() -> str:
             timeout=5,
         )
         if result.returncode == 0:
+            output = result.stdout.lower()
+
+            # Determine device type
+            if "hailo-8l" in output or "hailo8l" in output:
+                return "Hailo-8L NPU (13 TOPS)"
+            elif "hailo-8" in output or "hailo8" in output:
+                return "Hailo-8 NPU (26 TOPS)"
+
+            # Generic detection
             for line in result.stdout.split("\n"):
                 if "device" in line.lower() or "hailo" in line.lower():
                     return line.strip()
+
             return "Hailo NPU"
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
 
-    return "None"
+    # Fallback: device exists but can't identify type
+    return "Hailo NPU (unknown model)"
+
+
+def get_hailo_device_type() -> Optional[str]:
+    """Get the specific Hailo device type.
+
+    Returns:
+        "hailo8" or "hailo8l" or None
+    """
+    hailo_devices = list(Path("/dev").glob("hailo*"))
+    if not hailo_devices:
+        return None
+
+    try:
+        result = subprocess.run(
+            ["hailortcli", "fw-control", "identify"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            output = result.stdout.lower()
+            if "hailo-8l" in output or "hailo8l" in output:
+                return "hailo8l"
+            elif "hailo-8" in output or "hailo8" in output:
+                return "hailo8"
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        pass
+
+    return None
+
+
+def is_hailo_available() -> bool:
+    """Check if a Hailo device is available.
+
+    Returns:
+        True if Hailo device is detected and accessible
+    """
+    hailo_devices = list(Path("/dev").glob("hailo*"))
+    if not hailo_devices:
+        return False
+
+    try:
+        result = subprocess.run(
+            ["hailortcli", "scan"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0 and "hailo" in result.stdout.lower()
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
 
 def get_ram_size_gb() -> float:

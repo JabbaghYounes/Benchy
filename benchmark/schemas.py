@@ -27,6 +27,18 @@ class YOLOTask(Enum):
     CLASSIFICATION = "classification"
 
 
+class Backend(Enum):
+    """Inference backend types."""
+    PYTORCH = "pytorch"
+    HAILO = "hailo"
+
+
+class HailoDevice(Enum):
+    """Hailo NPU device types."""
+    HAILO8 = "hailo8"
+    HAILO8L = "hailo8l"
+
+
 @dataclass
 class SystemInfo:
     """System information recorded for each benchmark run."""
@@ -84,6 +96,7 @@ class YOLOResult:
     input_resolution: str
     latency: LatencyMetrics
     throughput_fps: float
+    backend: str = "pytorch"  # Backend used for inference (pytorch, hailo)
     map_score: Optional[float] = None
     precision: Optional[float] = None
     recall: Optional[float] = None
@@ -101,6 +114,7 @@ class YOLOResult:
             "input_resolution": self.input_resolution,
             "latency": self.latency.to_dict(),
             "throughput_fps": self.throughput_fps,
+            "backend": self.backend,
             "map_score": self.map_score,
             "precision": self.precision,
             "recall": self.recall,

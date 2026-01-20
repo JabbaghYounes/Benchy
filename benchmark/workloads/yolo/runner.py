@@ -14,7 +14,7 @@ from benchmark.schemas import (
     LatencyMetrics,
     SystemInfo,
 )
-from benchmark.metrics import ResourceMonitor
+from benchmark.metrics import ResourceMonitor, detect_platform
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ class YOLOBenchmarkConfig:
     conf_threshold: float = 0.25
     iou_threshold: float = 0.45
     verbose: bool = False
+    backend: Optional[str] = None  # "pytorch", "hailo", or None for auto
+    force_recompile: bool = False  # Force recompilation of Hailo models
 
 
 # Model definitions per YOLO version and task
@@ -72,7 +74,12 @@ DEFAULT_DATASETS = {
 
 
 class YOLOBenchmarkRunner:
-    """Runner for YOLO inference benchmarks."""
+    """Runner for YOLO inference benchmarks.
+
+    This runner supports multiple backends (PyTorch, Hailo) and will
+    automatically select the appropriate backend based on the platform
+    unless a specific backend is requested.
+    """
 
     def __init__(self, config: YOLOBenchmarkConfig):
         """Initialize the YOLO benchmark runner.
@@ -81,19 +88,51 @@ class YOLOBenchmarkRunner:
             config: Benchmark configuration
         """
         self.config = config
-        self.model = None
+        self._backend = None
         self._resource_monitor = ResourceMonitor(sample_interval=0.1)
 
-    def _load_model(self):
-        """Load the YOLO model."""
-        from ultralytics import YOLO
+    def _select_backend(self):
+        """Select and initialize the appropriate backend."""
+        from benchmark.workloads.yolo.backends import (
+            BackendType,
+            auto_select_backend,
+            get_backend,
+        )
 
-        logger.info(f"Loading model: {self.config.model_name}")
-        self.model = YOLO(self.config.model_name)
+        # If backend is specified, use it
+        if self.config.backend:
+            if self.config.backend == "auto":
+                # Explicit auto-selection
+                self._backend = auto_select_backend(
+                    device=self.config.device,
+                    allow_fallback=False,
+                )
+            else:
+                # Specific backend requested
+                backend_type = BackendType(self.config.backend)
+                self._backend = get_backend(backend_type, device=self.config.device)
+        else:
+            # Auto-select based on platform
+            self._backend = auto_select_backend(
+                device=self.config.device,
+                allow_fallback=True,  # Allow fallback to PyTorch
+            )
 
-        # Warm up the model with a dummy inference
-        if self.config.device != "cpu":
-            self.model.to(f"cuda:{self.config.device}")
+        logger.info(f"Using backend: {self._backend.backend_type.value}")
+
+    def _prepare_model(self):
+        """Prepare the model using the selected backend."""
+        if self._backend is None:
+            self._select_backend()
+
+        logger.info(f"Preparing model: {self.config.model_name}")
+        self._backend.prepare_model(
+            model_name=self.config.model_name,
+            yolo_version=self.config.yolo_version,
+            task=self.config.task,
+            input_resolution=self.config.input_resolution,
+            force_recompile=self.config.force_recompile,
+        )
 
     def _get_validation_source(self) -> str:
         """Get the validation data source."""
@@ -101,27 +140,21 @@ class YOLOBenchmarkRunner:
             return self.config.dataset
         return DEFAULT_DATASETS.get(self.config.task, "coco128.yaml")
 
-    def _run_single_inference(self, source) -> tuple[float, dict]:
-        """Run a single inference and return latency and results.
+    def _run_single_inference(self, source: np.ndarray) -> float:
+        """Run a single inference and return latency.
 
         Args:
-            source: Image or dataset source for inference
+            source: Input image as numpy array
 
         Returns:
-            Tuple of (latency_ms, results_dict)
+            Latency in milliseconds
         """
-        start_time = time.perf_counter()
-        results = self.model(
+        result = self._backend.run_inference(
             source,
-            imgsz=self.config.input_resolution,
-            conf=self.config.conf_threshold,
-            iou=self.config.iou_threshold,
-            verbose=self.config.verbose,
+            conf_threshold=self.config.conf_threshold,
+            iou_threshold=self.config.iou_threshold,
         )
-        end_time = time.perf_counter()
-
-        latency_ms = (end_time - start_time) * 1000
-        return latency_ms, results
+        return result.latency_ms
 
     def _run_validation(self) -> dict:
         """Run validation to get accuracy metrics.
@@ -129,44 +162,21 @@ class YOLOBenchmarkRunner:
         Returns:
             Dictionary with mAP, precision, recall metrics
         """
-        try:
-            metrics = self.model.val(
-                data=self._get_validation_source(),
-                imgsz=self.config.input_resolution,
-                verbose=self.config.verbose,
-            )
+        from benchmark.workloads.yolo.backends import BackendType
 
-            # Extract metrics based on task type
-            if self.config.task == YOLOTask.DETECTION:
-                return {
-                    "map_score": float(metrics.box.map) if hasattr(metrics, 'box') else None,
-                    "map50": float(metrics.box.map50) if hasattr(metrics, 'box') else None,
-                    "precision": float(metrics.box.mp) if hasattr(metrics, 'box') else None,
-                    "recall": float(metrics.box.mr) if hasattr(metrics, 'box') else None,
-                }
-            elif self.config.task == YOLOTask.SEGMENTATION:
-                return {
-                    "map_score": float(metrics.seg.map) if hasattr(metrics, 'seg') else None,
-                    "precision": float(metrics.seg.mp) if hasattr(metrics, 'seg') else None,
-                    "recall": float(metrics.seg.mr) if hasattr(metrics, 'seg') else None,
-                }
-            elif self.config.task == YOLOTask.POSE:
-                return {
-                    "map_score": float(metrics.pose.map) if hasattr(metrics, 'pose') else None,
-                    "precision": float(metrics.pose.mp) if hasattr(metrics, 'pose') else None,
-                    "recall": float(metrics.pose.mr) if hasattr(metrics, 'pose') else None,
-                }
-            elif self.config.task == YOLOTask.CLASSIFICATION:
-                return {
-                    "top1_accuracy": float(metrics.top1) if hasattr(metrics, 'top1') else None,
-                    "top5_accuracy": float(metrics.top5) if hasattr(metrics, 'top5') else None,
-                }
-            else:
-                return {
-                    "map_score": float(metrics.box.map) if hasattr(metrics, 'box') else None,
-                }
-        except Exception as e:
-            logger.warning(f"Validation failed: {e}")
+        # Validation is only supported for PyTorch backend currently
+        if self._backend.backend_type == BackendType.PYTORCH:
+            try:
+                return self._backend.run_validation(
+                    data=self._get_validation_source(),
+                    input_resolution=self.config.input_resolution,
+                )
+            except Exception as e:
+                logger.warning(f"Validation failed: {e}")
+                return {}
+        else:
+            # Hailo validation not yet implemented
+            logger.info("Validation not available for Hailo backend")
             return {}
 
     def _calculate_latency_metrics(
@@ -203,28 +213,37 @@ class YOLOBenchmarkRunner:
         """Run the complete benchmark.
 
         Args:
-            test_image: Optional path to test image. If None, uses a sample from dataset.
+            test_image: Optional path to test image. If None, uses a synthetic image.
 
         Returns:
             YOLOResult with all benchmark metrics
         """
-        # Load model if not already loaded
-        if self.model is None:
-            self._load_model()
+        # Prepare model using the backend
+        self._prepare_model()
 
-        # Use a sample image for latency benchmarking
-        # If no test image provided, create a dummy numpy array
+        # Create test input
         if test_image:
-            source = test_image
+            import cv2
+            source = cv2.imread(test_image)
+            if source is None:
+                raise ValueError(f"Could not load test image: {test_image}")
+            # Resize to expected resolution
+            source = cv2.resize(
+                source,
+                (self.config.input_resolution, self.config.input_resolution)
+            )
         else:
-            # Create a dummy image for consistent latency measurement
+            # Create a synthetic image for consistent latency measurement
             source = np.random.randint(
                 0, 255,
                 (self.config.input_resolution, self.config.input_resolution, 3),
                 dtype=np.uint8
             )
 
-        logger.info(f"Starting benchmark: {self.config.warmup_runs} warmup, {self.config.measured_runs} measured runs")
+        logger.info(
+            f"Starting benchmark: {self.config.warmup_runs} warmup, "
+            f"{self.config.measured_runs} measured runs"
+        )
 
         # Warmup runs (not recorded)
         logger.info("Running warmup iterations...")
@@ -240,17 +259,21 @@ class YOLOBenchmarkRunner:
         first_latency = None
 
         for i in range(self.config.measured_runs):
-            latency_ms, _ = self._run_single_inference(source)
+            latency_ms = self._run_single_inference(source)
             latencies.append(latency_ms)
             if first_latency is None:
                 first_latency = latency_ms
-            logger.debug(f"Measured run {i + 1}/{self.config.measured_runs}: {latency_ms:.2f}ms")
+            logger.debug(
+                f"Measured run {i + 1}/{self.config.measured_runs}: {latency_ms:.2f}ms"
+            )
 
         resource_utilization = self._resource_monitor.stop()
 
         # Calculate metrics
         latency_metrics = self._calculate_latency_metrics(latencies, first_latency)
-        throughput_fps = 1000.0 / latency_metrics.mean_ms if latency_metrics.mean_ms > 0 else 0.0
+        throughput_fps = (
+            1000.0 / latency_metrics.mean_ms if latency_metrics.mean_ms > 0 else 0.0
+        )
 
         # Run validation for accuracy metrics (optional, can be slow)
         accuracy_metrics = {}
@@ -260,6 +283,12 @@ class YOLOBenchmarkRunner:
         except Exception as e:
             logger.warning(f"Skipping accuracy validation: {e}")
 
+        # Get backend type for result
+        backend_name = self._backend.backend_type.value
+
+        # Cleanup backend resources
+        self._backend.cleanup()
+
         return YOLOResult(
             model_name=self.config.model_name,
             yolo_version=self.config.yolo_version,
@@ -267,6 +296,7 @@ class YOLOBenchmarkRunner:
             input_resolution=f"{self.config.input_resolution}x{self.config.input_resolution}",
             latency=latency_metrics,
             throughput_fps=round(throughput_fps, 2),
+            backend=backend_name,
             map_score=accuracy_metrics.get("map_score"),
             precision=accuracy_metrics.get("precision"),
             recall=accuracy_metrics.get("recall"),
@@ -286,6 +316,7 @@ def run_yolo_benchmark(
     device: str = "0",
     test_image: Optional[str] = None,
     skip_validation: bool = False,
+    backend: Optional[str] = None,
 ) -> YOLOResult:
     """Convenience function to run a YOLO benchmark.
 
@@ -299,6 +330,7 @@ def run_yolo_benchmark(
         device: Device ID for inference
         test_image: Optional test image path
         skip_validation: Skip accuracy validation
+        backend: Backend to use (pytorch, hailo, or None for auto)
 
     Returns:
         YOLOResult with benchmark metrics
@@ -311,6 +343,7 @@ def run_yolo_benchmark(
         warmup_runs=warmup_runs,
         measured_runs=measured_runs,
         device=device,
+        backend=backend,
     )
 
     runner = YOLOBenchmarkRunner(config)

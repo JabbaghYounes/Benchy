@@ -10,6 +10,10 @@
 # - Detection and Classification tasks
 # - Hailo-8 and Hailo-8L target devices
 # - Deterministic caching with version-based invalidation
+#
+# Phase 3 additions:
+# - Calibration dataset handling (deterministic Ultralytics dataset loading)
+# - Model validation (sanity checks before benchmarking)
 
 from benchmark.workloads.yolo.conversion.pipeline import (
     ModelConversionPipeline,
@@ -34,6 +38,21 @@ from benchmark.workloads.yolo.conversion.cache import (
     CacheMetadata,
     get_cache_path,
 )
+# Phase 3: Calibration
+from benchmark.workloads.yolo.conversion.calibration import (
+    CalibrationDatasetLoader,
+    CalibrationConfig,
+    CalibrationDataset,
+    get_calibration_dataset,
+)
+# Phase 3: Validation
+from benchmark.workloads.yolo.conversion.validation import (
+    ModelValidator,
+    ValidationConfig,
+    ValidationResult,
+    validate_hef_model,
+    quick_sanity_check,
+)
 
 __all__ = [
     # Pipeline
@@ -54,4 +73,15 @@ __all__ = [
     "ModelCache",
     "CacheMetadata",
     "get_cache_path",
+    # Phase 3: Calibration
+    "CalibrationDatasetLoader",
+    "CalibrationConfig",
+    "CalibrationDataset",
+    "get_calibration_dataset",
+    # Phase 3: Validation
+    "ModelValidator",
+    "ValidationConfig",
+    "ValidationResult",
+    "validate_hef_model",
+    "quick_sanity_check",
 ]

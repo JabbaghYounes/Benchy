@@ -2,6 +2,8 @@
 #
 # Orchestrates the full conversion pipeline:
 #   .pt (PyTorch) → .onnx (ONNX) → .har (Hailo Archive) → .hef (Hailo Executable)
+#
+# Phase 3: Includes calibration dataset handling and model validation
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,6 +27,16 @@ from benchmark.workloads.yolo.conversion.har_generator import (
 from benchmark.workloads.yolo.conversion.hef_compiler import (
     HEFCompiler,
     HEFCompilerConfig,
+)
+from benchmark.workloads.yolo.conversion.calibration import (
+    CalibrationDatasetLoader,
+    CalibrationConfig,
+    CalibrationDataset,
+)
+from benchmark.workloads.yolo.conversion.validation import (
+    ModelValidator,
+    ValidationConfig,
+    ValidationResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,9 +66,11 @@ class ConversionConfig:
     onnx_opset: int = 11
     onnx_simplify: bool = True
 
-    # Calibration settings
+    # Calibration settings (Phase 3)
     calibration_data_path: Optional[Path] = None
-    calibration_set_size: int = 64
+    calibration_set_size: int = 100  # Default to 100 images per Phase 3 PRD
+    use_ultralytics_calibration: bool = True  # Use Ultralytics datasets
+    calibration_seed: int = 42  # Seed for deterministic ordering
 
     # Compilation settings
     optimization_level: int = 2
@@ -70,6 +84,10 @@ class ConversionConfig:
     skip_har: bool = False  # Skip HAR generation if already exists
     stop_at_onnx: bool = False  # Stop after ONNX export
     stop_at_har: bool = False  # Stop after HAR generation
+
+    # Validation settings (Phase 3)
+    validate_after_compile: bool = True  # Run sanity check after compilation
+    skip_inference_validation: bool = False  # Skip test inference during validation
 
 
 @dataclass
@@ -102,6 +120,15 @@ class ConversionResult:
     # Metadata
     metadata: Optional[CacheMetadata] = None
 
+    # Phase 3: Calibration info
+    calibration_images: int = 0
+    calibration_hash: Optional[str] = None
+    calibration_seed: int = 42
+
+    # Phase 3: Validation info
+    validation_passed: bool = False
+    validation_result: Optional[ValidationResult] = None
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -121,6 +148,11 @@ class ConversionResult:
             "total_time_seconds": self.total_time_seconds,
             "error": self.error,
             "error_stage": self.error_stage,
+            # Phase 3 fields
+            "calibration_images": self.calibration_images,
+            "calibration_hash": self.calibration_hash,
+            "calibration_seed": self.calibration_seed,
+            "validation_passed": self.validation_passed,
         }
 
 
@@ -157,6 +189,10 @@ class ModelConversionPipeline:
         self.har_generator = HARGenerator(self.cache)
         self.hef_compiler = HEFCompiler(self.cache)
 
+        # Phase 3: Calibration and validation components
+        self.calibration_loader = CalibrationDatasetLoader()
+        self.validator = ModelValidator()
+
     def check_requirements(self) -> dict:
         """Check if all requirements are available.
 
@@ -168,6 +204,9 @@ class ModelConversionPipeline:
             "har_generation": self.har_generator.is_available(),
             "hef_compilation": self.hef_compiler.is_available(),
             "model_zoo": self.har_generator.is_model_zoo_available(),
+            # Phase 3
+            "calibration_datasets": self.calibration_loader.is_available(),
+            "model_validation": self.validator.is_available(),
         }
 
     def convert(
@@ -257,6 +296,29 @@ class ModelConversionPipeline:
                 result.har_path, model_name, yolo_version, task, config
             )
             result.hef_time_seconds = time.time() - hef_start
+
+            # Phase 3: Model validation (sanity check)
+            if config.validate_after_compile:
+                logger.info("Phase 3: Running model validation...")
+                validation_result = self._run_validation(
+                    result.hef_path, task, config
+                )
+                result.validation_result = validation_result
+                result.validation_passed = validation_result.valid
+
+                if not validation_result.valid:
+                    raise ConversionError(
+                        f"Model validation failed: {'; '.join(validation_result.errors)}",
+                        stage="validation",
+                    )
+
+                logger.info("Model validation PASSED")
+            else:
+                result.validation_passed = True  # Assume valid if skipped
+
+            # Store calibration info in result
+            result.calibration_images = config.calibration_set_size
+            result.calibration_seed = config.calibration_seed
 
             # Success
             result.success = True
@@ -446,12 +508,14 @@ class ModelConversionPipeline:
                 details="Install the Hailo SDK from https://hailo.ai/developer-zone/",
             )
 
-        # Configure compiler
+        # Configure compiler with Phase 3 calibration settings
         hef_config = HEFCompilerConfig(
             target_device=config.target_device,
             optimization_level=config.optimization_level,
             calibration_data_path=config.calibration_data_path,
             calibration_set_size=config.calibration_set_size,
+            use_ultralytics_dataset=config.use_ultralytics_calibration,
+            calibration_seed=config.calibration_seed,
         )
 
         # Compile
@@ -472,6 +536,57 @@ class ModelConversionPipeline:
                 f"HEF compilation failed: {e}",
                 stage="hef_compilation",
             ) from e
+
+    def _run_validation(
+        self,
+        hef_path: Path,
+        task: YOLOTask,
+        config: ConversionConfig,
+    ) -> ValidationResult:
+        """Run Phase 3 model validation (sanity check).
+
+        This validates the compiled HEF model before it's used for benchmarking:
+        - Verifies the HEF file is loadable
+        - Validates input tensor shapes match expected resolution
+        - Validates output tensor shapes for the task type
+        - Checks class count compatibility
+        - Optionally runs a single test inference
+
+        Args:
+            hef_path: Path to the compiled HEF file
+            task: YOLO task type
+            config: Pipeline configuration
+
+        Returns:
+            ValidationResult with detailed check results
+        """
+        logger.info("Phase 3: Model Validation (Sanity Check)")
+
+        validation_config = ValidationConfig(
+            input_resolution=config.input_resolution,
+            skip_inference_check=config.skip_inference_validation,
+        )
+
+        result = self.validator.validate(hef_path, task, validation_config)
+
+        # Log validation results
+        if result.valid:
+            logger.info("  Validation PASSED")
+            logger.info(f"    Input layers: {len(result.input_layers)}")
+            logger.info(f"    Output layers: {len(result.output_layers)}")
+            if result.detected_class_count is not None:
+                logger.info(f"    Detected classes: {result.detected_class_count}")
+            if result.inference_latency_ms is not None:
+                logger.info(f"    Test inference: {result.inference_latency_ms:.2f}ms")
+        else:
+            logger.error("  Validation FAILED")
+            for error in result.errors:
+                logger.error(f"    Error: {error}")
+
+        for warning in result.warnings:
+            logger.warning(f"    Warning: {warning}")
+
+        return result
 
     def get_cached_hef(
         self,

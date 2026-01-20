@@ -54,6 +54,8 @@ class CacheMetadata:
     # Calibration info
     calibration_dataset: Optional[str] = None
     calibration_images: int = 0
+    calibration_hash: Optional[str] = None  # Phase 3: dataset hash for reproducibility
+    calibration_seed: int = 42  # Phase 3: seed for deterministic ordering
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""

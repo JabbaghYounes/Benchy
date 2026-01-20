@@ -2,6 +2,9 @@
 #
 # Compiles HAR files to HEF format using the Hailo Dataflow Compiler.
 # The HEF file is the final format that runs on Hailo NPU.
+#
+# Uses the calibration module (Phase 3) for deterministic calibration
+# dataset handling with Ultralytics validation datasets.
 import logging
 import os
 import shutil
@@ -18,6 +21,11 @@ from benchmark.workloads.yolo.conversion.cache import (
     compute_file_hash,
     get_dataflow_compiler_version,
     get_hailort_version,
+)
+from benchmark.workloads.yolo.conversion.calibration import (
+    CalibrationDatasetLoader,
+    CalibrationConfig,
+    CalibrationDataset,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,7 +45,11 @@ class HEFCompilerConfig:
     # Calibration settings
     calibration_data_path: Optional[Path] = None
     calibration_batch_size: int = 8
-    calibration_set_size: int = 64  # Number of images for calibration
+    calibration_set_size: int = 100  # Number of images for calibration (Phase 3)
+
+    # Calibration dataset settings (Phase 3)
+    use_ultralytics_dataset: bool = True  # Use Ultralytics validation dataset
+    calibration_seed: int = 42  # Seed for deterministic calibration
 
     # Memory settings
     allocator_script: Optional[Path] = None
@@ -66,8 +78,8 @@ class HEFCompiler:
     Raspberry Pi with Hailo HAT.
     """
 
-    # Default calibration dataset size
-    DEFAULT_CALIBRATION_SIZE = 64
+    # Default calibration dataset size (Phase 3)
+    DEFAULT_CALIBRATION_SIZE = 100
 
     def __init__(self, cache: Optional[ModelCache] = None):
         """Initialize the HEF compiler.
@@ -77,6 +89,7 @@ class HEFCompiler:
         """
         self.cache = cache or ModelCache()
         self._compiler_available: Optional[bool] = None
+        self._calibration_loader = CalibrationDatasetLoader()
 
     def is_available(self) -> bool:
         """Check if Hailo Dataflow Compiler is available."""
@@ -151,15 +164,22 @@ class HEFCompiler:
         logger.info(f"  Optimization level: {config.optimization_level}")
 
         try:
-            # Prepare calibration data
-            calib_path = calibration_data or config.calibration_data_path
-            if calib_path is None:
-                logger.info("No calibration data provided, using random calibration")
-                calib_path = self._create_random_calibration(config)
+            # Prepare calibration data using Phase 3 calibration module
+            if config.use_ultralytics_dataset:
+                logger.info("Loading calibration dataset from Ultralytics (Phase 3)")
+                calib_dataset = self._load_ultralytics_calibration(task, config)
+            else:
+                calib_path = calibration_data or config.calibration_data_path
+                if calib_path is None:
+                    logger.info("No calibration data provided, using random calibration")
+                    calib_path = self._create_random_calibration(config)
+                calib_dataset = None  # Will be loaded from path
 
             # Run compilation
             return self._compile_with_sdk(
-                har_path, model_name, yolo_version, task, config, output_path, calib_path
+                har_path, model_name, yolo_version, task, config, output_path,
+                calib_path if calib_dataset is None else None,
+                calib_dataset,
             )
 
         except Exception as e:
@@ -167,6 +187,34 @@ class HEFCompiler:
             if output_path.exists():
                 output_path.unlink()
             raise RuntimeError(f"HEF compilation failed: {e}") from e
+
+    def _load_ultralytics_calibration(
+        self,
+        task: YOLOTask,
+        config: HEFCompilerConfig,
+    ) -> CalibrationDataset:
+        """Load calibration dataset using Phase 3 calibration module.
+
+        Args:
+            task: YOLO task type
+            config: Compiler configuration
+
+        Returns:
+            CalibrationDataset with preprocessed images
+        """
+        calib_config = CalibrationConfig(
+            num_samples=config.calibration_set_size,
+            input_resolution=640,  # Standard YOLO input
+            seed=config.calibration_seed,
+        )
+
+        dataset = self._calibration_loader.load(task, calib_config)
+
+        logger.info(f"Loaded {len(dataset)} calibration images")
+        logger.info(f"  Dataset hash: {dataset.dataset_hash}")
+        logger.info(f"  Seed: {config.calibration_seed}")
+
+        return dataset
 
     def _compile_with_sdk(
         self,
@@ -176,11 +224,25 @@ class HEFCompiler:
         task: YOLOTask,
         config: HEFCompilerConfig,
         output_path: Path,
-        calibration_path: Path,
+        calibration_path: Optional[Path] = None,
+        calibration_dataset: Optional[CalibrationDataset] = None,
     ) -> Path:
         """Compile using Hailo SDK.
 
         This is the main compilation method using the ClientRunner.
+
+        Args:
+            har_path: Path to HAR file
+            model_name: Model name
+            yolo_version: YOLO version
+            task: Task type
+            config: Compiler configuration
+            output_path: Output path for HEF file
+            calibration_path: Path to calibration data (if not using dataset)
+            calibration_dataset: Pre-loaded CalibrationDataset (Phase 3)
+
+        Returns:
+            Path to compiled HEF file
         """
         from hailo_sdk_client import ClientRunner
 
@@ -191,19 +253,26 @@ class HEFCompiler:
         logger.debug(f"Network loaded for {config.target_device}")
 
         # Prepare calibration dataset
-        calib_dataset = self._load_calibration_data(
-            calibration_path,
-            config.calibration_set_size,
-            runner,
-        )
+        if calibration_dataset is not None:
+            # Use Phase 3 calibration dataset directly
+            calib_data = calibration_dataset.images
+            logger.info(f"Using Phase 3 calibration dataset: {len(calib_data)} images")
+            logger.info(f"  Hash: {calibration_dataset.dataset_hash}")
+        else:
+            # Load from path
+            calib_data = self._load_calibration_data(
+                calibration_path,
+                config.calibration_set_size,
+                runner,
+            )
 
         # Run optimization (quantization + optimization)
         logger.info("Running model optimization...")
-        logger.info(f"  Using {len(calib_dataset)} calibration samples")
+        logger.info(f"  Using {len(calib_data)} calibration samples")
 
         try:
             # Optimize the model (includes quantization)
-            runner.optimize(calib_dataset)
+            runner.optimize(calib_data)
             logger.info("Optimization complete")
 
         except Exception as e:
@@ -222,9 +291,10 @@ class HEFCompiler:
 
             logger.info(f"HEF compiled successfully: {output_path}")
 
-            # Update metadata
+            # Update metadata with calibration info
             self._update_metadata(
-                model_name, yolo_version, task, config, output_path, calibration_path
+                model_name, yolo_version, task, config, output_path,
+                calibration_path, calibration_dataset
             )
 
             return output_path
@@ -409,9 +479,20 @@ class HEFCompiler:
         task: YOLOTask,
         config: HEFCompilerConfig,
         hef_path: Path,
-        calibration_path: Path,
+        calibration_path: Optional[Path] = None,
+        calibration_dataset: Optional[CalibrationDataset] = None,
     ) -> None:
-        """Update cache metadata after compilation."""
+        """Update cache metadata after compilation.
+
+        Args:
+            model_name: Model name
+            yolo_version: YOLO version
+            task: Task type
+            config: Compiler configuration
+            hef_path: Path to compiled HEF
+            calibration_path: Path to calibration data (legacy)
+            calibration_dataset: Phase 3 CalibrationDataset (preferred)
+        """
         metadata = self.cache.get_metadata(model_name, yolo_version, task)
 
         if metadata is None:
@@ -429,8 +510,15 @@ class HEFCompiler:
         metadata.hef_created_at = datetime.now().isoformat()
         metadata.hailo_compiler_version = get_dataflow_compiler_version()
         metadata.hailort_version = get_hailort_version()
-        metadata.calibration_dataset = str(calibration_path)
         metadata.calibration_images = config.calibration_set_size
+
+        # Store calibration dataset info (Phase 3)
+        if calibration_dataset is not None:
+            metadata.calibration_dataset = f"ultralytics:{task.value}"
+            metadata.calibration_hash = calibration_dataset.dataset_hash
+            metadata.calibration_seed = config.calibration_seed
+        elif calibration_path is not None:
+            metadata.calibration_dataset = str(calibration_path)
 
         self.cache.save_metadata(metadata, model_name, yolo_version, task)
 

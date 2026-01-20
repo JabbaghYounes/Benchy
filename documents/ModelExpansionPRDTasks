@@ -1,0 +1,235 @@
+Phase 0 — Context & Preconditions
+Task 0.1 — PRD ingestion
+
+Read and internalize the LLM 1B & 3B PRD.
+
+Identify:
+
+Supported models
+
+Parameter group rules
+
+Required metrics
+
+Prompt sets
+
+Exit criteria
+
+Agent can enumerate all new models and constraints.
+
+Phase 1 — Model Registry & Metadata
+Task 1.1 — Extend LLM model registry
+
+Add new parameter groups:
+
+LLM_MODELS = {
+  "1b": [
+    "llama3.2:1b",
+    "granite3.1-moe:1b",
+    "sailor2:1b",
+  ],
+  "3b": [
+    "llama3.2:3b",
+    "granite3.1-moe:3b",
+    "starcoder2:3b",
+  ],
+}
+
+
+Exit criteria
+
+Models are discoverable by CLI and runner.
+
+Task 1.2 — Model metadata labeling
+
+Attach metadata to each model:
+
+parameter_group
+
+architecture (dense / moe)
+
+specialization (general / code)
+
+Exit criteria
+
+Metadata is included in result outputs.
+
+Phase 2 — Prompt Sets
+Task 2.1 — General reasoning prompts
+
+Define prompts for:
+
+Summarization
+
+Instruction following
+
+Short reasoning
+
+Exit criteria
+
+Prompts are deterministic and fixed.
+
+Task 2.2 — Code generation prompts
+
+Define prompts for:
+
+Function generation
+
+Code completion
+
+Syntax validation
+
+Exit criteria
+
+Prompts are language-agnostic and deterministic.
+
+Task 2.3 — Prompt compliance validation
+
+For each new model:
+
+Verify system prompt is respected
+
+Verify output is non-empty
+
+Verify no tool calls or streaming artifacts
+
+Exit criteria
+
+Models failing compliance are skipped with logs.
+
+Phase 3 — Execution Constraints
+Task 3.1 — Memory preflight check
+
+Before benchmark execution:
+
+Measure available RAM
+
+Attempt model load
+
+Abort if swap usage required or OOM occurs
+
+Exit criteria
+
+Only safe-to-run models proceed.
+
+Task 3.2 — Decoding parameter enforcement
+
+Apply uniform decoding parameters:
+
+temperature = 0.2
+
+top_p = 0.95
+
+max_tokens = 256
+
+streaming = disabled
+
+Exit criteria
+
+Parameters verified at runtime.
+
+Phase 4 — Benchmark Execution
+Task 4.1 — Warm-up runs
+
+Execute 2 warm-up runs per prompt set
+
+Discard results
+
+Exit criteria
+
+Warm-up runs excluded from metrics.
+
+Task 4.2 — Measured runs with batching
+
+Execute 10 measured runs
+
+Batch prompts (3 per run)
+
+Record per-run metrics
+
+Exit criteria
+
+Metrics collected per PRD.
+
+Phase 5 — Metric Collection
+Task 5.1 — Required metrics
+
+Capture:
+
+Time to First Token (TTFT)
+
+Tokens per second
+
+End-to-end latency
+
+Peak memory usage
+
+Power consumption (if available)
+
+Exit criteria
+
+Metrics conform to global schema.
+
+Task 5.2 — Optional quality proxy
+
+Where applicable:
+
+Exact-match or rule-based scoring
+
+Log truncation events
+
+Exit criteria
+
+Optional metrics clearly labeled.
+
+Phase 6 — Aggregation & Reporting
+Task 6.1 — Group-safe aggregation
+
+Aggregate metrics:
+
+Only within same parameter group
+
+Use median, min, max
+
+Exit criteria
+
+No cross-group aggregation occurs.
+
+Task 6.2 — Dashboard integration
+
+Update dashboard:
+
+Add 1B and 3B selectors
+
+Separate MoE and dense labeling
+
+Separate code vs general views
+
+Exit criteria
+
+Dashboard renders new groups correctly.
+
+Phase 7 — Validation & Integrity
+Task 7.1 — Reproducibility check
+
+Re-run one model per group
+
+Verify metrics variance is acceptable
+
+Exit criteria
+
+Results reproducible within tolerance.
+
+Task 7.2 — Documentation update
+
+Update documentation:
+
+List new models
+
+Describe constraints and grouping rules
+
+Warn about MoE and code specialization
+
+Exit criteria
+
+Documentation matches PRD.

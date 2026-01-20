@@ -1,4 +1,9 @@
 # YOLO Benchmark Runner
+#
+# Phase 5 Integration:
+# - Strict warmup/measured run enforcement via BenchmarkExecutor
+# - NO CPU fallback for Hailo backends (Task 5.2)
+# - Clear error messages for unsupported model/task combinations
 import logging
 import statistics
 import time
@@ -15,20 +20,39 @@ from benchmark.schemas import (
     SystemInfo,
 )
 from benchmark.metrics import ResourceMonitor, detect_platform
+from benchmark.workloads.yolo.execution import (
+    BenchmarkExecutor,
+    ExecutionConfig,
+    ExecutionResult,
+    BenchmarkError,
+    UnsupportedModelError,
+    UnsupportedTaskError,
+    HailoFallbackError,
+    ModelCompatibilityError,
+    check_hailo_compatibility,
+    enforce_no_fallback,
+    validate_execution_preconditions,
+)
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class YOLOBenchmarkConfig:
-    """Configuration for YOLO benchmark runs."""
+    """Configuration for YOLO benchmark runs.
+
+    Phase 5 defaults:
+    - warmup_runs: 3 (excluded from metrics)
+    - measured_runs: 10 (aggregated for final results)
+    - allow_cpu_fallback: False for Hailo (enforced by Phase 5.2)
+    """
 
     model_name: str = "yolov8n.pt"
     yolo_version: str = "v8"
     task: YOLOTask = YOLOTask.DETECTION
     input_resolution: int = 640
-    warmup_runs: int = 3
-    measured_runs: int = 10
+    warmup_runs: int = 3  # Phase 5.1: Fixed at 3
+    measured_runs: int = 10  # Phase 5.1: Fixed at 10
     device: str = "0"  # GPU device ID or "cpu"
     dataset: Optional[str] = None  # Path to dataset, None uses default
     conf_threshold: float = 0.25
@@ -36,6 +60,8 @@ class YOLOBenchmarkConfig:
     verbose: bool = False
     backend: Optional[str] = None  # "pytorch", "hailo", or None for auto
     force_recompile: bool = False  # Force recompilation of Hailo models
+    allow_cpu_fallback: bool = False  # Phase 5.2: NO CPU fallback by default
+    strict_mode: bool = True  # Phase 5.2: Abort on any error
 
 
 # Model definitions per YOLO version and task
@@ -92,12 +118,17 @@ class YOLOBenchmarkRunner:
         self._resource_monitor = ResourceMonitor(sample_interval=0.1)
 
     def _select_backend(self):
-        """Select and initialize the appropriate backend."""
+        """Select and initialize the appropriate backend.
+
+        Phase 5.2: Enforces no CPU fallback for Hailo by default.
+        """
         from benchmark.workloads.yolo.backends import (
             BackendType,
             auto_select_backend,
             get_backend,
         )
+
+        requested_backend = self.config.backend
 
         # If backend is specified, use it
         if self.config.backend:
@@ -105,7 +136,7 @@ class YOLOBenchmarkRunner:
                 # Explicit auto-selection
                 self._backend = auto_select_backend(
                     device=self.config.device,
-                    allow_fallback=False,
+                    allow_fallback=self.config.allow_cpu_fallback,
                 )
             else:
                 # Specific backend requested
@@ -113,12 +144,18 @@ class YOLOBenchmarkRunner:
                 self._backend = get_backend(backend_type, device=self.config.device)
         else:
             # Auto-select based on platform
+            # Phase 5.2: NO fallback allowed by default
             self._backend = auto_select_backend(
                 device=self.config.device,
-                allow_fallback=True,  # Allow fallback to PyTorch
+                allow_fallback=self.config.allow_cpu_fallback,
             )
 
-        logger.info(f"Using backend: {self._backend.backend_type.value}")
+        # Phase 5.2: Validate no silent degradation occurred
+        actual_backend = self._backend.backend_type.value
+        if requested_backend == "hailo" and actual_backend != "hailo":
+            enforce_no_fallback(actual_backend, requested_backend)
+
+        logger.info(f"Using backend: {actual_backend}")
 
     def _prepare_model(self):
         """Prepare the model using the selected backend."""
@@ -210,16 +247,36 @@ class YOLOBenchmarkRunner:
         )
 
     def run(self, test_image: Optional[str] = None) -> YOLOResult:
-        """Run the complete benchmark.
+        """Run the complete benchmark with Phase 5 enforcement.
+
+        Phase 5.1: Warmup runs excluded, measured runs aggregated correctly
+        Phase 5.2: No CPU fallback, clear failure messages
 
         Args:
             test_image: Optional path to test image. If None, uses a synthetic image.
 
         Returns:
             YOLOResult with all benchmark metrics
+
+        Raises:
+            ModelCompatibilityError: If model/task unsupported on backend
+            HailoFallbackError: If Hailo fails and fallback not allowed
+            BenchmarkError: If benchmark execution fails
         """
-        # Prepare model using the backend
+        # Phase 5.2: Validate preconditions before any work
+        # This happens during backend selection
         self._prepare_model()
+
+        # Phase 5.2: Additional compatibility check for Hailo
+        backend_name = self._backend.backend_type.value
+        if backend_name == "hailo":
+            validate_execution_preconditions(
+                backend_type=backend_name,
+                model_name=self.config.model_name,
+                yolo_version=self.config.yolo_version,
+                task=self.config.task,
+                allow_fallback=self.config.allow_cpu_fallback,
+            )
 
         # Create test input
         if test_image:
@@ -240,34 +297,52 @@ class YOLOBenchmarkRunner:
                 dtype=np.uint8
             )
 
-        logger.info(
-            f"Starting benchmark: {self.config.warmup_runs} warmup, "
-            f"{self.config.measured_runs} measured runs"
+        # Phase 5.1: Use BenchmarkExecutor for strict enforcement
+        execution_config = ExecutionConfig(
+            warmup_runs=self.config.warmup_runs,
+            measured_runs=self.config.measured_runs,
+            allow_cpu_fallback=self.config.allow_cpu_fallback,
+            strict_mode=self.config.strict_mode,
+            log_each_run=self.config.verbose,
         )
 
-        # Warmup runs (not recorded)
-        logger.info("Running warmup iterations...")
-        for i in range(self.config.warmup_runs):
-            self._run_single_inference(source)
-            logger.debug(f"Warmup run {i + 1}/{self.config.warmup_runs} complete")
+        executor = BenchmarkExecutor(config=execution_config)
 
-        # Measured runs with resource monitoring
-        logger.info("Running measured iterations...")
+        # Create inference function that captures source
+        def run_inference() -> float:
+            return self._run_single_inference(source)
+
+        logger.info(
+            f"Starting benchmark: {self.config.warmup_runs} warmup, "
+            f"{self.config.measured_runs} measured runs (Phase 5 enforcement)"
+        )
+
+        # Start resource monitoring
         self._resource_monitor.start()
 
-        latencies = []
-        first_latency = None
-
-        for i in range(self.config.measured_runs):
-            latency_ms = self._run_single_inference(source)
-            latencies.append(latency_ms)
-            if first_latency is None:
-                first_latency = latency_ms
-            logger.debug(
-                f"Measured run {i + 1}/{self.config.measured_runs}: {latency_ms:.2f}ms"
-            )
+        # Execute benchmark with Phase 5 enforcement
+        result = executor.execute(
+            inference_fn=run_inference,
+            backend_type=backend_name,
+            model_name=self.config.model_name,
+            yolo_version=self.config.yolo_version,
+            task=self.config.task,
+        )
 
         resource_utilization = self._resource_monitor.stop()
+
+        # Phase 5.2: Handle execution failure
+        if not result.is_complete:
+            # Cleanup before raising
+            self._backend.cleanup()
+            raise BenchmarkError(
+                f"Benchmark execution failed in phase {result.phase.value}: "
+                f"{result.error_message}"
+            )
+
+        # Extract latencies from result
+        latencies = result.measured_latencies
+        first_latency = latencies[0] if latencies else 0.0
 
         # Calculate metrics
         latency_metrics = self._calculate_latency_metrics(latencies, first_latency)
@@ -282,9 +357,6 @@ class YOLOBenchmarkRunner:
             accuracy_metrics = self._run_validation()
         except Exception as e:
             logger.warning(f"Skipping accuracy validation: {e}")
-
-        # Get backend type for result
-        backend_name = self._backend.backend_type.value
 
         # Cleanup backend resources
         self._backend.cleanup()

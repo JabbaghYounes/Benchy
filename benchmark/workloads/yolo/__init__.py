@@ -17,6 +17,20 @@ from benchmark.workloads.yolo.backends import (
     get_available_backends,
     select_backend_for_platform,
 )
+# Phase 5: Benchmark execution with strict enforcement
+from benchmark.workloads.yolo.execution import (
+    BenchmarkExecutor,
+    ExecutionConfig,
+    ExecutionResult,
+    BenchmarkError,
+    UnsupportedModelError,
+    UnsupportedTaskError,
+    HailoFallbackError,
+    ModelCompatibilityError,
+    check_hailo_compatibility,
+    get_supported_configurations,
+    format_supported_configurations,
+)
 
 __all__ = [
     # Runner
@@ -35,4 +49,16 @@ __all__ = [
     "get_backend",
     "get_available_backends",
     "select_backend_for_platform",
+    # Phase 5: Execution enforcement
+    "BenchmarkExecutor",
+    "ExecutionConfig",
+    "ExecutionResult",
+    "BenchmarkError",
+    "UnsupportedModelError",
+    "UnsupportedTaskError",
+    "HailoFallbackError",
+    "ModelCompatibilityError",
+    "check_hailo_compatibility",
+    "get_supported_configurations",
+    "format_supported_configurations",
 ]

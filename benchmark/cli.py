@@ -469,6 +469,164 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_list_models(args) -> int:
+    """List supported models command handler (Phase 6 - Task 6.1)."""
+    from benchmark.workloads.yolo.execution import (
+        format_supported_configurations,
+        get_supported_configurations,
+        HAILO_SUPPORTED_VERSIONS,
+        HAILO_SUPPORTED_TASKS,
+    )
+    from benchmark.workloads.yolo.runner import YOLO_MODELS
+
+    # Determine output format
+    if args.format == "json":
+        if args.backend == "hailo":
+            configs = get_supported_configurations()
+            print(json.dumps(configs, indent=2))
+        else:
+            # All models for all backends
+            output = {
+                "pytorch": {},
+                "hailo": get_supported_configurations(),
+            }
+            for version, tasks in YOLO_MODELS.items():
+                output["pytorch"][version] = {}
+                for task, models in tasks.items():
+                    output["pytorch"][version][task.value] = models
+            print(json.dumps(output, indent=2))
+    else:
+        # Human-readable format
+        if args.backend == "hailo":
+            print(format_supported_configurations())
+        elif args.backend == "pytorch":
+            print("\nPyTorch-supported YOLO configurations:")
+            print("-" * 40)
+            for version, tasks in YOLO_MODELS.items():
+                print(f"\nYOLO {version}:")
+                for task, models in tasks.items():
+                    print(f"  {task.value}:")
+                    for model in models:
+                        print(f"    - {model}")
+        else:
+            # Show all backends
+            print("\n" + "=" * 50)
+            print("SUPPORTED YOLO MODELS BY BACKEND")
+            print("=" * 50)
+
+            print("\n[PyTorch Backend]")
+            print("-" * 40)
+            print("Supports all YOLO models on CPU/GPU")
+            for version, tasks in YOLO_MODELS.items():
+                print(f"\nYOLO {version}:")
+                for task, models in tasks.items():
+                    print(f"  {task.value}: {len(models)} models")
+
+            print("\n" + "-" * 50)
+            print(format_supported_configurations())
+
+            print("\n" + "=" * 50)
+            print("NOTE: Hailo backend requires Hailo-8/8L NPU hardware")
+            print("      and HailoRT runtime installed.")
+            print("=" * 50)
+
+    return 0
+
+
+def cmd_backends(args) -> int:
+    """List available backends command handler (Phase 6 - Task 6.1)."""
+    from benchmark.workloads.yolo.backends import get_backend_info
+
+    print("\nAvailable Inference Backends:")
+    print("-" * 40)
+
+    backend_info = get_backend_info()
+
+    for backend_name, info in backend_info.items():
+        status = "Available" if info.get("available") else "Not Available"
+        print(f"\n{backend_name.upper()}: {status}")
+
+        if info.get("available"):
+            caps = info.get("capabilities", {})
+            tasks = caps.get("tasks", [])
+            versions = caps.get("versions", [])
+            print(f"  Supported tasks: {', '.join(tasks)}")
+            print(f"  YOLO versions: {', '.join(versions)}")
+            if caps.get("gpu"):
+                print("  GPU acceleration: Yes")
+            if caps.get("npu"):
+                print("  NPU acceleration: Yes")
+            if caps.get("requires_compilation"):
+                print("  Requires model compilation: Yes")
+
+            version_info = info.get("version_info", {})
+            if version_info:
+                for key, value in version_info.items():
+                    if value:
+                        print(f"  {key}: {value}")
+        else:
+            error = info.get("error", "Unknown reason")
+            print(f"  Reason: {error}")
+
+    return 0
+
+
+def cmd_verify(args) -> int:
+    """Cross-platform verification command handler (Phase 7 - Task 7.1)."""
+    from benchmark.verification import (
+        load_benchmark_run,
+        generate_verification_report,
+    )
+
+    logger = logging.getLogger(__name__)
+
+    run_a_path = Path(args.run_a)
+    run_b_path = Path(args.run_b)
+
+    if not run_a_path.exists():
+        logger.error(f"Benchmark run file not found: {run_a_path}")
+        return 1
+
+    if not run_b_path.exists():
+        logger.error(f"Benchmark run file not found: {run_b_path}")
+        return 1
+
+    logger.info(f"Loading benchmark runs for comparison...")
+
+    try:
+        run_a = load_benchmark_run(run_a_path)
+        run_b = load_benchmark_run(run_b_path)
+    except Exception as e:
+        logger.error(f"Failed to load benchmark runs: {e}")
+        return 1
+
+    logger.info(f"Comparing: {run_a.system_info.platform} vs {run_b.system_info.platform}")
+
+    # Generate report
+    output_path = None
+    if args.output:
+        output_path = Path(args.output)
+
+    report = generate_verification_report(run_a, run_b, output_path)
+
+    # Print report
+    if args.format == "text":
+        print(report.get_full_report())
+    else:
+        print(json.dumps(report.to_dict(), indent=2))
+
+    # Summary
+    valid_count = sum(1 for c in report.comparisons if c.is_valid)
+    total_count = len(report.comparisons)
+
+    print(f"\nVerification Complete: {valid_count}/{total_count} valid comparisons")
+
+    if output_path:
+        print(f"Report saved to: {output_path}")
+
+    return 0 if valid_count == total_count else 1
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -619,6 +777,61 @@ def main():
         help="Report title",
     )
 
+    # Phase 6: List supported models command
+    models_parser = subparsers.add_parser(
+        "list-models",
+        help="List supported YOLO models",
+        description="List YOLO models supported by each backend (Phase 6 - Task 6.1)",
+    )
+    models_parser.add_argument(
+        "--backend",
+        choices=["pytorch", "hailo", "all"],
+        default="all",
+        help="Filter by backend (default: all)",
+    )
+    models_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    # Phase 6: List backends command
+    backends_parser = subparsers.add_parser(
+        "backends",
+        help="List available inference backends",
+        description="Show available backends and their capabilities",
+    )
+
+    # Phase 7: Cross-platform verification command
+    verify_parser = subparsers.add_parser(
+        "verify",
+        help="Compare benchmark results across platforms",
+        description="Cross-platform verification (Phase 7 - Task 7.1). "
+                    "Compares results from different platforms (e.g., Jetson GPU vs RPi+Hailo NPU)",
+    )
+    verify_parser.add_argument(
+        "run_a",
+        type=str,
+        help="Path to first benchmark run JSON file (e.g., Jetson results)",
+    )
+    verify_parser.add_argument(
+        "run_b",
+        type=str,
+        help="Path to second benchmark run JSON file (e.g., RPi+Hailo results)",
+    )
+    verify_parser.add_argument(
+        "--output",
+        type=Path,
+        help="Output path for verification report JSON",
+    )
+    verify_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -633,6 +846,12 @@ def main():
         return cmd_dashboard(args)
     elif args.command == "report":
         return cmd_report(args)
+    elif args.command == "list-models":
+        return cmd_list_models(args)
+    elif args.command == "backends":
+        return cmd_backends(args)
+    elif args.command == "verify":
+        return cmd_verify(args)
     else:
         parser.print_help()
         return 0

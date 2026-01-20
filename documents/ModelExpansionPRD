@@ -1,0 +1,216 @@
+Expansion of LLM Benchmarks to 1B and 3B Ollama Models
+1. Title
+
+Lightweight LLM Benchmark Expansion (1B & 3B Parameter Models)
+
+2. Background & Motivation
+
+The current benchmark suite evaluates local LLM inference using medium-to-large models (7B–9B parameters). However, a growing number of edge and embedded deployments rely on lightweight LLMs (1B–3B parameters) for low-latency, low-memory, and low-power use cases.
+
+This PRD defines the expansion of the benchmark suite to include 1B and 3B Ollama models, enabling meaningful evaluation of:
+
+Entry-level edge devices
+
+CPU-bound inference
+
+Memory- and power-constrained environments
+
+3. Goals
+Primary Goals
+
+Add standardized benchmarking for 1B and 3B Ollama models
+
+Preserve fairness and comparability across parameter groups
+
+Ensure deterministic and reproducible inference results
+
+Integrate seamlessly into the existing LLM benchmark pipeline
+
+Secondary Goals
+
+Highlight scaling behavior across model sizes
+
+Enable developers to choose appropriate models for edge constraints
+
+4. Non-Goals
+
+Fine-tuning or training LLMs
+
+Cross-parameter performance normalization
+
+Quality benchmarking beyond lightweight proxies
+
+GPU-accelerated LLM inference
+
+5. Target Audience
+
+Edge AI developers
+
+Embedded systems engineers
+
+Benchmark consumers evaluating trade-offs between model size and performance
+
+6. Supported Models
+6.1 Parameter Group: 1B
+Model	Architecture
+llama3.2:1b	Dense
+granite3.1-moe:1b	MoE
+sailor2:1b	Dense
+6.2 Parameter Group: 3B
+Model	Architecture
+llama3.2:3b	Dense
+granite3.1-moe:3b	MoE
+starcoder2:3b	Dense (code-specialized)
+7. Benchmark Scope
+7.1 Execution Environment
+
+Ollama runtime
+
+CPU-based inference
+
+Native execution on all supported platforms
+
+7.2 Prompt Sets
+
+Two standardized prompt sets SHALL be used:
+
+General Reasoning
+
+Short reasoning
+
+Summarization
+
+Instruction following
+
+Code Generation
+
+Small function generation
+
+Code completion
+
+Syntax correctness
+
+All models SHALL receive identical prompts within a given prompt set.
+
+8. Benchmark Rules
+
+Models SHALL only be compared within the same parameter group
+
+Cross-group comparisons SHALL be visualized separately
+
+All decoding parameters SHALL be identical:
+
+temperature: 0.2
+
+top_p: 0.95
+
+max_tokens: 256
+
+Streaming SHALL be disabled
+
+System prompts SHALL be enforced
+
+9. Metrics
+9.1 Required Metrics
+
+Time to First Token (TTFT)
+
+Tokens per second
+
+End-to-end latency
+
+Peak memory usage
+
+Power consumption (if available)
+
+9.2 Optional Metrics
+
+Simple quality proxy:
+
+Exact match (where applicable)
+
+Rule-based scoring
+
+Output truncation rate
+
+10. Benchmark Execution Parameters
+Parameter	Value
+Warm-up runs	2
+Measured runs	10
+Prompt repetitions	3 (batched)
+Aggregation	Median, Min, Max
+
+Batching mitigates timer resolution issues for small models.
+
+11. Metadata & Labeling
+
+Each benchmark result SHALL include:
+
+Model name
+
+Parameter group
+
+Architecture (Dense / MoE)
+
+Specialization (General / Code)
+
+Ollama version
+
+Quantization (if applicable)
+
+Platform identifier
+
+12. Result Aggregation & Reporting
+Tables
+
+Performance summary per model
+
+Memory and power footprint
+
+Stability (variance across runs)
+
+Charts
+
+Tokens/sec vs model size
+
+TTFT vs model size
+
+Memory usage vs model size
+
+Power vs throughput
+
+MoE and code-specialized models SHALL be clearly labeled.
+
+13. Error Handling & Validation
+
+Abort benchmark if model fails to load without swap
+
+Abort if OOM occurs during warm-up
+
+Abort if model ignores system prompt
+
+Log all failures explicitly
+
+14. Risks & Mitigations
+Risk	Mitigation
+1B models too fast for timers	Prompt batching
+MoE variability	Separate labeling
+Code model bias	Dual prompt sets
+Memory constraints	Pre-run checks
+15. Success Criteria
+
+All 1B and 3B models benchmarked successfully
+
+Results are reproducible across runs
+
+Dashboard clearly separates parameter groups
+
+Developers can compare models meaningfully within constraints
+
+16. Open Questions
+
+Should 1B models use reduced context length?
+
+Should MoE models have separate efficiency charts?
+
+Should quality scoring be expanded in v2?

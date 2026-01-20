@@ -11,6 +11,8 @@ from benchmark.workloads.yolo.backends.registry import (
     get_backend,
     get_available_backends,
     select_backend_for_platform,
+    auto_select_backend,
+    get_backend_info,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "get_backend",
     "get_available_backends",
     "select_backend_for_platform",
+    "auto_select_backend",
+    "get_backend_info",
 ]

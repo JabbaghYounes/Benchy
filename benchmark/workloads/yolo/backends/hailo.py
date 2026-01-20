@@ -1,10 +1,13 @@
 # Hailo NPU backend for YOLO inference
+#
+# Phase 3: Uses the validation module for model sanity checks
+# Phase 4: Full HailoRT inference runner with proper post-processing and metrics
 import logging
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Tuple, Union
 
 import numpy as np
 
@@ -15,6 +18,26 @@ from benchmark.workloads.yolo.backends.base import (
     BackendCapabilities,
     ModelInfo,
     InferenceResult,
+)
+# Phase 3: Validation
+from benchmark.workloads.yolo.conversion.validation import (
+    ModelValidator,
+    ValidationConfig,
+    ValidationResult,
+    validate_hef_model,
+)
+# Phase 4: Post-processing and metrics
+from benchmark.workloads.yolo.postprocessing import (
+    YOLOPostProcessor,
+    PostProcessConfig,
+    Detection,
+    ClassificationResult,
+    decode_yolo_output,
+)
+from benchmark.workloads.yolo.hailo_metrics import (
+    HailoMetrics,
+    HailoMetricsCollector,
+    InferenceTimer,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +103,17 @@ class HailoBackend(YOLOBackend):
         self._vdevice = None
         self._infer_model = None
         self._configured_infer_model = None
+
+        # Phase 3: Model validator for sanity checks
+        self._validator = ModelValidator()
+        self._last_validation_result: Optional[ValidationResult] = None
+
+        # Phase 4: Post-processor and metrics collector
+        self._postprocessor: Optional[YOLOPostProcessor] = None
+        self._metrics_collector = HailoMetricsCollector()
+        self._last_metrics: Optional[HailoMetrics] = None
+        self._current_task: Optional[YOLOTask] = None
+        self._input_resolution: int = 640
 
     @property
     def backend_type(self) -> BackendType:
@@ -274,11 +308,38 @@ class HailoBackend(YOLOBackend):
                 input_resolution=input_resolution,
             )
 
+        # Phase 3: Run model sanity check before loading
+        logger.info("Running model sanity check (Phase 3)...")
+        validation_result = self._validate_model(hef_path, task, input_resolution)
+
+        if not validation_result.valid:
+            error_msg = "; ".join(validation_result.errors)
+            raise RuntimeError(
+                f"Model validation failed: {error_msg}. "
+                f"HEF file may be corrupted or incompatible."
+            )
+
+        # Store validation result for later inspection
+        self._last_validation_result = validation_result
+
         # Load the HEF
         self._load_hef(hef_path)
         self._hef_path = hef_path
 
-        # Create model info
+        # Phase 4: Initialize post-processor for this task
+        self._current_task = task
+        self._input_resolution = input_resolution
+
+        num_classes = validation_result.detected_class_count or 80
+        postprocess_config = PostProcessConfig(
+            input_width=input_resolution,
+            input_height=input_resolution,
+            num_classes=num_classes,
+        )
+        self._postprocessor = YOLOPostProcessor(task, postprocess_config)
+        logger.info(f"Initialized post-processor for {task.value} with {num_classes} classes")
+
+        # Create model info with validation details
         self._model_info = ModelInfo(
             name=model_name,
             version=yolo_version,
@@ -292,6 +353,10 @@ class HailoBackend(YOLOBackend):
                 "target_device": self.get_target_device(),
                 "hef_path": str(hef_path),
                 "hailort_version": self._get_hailort_version(),
+                "validation_passed": True,
+                "detected_class_count": validation_result.detected_class_count,
+                "input_layers": len(validation_result.input_layers),
+                "output_layers": len(validation_result.output_layers),
             },
         )
 
@@ -429,6 +494,63 @@ class HailoBackend(YOLOBackend):
         except Exception as e:
             raise RuntimeError(f"Failed to load HEF: {e}")
 
+    def _validate_model(
+        self,
+        hef_path: Path,
+        task: YOLOTask,
+        input_resolution: int,
+    ) -> ValidationResult:
+        """Run Phase 3 model sanity check.
+
+        This validates the HEF model before loading it for inference:
+        - Verifies the HEF file is loadable
+        - Validates input tensor shapes
+        - Validates output tensor shapes
+        - Checks class count compatibility
+        - Runs a single test inference
+
+        Args:
+            hef_path: Path to the HEF file
+            task: Expected YOLO task type
+            input_resolution: Expected input resolution
+
+        Returns:
+            ValidationResult with detailed check results
+        """
+        config = ValidationConfig(
+            input_resolution=input_resolution,
+            skip_inference_check=False,  # We want to test inference
+        )
+
+        result = self._validator.validate(hef_path, task, config)
+
+        # Log validation summary
+        if result.valid:
+            logger.info("Model validation PASSED")
+            logger.info(f"  Input layers: {len(result.input_layers)}")
+            logger.info(f"  Output layers: {len(result.output_layers)}")
+            if result.detected_class_count is not None:
+                logger.info(f"  Detected classes: {result.detected_class_count}")
+            if result.inference_latency_ms is not None:
+                logger.info(f"  Test inference: {result.inference_latency_ms:.2f}ms")
+        else:
+            logger.warning("Model validation FAILED")
+            for error in result.errors:
+                logger.error(f"  Error: {error}")
+
+        for warning in result.warnings:
+            logger.warning(f"  Warning: {warning}")
+
+        return result
+
+    def get_validation_result(self) -> Optional[ValidationResult]:
+        """Get the last validation result.
+
+        Returns:
+            ValidationResult from the last prepare_model call, or None
+        """
+        return self._last_validation_result
+
     def run_inference(
         self,
         input_data: np.ndarray,
@@ -437,24 +559,36 @@ class HailoBackend(YOLOBackend):
     ) -> InferenceResult:
         """Run inference on the Hailo NPU.
 
+        Phase 4 implementation:
+        - Executes inference fully on Hailo NPU
+        - Applies proper post-processing (NMS for detection)
+        - Collects comprehensive metrics
+
         Args:
-            input_data: Input image as numpy array
-            conf_threshold: Confidence threshold
+            input_data: Input image as numpy array (H, W, C) or (B, H, W, C)
+            conf_threshold: Confidence threshold for detections
             iou_threshold: IoU threshold for NMS
 
         Returns:
-            InferenceResult with timing and outputs
+            InferenceResult with timing, outputs, and detections
+
+        Raises:
+            RuntimeError: If model is not prepared or inference fails
         """
         if self._configured_infer_model is None:
             raise RuntimeError("Model not prepared. Call prepare_model() first.")
 
-        # This will be fully implemented in Phase 4
-        # For now, provide a basic implementation structure
+        if self._postprocessor is None:
+            raise RuntimeError("Post-processor not initialized. Call prepare_model() first.")
+
         try:
             from hailo_platform import InferVStreams, InputVStreamParams, OutputVStreamParams
 
-            # Preprocess input
+            # Phase 4: Preprocessing with timing
+            preprocess_start = time.perf_counter()
             preprocessed = self._preprocess(input_data)
+            preprocess_end = time.perf_counter()
+            preprocess_ms = (preprocess_end - preprocess_start) * 1000
 
             # Get input/output stream info
             input_vstream_info = self._hef.get_input_vstream_infos()[0]
@@ -468,8 +602,8 @@ class HailoBackend(YOLOBackend):
                 self._configured_infer_model, quantized=False
             )
 
-            # Run inference
-            start_time = time.perf_counter()
+            # Phase 4: Run inference on NPU with precise timing
+            inference_start = time.perf_counter()
 
             with InferVStreams(
                 self._configured_infer_model, input_params, output_params
@@ -477,23 +611,63 @@ class HailoBackend(YOLOBackend):
                 input_dict = {input_vstream_info.name: preprocessed}
                 raw_outputs = infer_pipeline.infer(input_dict)
 
-            end_time = time.perf_counter()
-            latency_ms = (end_time - start_time) * 1000
+            inference_end = time.perf_counter()
+            inference_ms = (inference_end - inference_start) * 1000
 
-            # Post-process outputs (NMS, etc.)
-            detections = self._postprocess(
-                raw_outputs, conf_threshold, iou_threshold
+            # Phase 4: Post-processing with timing
+            postprocess_start = time.perf_counter()
+
+            # Update post-processor config with thresholds
+            postprocess_config = PostProcessConfig(
+                conf_threshold=conf_threshold,
+                iou_threshold=iou_threshold,
+                input_width=self._input_resolution,
+                input_height=self._input_resolution,
+                num_classes=self._postprocessor.config.num_classes,
             )
 
+            # Process outputs using the post-processor
+            results = self._postprocessor.process(raw_outputs, postprocess_config)
+
+            postprocess_end = time.perf_counter()
+            postprocess_ms = (postprocess_end - postprocess_start) * 1000
+
+            # Total latency (inference only, excluding pre/post processing per PRD)
+            # Note: We report inference_ms as the main latency metric
+            total_ms = preprocess_ms + inference_ms + postprocess_ms
+
+            # Convert results to list of dicts for InferenceResult
+            if isinstance(results, list) and len(results) > 0:
+                if isinstance(results[0], Detection):
+                    detections = [d.to_dict() for d in results]
+                elif isinstance(results[0], ClassificationResult):
+                    detections = [c.to_dict() for c in results]
+                else:
+                    detections = results
+            else:
+                detections = []
+
             return InferenceResult(
-                latency_ms=latency_ms,
+                latency_ms=inference_ms,  # NPU inference time only (per PRD)
                 outputs=raw_outputs,
                 detections=detections,
+                metadata={
+                    "preprocess_ms": preprocess_ms,
+                    "inference_ms": inference_ms,
+                    "postprocess_ms": postprocess_ms,
+                    "total_ms": total_ms,
+                    "num_detections": len(detections),
+                    "backend": "hailo",
+                    "device": self.get_target_device(),
+                },
             )
 
         except ImportError:
-            raise RuntimeError("HailoRT not available")
+            raise RuntimeError(
+                "HailoRT not available. Ensure hailo_platform is installed."
+            )
         except Exception as e:
+            logger.error(f"Inference failed: {e}")
             raise RuntimeError(f"Inference failed: {e}")
 
     def _preprocess(self, input_data: np.ndarray) -> np.ndarray:
@@ -515,54 +689,170 @@ class HailoBackend(YOLOBackend):
 
         return input_data
 
-    def _postprocess(
-        self,
-        raw_outputs: dict,
-        conf_threshold: float,
-        iou_threshold: float,
-    ) -> list:
-        """Post-process raw model outputs.
+    def collect_metrics(self) -> dict:
+        """Collect comprehensive Hailo-specific metrics.
 
-        This includes:
-        - Decoding bounding boxes
-        - Applying confidence threshold
-        - Running NMS
-
-        Args:
-            raw_outputs: Raw outputs from the model
-            conf_threshold: Confidence threshold
-            iou_threshold: IoU threshold for NMS
+        Phase 4 implementation collects:
+        - Device information
+        - Memory usage (host and device)
+        - Power consumption (if available)
+        - NPU utilization (if available)
+        - Last inference metrics
 
         Returns:
-            List of detections
+            Dictionary with all available metrics
         """
-        # Post-processing will be implemented in Phase 4
-        # For now, return raw outputs
-        return []
+        import psutil
 
-    def collect_metrics(self) -> dict:
-        """Collect Hailo-specific metrics."""
         metrics = {
             "backend": "hailo",
             "device": self.device,
         }
 
+        # Device information
         if self._device_info:
             metrics["device_type"] = self._device_info.device_type
             metrics["firmware_version"] = self._device_info.firmware_version
+            metrics["device_path"] = self._device_info.device_path
 
-        # Try to get power consumption
+        # Host memory usage
+        try:
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            metrics["host_memory_used_mb"] = memory_info.rss / (1024 ** 2)
+            metrics["host_memory_percent"] = process.memory_percent()
+
+            # System-wide memory
+            virtual_mem = psutil.virtual_memory()
+            metrics["system_memory_used_mb"] = virtual_mem.used / (1024 ** 2)
+            metrics["system_memory_total_mb"] = virtual_mem.total / (1024 ** 2)
+            metrics["system_memory_percent"] = virtual_mem.percent
+        except Exception as e:
+            logger.debug(f"Failed to collect memory metrics: {e}")
+
+        # CPU usage
+        try:
+            metrics["cpu_percent"] = psutil.cpu_percent(interval=None)
+        except Exception:
+            pass
+
+        # Power consumption
         power = self._get_power_consumption()
         if power is not None:
             metrics["power_watts"] = power
 
+        # Include last metrics if available
+        if self._last_metrics:
+            metrics["last_inference_latency_ms"] = self._last_metrics.inference_latency_ms
+            metrics["last_fps"] = self._last_metrics.fps
+            if self._last_metrics.power_watts:
+                metrics["inference_power_watts"] = self._last_metrics.power_watts
+
+        # Model information
+        if self._model_info:
+            metrics["model_name"] = self._model_info.name
+            metrics["model_version"] = self._model_info.version
+            metrics["task"] = self._model_info.task.value
+            metrics["input_resolution"] = self._model_info.input_resolution
+
+        # HailoRT version
+        metrics["hailort_version"] = self._get_hailort_version()
+
         return metrics
 
     def _get_power_consumption(self) -> Optional[float]:
-        """Get current power consumption if available."""
-        # Hailo doesn't expose power directly, but we can try system-level power
-        # This will be platform-specific
+        """Get current power consumption if available.
+
+        Attempts to read power from:
+        1. Raspberry Pi power sensors
+        2. Hailo CLI tools
+
+        Returns:
+            Power in watts or None
+        """
+        # Try Raspberry Pi power sensors
+        from glob import glob
+
+        power_paths = [
+            "/sys/class/hwmon/hwmon*/power1_input",
+            "/sys/class/hwmon/hwmon*/curr1_input",
+        ]
+
+        for pattern in power_paths:
+            matches = glob(pattern)
+            for path in matches:
+                try:
+                    with open(path, "r") as f:
+                        value = float(f.read().strip())
+                        if "power" in path:
+                            return value / 1_000_000.0  # microwatts to watts
+                        elif "curr" in path:
+                            return (value / 1000.0) * 5.0  # milliamps * 5V
+                except (IOError, ValueError):
+                    continue
+
+        # Try hailortcli
+        try:
+            result = subprocess.run(
+                ["hailortcli", "measure-power"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0:
+                import re
+                for line in result.stdout.split("\n"):
+                    if "power" in line.lower():
+                        match = re.search(r"(\d+\.?\d*)\s*[wW]", line)
+                        if match:
+                            return float(match.group(1))
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
         return None
+
+    def start_metrics_collection(self) -> None:
+        """Start background metrics collection.
+
+        Call this before running inference loops to collect
+        continuous metrics during the benchmark.
+        """
+        self._metrics_collector.measure_idle_power(duration=1.0)
+        self._metrics_collector.start_monitoring()
+
+    def stop_metrics_collection(self) -> HailoMetrics:
+        """Stop metrics collection and return aggregated results.
+
+        Returns:
+            HailoMetrics with all collected data
+        """
+        self._last_metrics = self._metrics_collector.stop_monitoring()
+        return self._last_metrics
+
+    def record_inference_metrics(
+        self,
+        inference_ms: float,
+        preprocess_ms: float = 0.0,
+        postprocess_ms: float = 0.0,
+    ) -> None:
+        """Record metrics for a single inference run.
+
+        Args:
+            inference_ms: NPU inference latency
+            preprocess_ms: Preprocessing latency
+            postprocess_ms: Postprocessing latency
+        """
+        self._metrics_collector.record_inference(
+            inference_ms, preprocess_ms, postprocess_ms
+        )
+
+    def get_last_metrics(self) -> Optional[HailoMetrics]:
+        """Get the last collected metrics.
+
+        Returns:
+            HailoMetrics from the last collection period or None
+        """
+        return self._last_metrics
 
     def cleanup(self) -> None:
         """Release Hailo resources."""
@@ -583,7 +873,68 @@ class HailoBackend(YOLOBackend):
         self._hef = None
         self._hef_path = None
         self._model_info = None
+
+        # Phase 4: Clear post-processor and metrics
+        self._postprocessor = None
+        self._last_metrics = None
+        self._current_task = None
+
         logger.debug("Hailo backend cleaned up")
+
+    def run_benchmark(
+        self,
+        input_data: np.ndarray,
+        num_runs: int = 10,
+        warmup_runs: int = 3,
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+    ) -> Tuple[List[InferenceResult], HailoMetrics]:
+        """Run a complete benchmark with warmup and metrics collection.
+
+        Phase 4 implementation provides:
+        - Warmup runs (excluded from metrics)
+        - Measured runs with full metrics collection
+        - Comprehensive HailoMetrics
+
+        Args:
+            input_data: Input image as numpy array
+            num_runs: Number of measured runs
+            warmup_runs: Number of warmup runs
+            conf_threshold: Confidence threshold
+            iou_threshold: IoU threshold for NMS
+
+        Returns:
+            Tuple of (list of InferenceResults, HailoMetrics)
+        """
+        results = []
+
+        # Warmup runs (not recorded)
+        logger.info(f"Running {warmup_runs} warmup iterations...")
+        for _ in range(warmup_runs):
+            self.run_inference(input_data, conf_threshold, iou_threshold)
+
+        # Start metrics collection
+        self.start_metrics_collection()
+
+        # Measured runs
+        logger.info(f"Running {num_runs} measured iterations...")
+        for i in range(num_runs):
+            result = self.run_inference(input_data, conf_threshold, iou_threshold)
+            results.append(result)
+
+            # Record metrics
+            self.record_inference_metrics(
+                result.latency_ms,
+                result.metadata.get("preprocess_ms", 0),
+                result.metadata.get("postprocess_ms", 0),
+            )
+
+        # Stop metrics collection
+        metrics = self.stop_metrics_collection()
+
+        logger.info(f"Benchmark complete: mean latency {metrics.latency_mean_ms:.2f}ms, FPS {metrics.fps:.1f}")
+
+        return results, metrics
 
     def get_version_info(self) -> dict:
         """Get Hailo version information."""

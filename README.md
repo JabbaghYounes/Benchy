@@ -87,6 +87,12 @@ python -m benchmark run all --output ./my_results
 
 # Override platform detection
 python -m benchmark run all --platform jetson_nano
+
+# Use specific backend (Hailo NPU)
+python -m benchmark run yolo --backend hailo
+
+# Force recompilation of Hailo models
+python -m benchmark run yolo --backend hailo --force-recompile
 ```
 
 #### Show System Information
@@ -123,6 +129,36 @@ python -m benchmark report
 
 # Custom paths
 python -m benchmark report --input ./results --output ./report
+```
+
+#### List Supported Models
+
+```bash
+# List all supported models
+python -m benchmark list-models
+
+# List Hailo-supported models only
+python -m benchmark list-models --backend hailo
+
+# Output as JSON
+python -m benchmark list-models --format json
+```
+
+#### Check Available Backends
+
+```bash
+# Show available inference backends
+python -m benchmark backends
+```
+
+#### Cross-Platform Verification
+
+```bash
+# Compare results from two platforms
+python -m benchmark verify results/jetson_run.json results/rpi_hailo_run.json
+
+# Save verification report
+python -m benchmark verify results/jetson_run.json results/rpi_hailo_run.json --output verification.json
 ```
 
 ### Benchmark Profiles
@@ -193,6 +229,99 @@ The suite supports two benchmark profiles:
 | Accelerator % | GPU/NPU utilization |
 | Memory (MB) | Memory usage |
 | Power (W) | Power consumption |
+
+## Hailo NPU Integration
+
+The benchmark suite includes full support for Hailo-8 and Hailo-8L NPUs on Raspberry Pi platforms.
+
+### Supported Configurations
+
+| YOLO Version | Detection | Classification | Segmentation | Pose | OBB |
+|--------------|-----------|----------------|--------------|------|-----|
+| v8 | Yes | Yes | No | No | No |
+| v11 | Yes | Yes | No | No | No |
+| v26 | Yes | Yes | No | No | No |
+
+**Optimized Models:**
+- `yolov8n.pt`, `yolov8s.pt`, `yolov8m.pt` (Detection)
+- `yolov8n-cls.pt`, `yolov8s-cls.pt`, `yolov8m-cls.pt` (Classification)
+- Similar patterns for v11 and v26
+
+### Model Conversion Pipeline
+
+Hailo requires model conversion from PyTorch to HEF format:
+
+```
+.pt (PyTorch) → .onnx (ONNX) → .har (Hailo Archive) → .hef (Hailo Executable)
+```
+
+**Compilation is automatic** - models are compiled on first use and cached for subsequent runs.
+
+### Known Limitations
+
+1. **Supported Tasks Only**: Segmentation, pose estimation, and OBB tasks are NOT supported on Hailo NPU due to architectural constraints.
+
+2. **INT8 Quantization**: All Hailo models use INT8 quantization. Minor accuracy differences compared to FP32/FP16 models are expected.
+
+3. **Model Size**: Larger models (l, x variants) may have longer compilation times and higher memory requirements.
+
+4. **No CPU Fallback**: When using `--backend hailo`, the benchmark will NOT fall back to CPU if Hailo is unavailable. This ensures benchmark integrity.
+
+### Important: CPU Inference is Invalid
+
+**CPU inference on Hailo-equipped platforms is NOT a valid benchmark configuration.**
+
+When benchmarking Raspberry Pi with Hailo:
+- Always use `--backend hailo` explicitly, OR
+- Let auto-detection select Hailo (default on RPi + AI HAT+)
+- CPU fallback is disabled by default to prevent misleading results
+
+### Compilation Requirements
+
+First-time model compilation requires:
+- **HailoRT SDK** installed (version 4.17+ recommended)
+- **Hailo Dataflow Compiler** for .har → .hef conversion
+- **Calibration data**: Uses 100 images from COCO validation set
+- **Disk space**: ~500MB per compiled model
+- **Time**: 5-30 minutes per model depending on size
+
+### Cache Management
+
+Compiled models are cached in `~/.cache/benchy/hailo/`:
+```
+~/.cache/benchy/hailo/
+├── yolov8n_detection_640/
+│   ├── model.onnx
+│   ├── model.har
+│   ├── model.hef
+│   └── metadata.json
+└── ...
+```
+
+To force recompilation:
+```bash
+python -m benchmark run yolo --backend hailo --force-recompile
+```
+
+### Cross-Platform Comparison
+
+To compare Jetson (GPU) vs Raspberry Pi + Hailo (NPU):
+
+```bash
+# Run on Jetson
+python -m benchmark run yolo --output results/jetson/
+
+# Run on RPi + Hailo
+python -m benchmark run yolo --backend hailo --output results/rpi_hailo/
+
+# Generate comparison report
+python -m benchmark verify results/jetson/bench_*.json results/rpi_hailo/bench_*.json
+```
+
+The verification report shows:
+- Performance deltas (FPS, latency)
+- Validation of fair comparison criteria
+- Warnings for potentially misleading comparisons
 
 ## Output Files
 
@@ -367,9 +496,31 @@ python -c "import torch; print(torch.cuda.is_available())"
 ### Hailo NPU Issues (Raspberry Pi)
 
 ```bash
-# Check Hailo status
+# Check Hailo device status
 hailortcli fw-control identify
+
+# List available backends
+python -m benchmark backends
+
+# List Hailo-supported models
+python -m benchmark list-models --backend hailo
+
+# Check HailoRT version
+hailortcli --version
+
+# View Hailo device info
+hailortcli scan
 ```
+
+**Common Hailo Issues:**
+
+| Issue | Solution |
+|-------|----------|
+| "Hailo device not found" | Check PCIe connection, run `lspci \| grep Hailo` |
+| "HailoRT not installed" | Install HailoRT SDK from Hailo Developer Zone |
+| "Model compilation failed" | Check disk space, ensure Dataflow Compiler is installed |
+| "Unsupported task" | Use detection or classification only (see Supported Configurations) |
+| "CPU fallback error" | This is expected - Hailo backend requires NPU hardware |
 
 ### Insufficient Memory
 
@@ -386,9 +537,26 @@ edge-ai-benchmark/
 │   ├── __main__.py           # Entry point
 │   ├── cli.py                # CLI interface
 │   ├── schemas.py            # Data models
+│   ├── verification.py       # Cross-platform verification (Phase 7)
 │   ├── workloads/
 │   │   ├── yolo/
-│   │   │   └── runner.py     # YOLO benchmark runner
+│   │   │   ├── runner.py     # YOLO benchmark runner
+│   │   │   ├── execution.py  # Phase 5 execution enforcement
+│   │   │   ├── postprocessing.py  # YOLO output processing (NMS)
+│   │   │   ├── hailo_metrics.py   # Hailo-specific metrics
+│   │   │   ├── backends/
+│   │   │   │   ├── base.py       # Backend interface
+│   │   │   │   ├── pytorch.py    # PyTorch backend
+│   │   │   │   ├── hailo.py      # Hailo NPU backend
+│   │   │   │   └── registry.py   # Backend auto-selection
+│   │   │   └── conversion/       # Hailo model conversion
+│   │   │       ├── pipeline.py   # Full conversion pipeline
+│   │   │       ├── onnx_export.py
+│   │   │       ├── har_generator.py
+│   │   │       ├── hef_compiler.py
+│   │   │       ├── calibration.py  # Phase 3 calibration
+│   │   │       ├── validation.py   # Phase 3 validation
+│   │   │       └── cache.py        # Model caching
 │   │   └── llm/
 │   │       └── runner.py     # LLM benchmark runner
 │   ├── metrics/
@@ -410,6 +578,7 @@ edge-ai-benchmark/
 │   └── setup_rpi_ai_hat_plus_2.sh  # RPi AI HAT+ 2 setup
 ├── results/                  # Benchmark output directory
 ├── requirements.txt          # Python dependencies
+├── Hailo-Prd-Tasks.txt       # Hailo integration PRD
 └── README.md
 ```
 
@@ -424,6 +593,12 @@ edge-ai-benchmark/
 
 ### Optional
 - tqdm >= 4.64.0 (progress display)
+
+### Hailo NPU (Raspberry Pi only)
+- hailo-platform >= 4.17.0 (HailoRT SDK)
+- hailo-dataflow-compiler >= 3.26.0 (for model compilation)
+- onnx >= 1.14.0 (ONNX export)
+- onnxruntime >= 1.15.0 (ONNX validation)
 
 ## Key Assumptions
 

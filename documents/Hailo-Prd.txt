@@ -49,10 +49,13 @@ Supporting non-YOLO models on Hailo
 Real-time video pipelines (camera input)
 
 5. Target Platforms
-Platform	Accelerator	Required Support
-Raspberry Pi AI HAT+	Hailo-8	YES
-Raspberry Pi AI HAT+ 2	Hailo-8L	YES
-Jetson Nano	NVIDIA GPU	NO (out of scope)
+Platform	Accelerator	HailoRT Version	Required Support
+Raspberry Pi AI HAT+	Hailo-8	v4.23.0 (4.x)	YES
+Raspberry Pi AI HAT+ 2	Hailo-10H	v5.2.0 (5.x)	YES
+Jetson Nano	NVIDIA GPU	N/A	NO (out of scope)
+
+Note: Hailo-8 and Hailo-10H use different HailoRT SDK versions (4.x and 5.x respectively).
+HEF files compiled for one device family are NOT compatible with the other.
 6. Supported Models
 YOLO Versions
 

@@ -46,26 +46,64 @@ logger = logging.getLogger(__name__)
 class HailoDevice:
     """Enumeration of Hailo device types."""
 
+    # Hailo-8 family (HailoRT 4.x) - Raspberry Pi AI HAT+
     HAILO8 = "hailo8"
     HAILO8L = "hailo8l"
+
+    # Hailo-10 family (HailoRT 5.x) - Raspberry Pi AI HAT+ 2
+    HAILO10H = "hailo10h"
+
+    @classmethod
+    def get_sdk_family(cls, device_type: str) -> str:
+        """Get the SDK family for a device type.
+
+        Returns:
+            "4.x" for Hailo-8 family, "5.x" for Hailo-10 family
+        """
+        if device_type in (cls.HAILO8, cls.HAILO8L):
+            return "4.x"
+        elif device_type == cls.HAILO10H:
+            return "5.x"
+        return "unknown"
+
+    @classmethod
+    def is_hailo10_family(cls, device_type: str) -> bool:
+        """Check if device is in the Hailo-10 family."""
+        return device_type == cls.HAILO10H
+
+    @classmethod
+    def is_hailo8_family(cls, device_type: str) -> bool:
+        """Check if device is in the Hailo-8 family."""
+        return device_type in (cls.HAILO8, cls.HAILO8L)
 
 
 @dataclass
 class HailoDeviceInfo:
-    """Information about a detected Hailo device."""
+    """Information about a detected Hailo device.
 
-    device_type: str  # "hailo8" or "hailo8l"
+    Supports both Hailo-8 family (AI HAT+) and Hailo-10 family (AI HAT+ 2).
+    """
+
+    device_type: str  # "hailo8", "hailo8l", or "hailo10h"
     device_id: str
     firmware_version: Optional[str] = None
     driver_version: Optional[str] = None
     device_path: Optional[str] = None
+    sdk_family: Optional[str] = None  # "4.x" for Hailo-8, "5.x" for Hailo-10H
+
+    def __post_init__(self):
+        """Set SDK family based on device type if not explicitly provided."""
+        if self.sdk_family is None:
+            self.sdk_family = HailoDevice.get_sdk_family(self.device_type)
 
 
 class HailoBackend(YOLOBackend):
     """Hailo NPU backend for YOLO inference.
 
     This backend uses the Hailo Runtime (HailoRT) to execute
-    pre-compiled HEF models on Hailo-8 or Hailo-8L NPUs.
+    pre-compiled HEF models on Hailo NPUs:
+    - Hailo-8 / Hailo-8L: HailoRT 4.x (Raspberry Pi AI HAT+)
+    - Hailo-10H: HailoRT 5.x (Raspberry Pi AI HAT+ 2)
 
     The model preparation pipeline is:
     1. .pt (PyTorch) -> .onnx (ONNX export via Ultralytics)
@@ -78,11 +116,22 @@ class HailoBackend(YOLOBackend):
 
     # Supported YOLO versions and tasks for Hailo
     # Detection is the primary supported task in v1
+    # Note: YOLOv12 support available on Hailo-10H with SDK 5.x
     SUPPORTED_TASKS = [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION]
     SUPPORTED_VERSIONS = ["v8", "v11", "v26"]
 
-    # Model cache directory structure:
-    # models/hailo/{yolo_version}/{task}/{model_name}/
+    # Expected HailoRT SDK versions for each device family
+    # Hailo-8 family (AI HAT+): HailoRT 4.x
+    # Hailo-10 family (AI HAT+ 2): HailoRT 5.x
+    EXPECTED_SDK_VERSIONS = {
+        "hailo8": "4.23.0",   # Latest stable for Hailo-8
+        "hailo10h": "5.2.0",  # Latest stable for Hailo-10H
+    }
+
+    # Model cache directory structure (includes device family for HEF compatibility):
+    # models/hailo/{device_family}/{yolo_version}/{task}/{model_name}/
+    # - device_family: "hailo8" for Hailo-8/8L, "hailo10h" for Hailo-10H
+    # HEF files are NOT compatible across device families
     DEFAULT_CACHE_DIR = Path("models/hailo")
 
     def __init__(self, device: str = "0", cache_dir: Optional[Path] = None):
@@ -177,12 +226,17 @@ class HailoBackend(YOLOBackend):
                 output = result.stdout.lower()
 
                 # Determine device type
-                if "hailo8l" in output or "hailo-8l" in output:
+                # Check Hailo-10 family first (HailoRT 5.x)
+                if "hailo10h" in output or "hailo-10h" in output or "hailo10" in output:
+                    device_type = HailoDevice.HAILO10H
+                # Then Hailo-8 family (HailoRT 4.x)
+                elif "hailo8l" in output or "hailo-8l" in output:
                     device_type = HailoDevice.HAILO8L
                 elif "hailo8" in output or "hailo-8" in output:
                     device_type = HailoDevice.HAILO8
                 else:
-                    device_type = HailoDevice.HAILO8L  # Default to 8L
+                    # Default to Hailo-8L for backwards compatibility
+                    device_type = HailoDevice.HAILO8L
 
                 self._device_info = HailoDeviceInfo(
                     device_type=device_type,
@@ -218,11 +272,25 @@ class HailoBackend(YOLOBackend):
         """Get the target device string for compilation.
 
         Returns:
-            "hailo8" or "hailo8l"
+            "hailo8", "hailo8l", or "hailo10h"
         """
         if self._device_info:
             return self._device_info.device_type
         return HailoDevice.HAILO8L
+
+    def _get_device_family_dir(self) -> str:
+        """Get the device family directory name for cache separation.
+
+        HEF files are NOT compatible between device families, so we must
+        maintain separate caches for Hailo-8 family and Hailo-10 family.
+
+        Returns:
+            "hailo8" for Hailo-8 family, "hailo10h" for Hailo-10 family
+        """
+        if self._device_info:
+            if HailoDevice.is_hailo10_family(self._device_info.device_type):
+                return "hailo10h"
+        return "hailo8"  # Default to hailo8 family
 
     def _get_cache_path(
         self,
@@ -231,6 +299,11 @@ class HailoBackend(YOLOBackend):
         task: YOLOTask,
     ) -> Path:
         """Get the cache directory path for a model.
+
+        Cache structure: {cache_dir}/{device_family}/{yolo_version}/{task}/{model}/
+
+        HEF files compiled for Hailo-8 are not compatible with Hailo-10H and vice versa,
+        so we separate caches by device family.
 
         Args:
             model_name: Model name (e.g., "yolov8n")
@@ -243,7 +316,10 @@ class HailoBackend(YOLOBackend):
         # Remove file extension from model name
         base_name = Path(model_name).stem
 
-        return self.cache_dir / yolo_version / task.value / base_name
+        # Include device family in path to separate incompatible HEF files
+        device_family = self._get_device_family_dir()
+
+        return self.cache_dir / device_family / yolo_version / task.value / base_name
 
     def _get_hef_path(
         self,
@@ -285,6 +361,12 @@ class HailoBackend(YOLOBackend):
                 "Hailo backend is not available. "
                 "Ensure HailoRT is installed and a Hailo device is connected."
             )
+
+        # Validate SDK/device compatibility
+        is_compatible, compat_msg = self.validate_sdk_device_compatibility()
+        if not is_compatible:
+            raise RuntimeError(compat_msg)
+        logger.debug(f"SDK compatibility: {compat_msg}")
 
         # Validate task support
         if task not in self.SUPPORTED_TASKS:
@@ -940,8 +1022,10 @@ class HailoBackend(YOLOBackend):
         """Get Hailo version information."""
         info = super().get_version_info()
         info["hailort"] = self._get_hailort_version()
+        info["sdk_family"] = self._get_sdk_family_from_version()
         if self._device_info:
             info["device_type"] = self._device_info.device_type
+            info["device_family"] = self._get_device_family_dir()
             info["firmware"] = self._device_info.firmware_version
         return info
 
@@ -966,3 +1050,56 @@ class HailoBackend(YOLOBackend):
             pass
 
         return "unknown"
+
+    def _get_sdk_family_from_version(self) -> str:
+        """Determine SDK family from installed HailoRT version.
+
+        Returns:
+            "4.x" for HailoRT 4.x (Hailo-8 family)
+            "5.x" for HailoRT 5.x (Hailo-10 family)
+            "unknown" if version cannot be determined
+        """
+        version = self._get_hailort_version()
+        if version == "unknown":
+            return "unknown"
+
+        # Extract major version number
+        import re
+        match = re.search(r"(\d+)\.", version)
+        if match:
+            major = int(match.group(1))
+            if major == 4:
+                return "4.x"
+            elif major >= 5:
+                return "5.x"
+        return "unknown"
+
+    def validate_sdk_device_compatibility(self) -> tuple[bool, str]:
+        """Validate that installed HailoRT SDK is compatible with detected device.
+
+        Hailo-8 family requires HailoRT 4.x
+        Hailo-10H family requires HailoRT 5.x
+
+        Returns:
+            Tuple of (is_compatible, message)
+        """
+        if not self._device_info:
+            return False, "No device detected"
+
+        sdk_family = self._get_sdk_family_from_version()
+        device_family = HailoDevice.get_sdk_family(self._device_info.device_type)
+
+        if sdk_family == "unknown":
+            return True, "SDK version unknown, cannot verify compatibility"
+
+        if device_family == "unknown":
+            return True, "Device family unknown, cannot verify compatibility"
+
+        if sdk_family != device_family:
+            return False, (
+                f"SDK/device mismatch: HailoRT {sdk_family} installed but "
+                f"{self._device_info.device_type} requires {device_family}. "
+                f"Please install the correct HailoRT version."
+            )
+
+        return True, f"SDK {sdk_family} compatible with {self._device_info.device_type}"

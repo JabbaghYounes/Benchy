@@ -41,6 +41,10 @@ def detect_platform() -> Platform:
                     except (subprocess.TimeoutExpired, FileNotFoundError):
                         pass
                     return Platform.RPI_AI_HAT_PLUS
+                else:
+                    # Raspberry Pi detected but no Hailo device found
+                    # Still return RPi platform (assume AI HAT+ may need setup)
+                    return Platform.RPI_AI_HAT_PLUS
     except FileNotFoundError:
         pass
 

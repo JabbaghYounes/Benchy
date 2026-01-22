@@ -38,6 +38,96 @@ def load_config(config_path: Path) -> dict:
         return yaml.safe_load(f)
 
 
+def _infer_yolo_model_info(model_name: str) -> tuple:
+    """Infer YOLO version and task from model name.
+
+    Args:
+        model_name: Model filename (e.g., yolo26n.pt, yolov8s-seg.pt)
+
+    Returns:
+        Tuple of (version, task) where version is 'v8', 'v11', or 'v26'
+        and task is a YOLOTask enum value.
+    """
+    from benchmark.schemas import YOLOTask
+
+    model_lower = model_name.lower()
+
+    # Determine version
+    if "yolov8" in model_lower or "yolo8" in model_lower:
+        version = "v8"
+    elif "yolo11" in model_lower:
+        version = "v11"
+    elif "yolo26" in model_lower:
+        version = "v26"
+    else:
+        # Default to v8 for unknown patterns
+        version = "v8"
+
+    # Determine task from suffix
+    if "-seg" in model_lower:
+        task = YOLOTask.SEGMENTATION
+    elif "-pose" in model_lower:
+        task = YOLOTask.POSE
+    elif "-obb" in model_lower:
+        task = YOLOTask.OBB
+    elif "-cls" in model_lower:
+        task = YOLOTask.CLASSIFICATION
+    else:
+        task = YOLOTask.DETECTION
+
+    return version, task
+
+
+def _run_single_yolo_model(
+    model_name: str,
+    benchmark_settings: dict,
+    inference_settings: dict,
+    backend: Optional[str],
+    force_recompile: bool,
+) -> list:
+    """Run benchmark for a single specific YOLO model.
+
+    Args:
+        model_name: Model filename (e.g., yolo26n.pt)
+        benchmark_settings: Benchmark configuration settings
+        inference_settings: Inference configuration settings
+        backend: Backend to use
+        force_recompile: Force recompilation of Hailo models
+
+    Returns:
+        List containing single YOLOResult or empty list on failure
+    """
+    from benchmark.workloads.yolo import YOLOBenchmarkRunner, YOLOBenchmarkConfig
+
+    logger = logging.getLogger(__name__)
+
+    version, task = _infer_yolo_model_info(model_name)
+    logger.info(f"Inferred version: {version}, task: {task.value}")
+
+    bench_config = YOLOBenchmarkConfig(
+        model_name=model_name,
+        yolo_version=version,
+        task=task,
+        input_resolution=benchmark_settings.get("input_resolution", 640),
+        warmup_runs=benchmark_settings.get("warmup_runs", 3),
+        measured_runs=benchmark_settings.get("measured_runs", 10),
+        device=inference_settings.get("device", "0"),
+        conf_threshold=inference_settings.get("conf_threshold", 0.25),
+        iou_threshold=inference_settings.get("iou_threshold", 0.45),
+        backend=backend,
+        force_recompile=force_recompile,
+    )
+
+    try:
+        runner = YOLOBenchmarkRunner(bench_config)
+        result = runner.run()
+        logger.info(f"  [{result.backend}] Throughput: {result.throughput_fps:.2f} FPS, Latency: {result.latency.mean_ms:.2f}ms")
+        return [result]
+    except Exception as e:
+        logger.error(f"  Failed: {e}")
+        return []
+
+
 def run_yolo_benchmark(
     config: dict,
     profile: str,
@@ -46,6 +136,8 @@ def run_yolo_benchmark(
     skip_validation: bool = False,
     backend: Optional[str] = None,
     force_recompile: bool = False,
+    yolo_version: Optional[str] = None,
+    yolo_model: Optional[str] = None,
 ) -> list:
     """Run YOLO benchmarks based on configuration.
 
@@ -57,11 +149,14 @@ def run_yolo_benchmark(
         skip_validation: Skip accuracy validation
         backend: Backend to use (pytorch, hailo, or None for auto)
         force_recompile: Force recompilation of Hailo models
+        yolo_version: Specific YOLO version to run (overrides profile)
+        yolo_model: Specific YOLO model to run (overrides profile)
 
     Returns:
         List of YOLOResult objects
     """
     from benchmark.workloads.yolo import YOLOBenchmarkRunner, YOLOBenchmarkConfig
+    from benchmark.workloads.yolo.runner import YOLO_MODELS
 
     logger = logging.getLogger(__name__)
 
@@ -73,6 +168,22 @@ def run_yolo_benchmark(
     yolo_versions = profile_config.get("yolo_versions", ["v8"])
     tasks = profile_config.get("tasks", ["detection"])
     model_sizes = profile_config.get("model_sizes", ["n"])
+
+    # Override with CLI arguments if provided
+    if yolo_version:
+        yolo_versions = [yolo_version]
+        logger.info(f"Using CLI-specified YOLO version: {yolo_version}")
+
+    if yolo_model:
+        # When specific model is provided, run only that model
+        logger.info(f"Using CLI-specified YOLO model: {yolo_model}")
+        return _run_single_yolo_model(
+            yolo_model,
+            benchmark_settings,
+            inference_settings,
+            backend,
+            force_recompile,
+        )
 
     all_results = []
 
@@ -229,6 +340,8 @@ def cmd_benchmark(args) -> int:
                 args.skip_validation,
                 backend=getattr(args, "backend", None),
                 force_recompile=getattr(args, "force_recompile", False),
+                yolo_version=getattr(args, "yolo_version", None),
+                yolo_model=getattr(args, "yolo_model", None),
             )
         else:
             logger.warning(f"YOLO config not found: {config_path}")
@@ -696,6 +809,16 @@ def main():
         "--force-recompile",
         action="store_true",
         help="Force recompilation of Hailo models (ignore cache)",
+    )
+    bench_parser.add_argument(
+        "--yolo-version",
+        choices=["v8", "v11", "v26"],
+        help="Run specific YOLO version only (overrides profile)",
+    )
+    bench_parser.add_argument(
+        "--yolo-model",
+        type=str,
+        help="Run specific YOLO model only (e.g., yolo26n.pt, yolov8s-seg.pt)",
     )
 
     # Info command

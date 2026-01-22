@@ -97,6 +97,16 @@ python -m benchmark run yolo --backend hailo
 
 # Force recompilation of Hailo models
 python -m benchmark run yolo --backend hailo --force-recompile
+
+# Run specific YOLO version only
+python -m benchmark run yolo --yolo-version v26
+
+# Run a specific YOLO model
+python -m benchmark run yolo --yolo-model yolo26n.pt
+python -m benchmark run yolo --yolo-model yolov8s-seg.pt
+
+# Combine version and backend
+python -m benchmark run yolo --yolo-version v11 --backend hailo
 ```
 
 #### Run Lightweight LLM Benchmarks (1B/3B Models)

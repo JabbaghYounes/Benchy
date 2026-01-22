@@ -50,7 +50,7 @@ Run the appropriate setup script for your hardware:
 The setup script creates a virtual environment at `./venv`. Activate it before running benchmarks:
 
 ```bash
-cd ~/Documents/Benchy  # or your project directory
+cd ~/Benchy  # or your project directory
 source venv/bin/activate
 ```
 

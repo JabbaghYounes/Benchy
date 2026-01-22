@@ -188,34 +188,31 @@ install_system_deps() {
 install_hailo_runtime() {
     info "Installing Hailo runtime..."
 
-    # Check if Hailo repository is already added
-    if [[ ! -f /etc/apt/sources.list.d/hailo.list ]]; then
-        info "Adding Hailo repository..."
+    # For Raspberry Pi AI HAT+, Hailo packages are available from the official
+    # Raspberry Pi repository (archive.raspberrypi.com), not from hailo.ai
+    # The hailo.ai repository is deprecated/unavailable for RPi users.
 
-        # Import Hailo GPG key
-        curl -fsSL https://hailo.ai/deb/hailo.gpg.key | gpg --dearmor -o /usr/share/keyrings/hailo-archive-keyring.gpg
-
-        # Add repository
-        echo "deb [signed-by=/usr/share/keyrings/hailo-archive-keyring.gpg] https://hailo.ai/deb stable main" > /etc/apt/sources.list.d/hailo.list
-
+    # Remove any stale Hailo repository that may cause apt errors
+    if [[ -f /etc/apt/sources.list.d/hailo.list ]]; then
+        info "Removing outdated Hailo repository..."
+        rm -f /etc/apt/sources.list.d/hailo.list
+        rm -f /usr/share/keyrings/hailo-archive-keyring.gpg
         apt-get update
     fi
 
-    # Install Hailo packages
-    info "Installing Hailo packages..."
+    # Install Hailo packages from Raspberry Pi repository
+    info "Installing Hailo packages from Raspberry Pi repository..."
     apt-get install -y \
-        hailort \
-        hailo-firmware \
-        hailo-pcie-driver \
-        hailort-pcie \
-        || warn "Some Hailo packages may not be available"
+        hailo-all \
+        || warn "hailo-all package not found - ensure your system is up to date"
 
-    # Alternative: Install from Raspberry Pi repository if available
+    # If hailo-all isn't available, try individual packages
     if ! command -v hailortcli &> /dev/null; then
-        info "Trying Raspberry Pi Hailo packages..."
+        info "Trying individual Hailo packages..."
         apt-get install -y \
-            hailo-all \
-            || warn "hailo-all package not found"
+            hailort \
+            hailo-firmware \
+            || warn "Some Hailo packages may not be available"
     fi
 
     # Load Hailo driver

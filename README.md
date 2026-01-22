@@ -45,11 +45,15 @@ Run the appropriate setup script for your hardware:
 ./scripts/setup_rpi_ai_hat_plus_2.sh
 ```
 
-### 3. Install Python Dependencies
+### 3. Activate the Virtual Environment
+
+The setup script creates a virtual environment at `./venv`. Activate it before running benchmarks:
 
 ```bash
-pip install -r requirements.txt
+source venv/bin/activate
 ```
+
+**Note:** On Raspberry Pi OS Bookworm and newer, system-wide pip installs are blocked (PEP 668). Always use the virtual environment created by the setup script.
 
 ### 4. Run Benchmarks
 

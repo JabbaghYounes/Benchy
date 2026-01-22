@@ -50,8 +50,11 @@ Run the appropriate setup script for your hardware:
 The setup script creates a virtual environment at `./venv`. Activate it before running benchmarks:
 
 ```bash
+cd ~/Documents/Benchy  # or your project directory
 source venv/bin/activate
 ```
+
+**Important:** You must be in the Benchy project directory before activating the virtual environment, as the path is relative.
 
 **Note:** On Raspberry Pi OS Bookworm and newer, system-wide pip installs are blocked (PEP 668). Always use the virtual environment created by the setup script.
 

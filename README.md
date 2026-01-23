@@ -13,7 +13,7 @@ This benchmark suite provides comprehensive performance evaluation for:
 
 | Platform | Accelerator | RAM |
 |----------|-------------|-----|
-| NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU (up to 1024 CUDA cores) | 8GB |
+| NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU | 8GB |
 | Raspberry Pi + AI HAT+ | Hailo-8L NPU | 8GB |
 | Raspberry Pi + AI HAT+ 2 | Hailo-8 NPU | 8GB |
 

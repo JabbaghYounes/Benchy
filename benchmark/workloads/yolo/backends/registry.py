@@ -17,7 +17,7 @@ _BACKEND_REGISTRY: dict[BackendType, Type[YOLOBackend]] = {
 
 # Platform to preferred backend mapping
 _PLATFORM_BACKEND_MAP: dict[Platform, BackendType] = {
-    Platform.JETSON_NANO: BackendType.PYTORCH,
+    Platform.JETSON_ORIN_NANO: BackendType.PYTORCH,
     Platform.RPI_AI_HAT_PLUS: BackendType.HAILO,
     Platform.RPI_AI_HAT_PLUS_2: BackendType.HAILO,
 }

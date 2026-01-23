@@ -7,7 +7,7 @@ from enum import Enum
 
 class Platform(Enum):
     """Supported hardware platforms."""
-    JETSON_NANO = "jetson_nano"
+    JETSON_ORIN_NANO = "jetson_orin_nano"
     RPI_AI_HAT_PLUS = "rpi_ai_hat_plus"
     RPI_AI_HAT_PLUS_2 = "rpi_ai_hat_plus_2"
 

@@ -17,7 +17,7 @@ def detect_platform() -> Platform:
     """Detect the hardware platform based on system characteristics."""
     # Check for Jetson by looking for tegra in device tree or /etc/nv_tegra_release
     if Path("/etc/nv_tegra_release").exists():
-        return Platform.JETSON_NANO
+        return Platform.JETSON_ORIN_NANO
 
     # Check for Raspberry Pi
     try:
@@ -48,8 +48,8 @@ def detect_platform() -> Platform:
     except FileNotFoundError:
         pass
 
-    # Default to Jetson Nano for edge device context
-    return Platform.JETSON_NANO
+    # Default to Jetson Orin Nano for edge device context
+    return Platform.JETSON_ORIN_NANO
 
 
 def get_cpu_model() -> str:

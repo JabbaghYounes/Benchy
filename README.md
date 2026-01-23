@@ -13,7 +13,7 @@ This benchmark suite provides comprehensive performance evaluation for:
 
 | Platform | Accelerator | RAM |
 |----------|-------------|-----|
-| NVIDIA Jetson Nano Developer Kit | Tegra X1 GPU | 4GB |
+| NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU (up to 1024 CUDA cores) | 8GB |
 | Raspberry Pi + AI HAT+ | Hailo-8L NPU | 8GB |
 | Raspberry Pi + AI HAT+ 2 | Hailo-8 NPU | 8GB |
 
@@ -30,9 +30,9 @@ cd edge-ai-benchmark
 
 Run the appropriate setup script for your hardware:
 
-**NVIDIA Jetson Nano:**
+**NVIDIA Jetson Orin Nano:**
 ```bash
-./scripts/setup_jetson_nano.sh
+./scripts/setup_jetson_orin_nano.sh
 ```
 
 **Raspberry Pi with AI HAT+:**
@@ -93,7 +93,7 @@ python -m benchmark run all --profile full
 python -m benchmark run all --output ./my_results
 
 # Override platform detection
-python -m benchmark run all --platform jetson_nano
+python -m benchmark run all --platform jetson_orin_nano
 
 # Use specific backend (Hailo NPU)
 python -m benchmark run yolo --backend hailo
@@ -434,7 +434,7 @@ The HTML dashboard includes:
 
 | Filter | Options | Description |
 |--------|---------|-------------|
-| Platform | All, Jetson Nano, RPi AI HAT+, etc. | Filter by hardware platform |
+| Platform | All, Jetson Orin Nano, RPi AI HAT+, etc. | Filter by hardware platform |
 | YOLO Version | All, v8, v11, v26 | Filter YOLO results by version |
 | Task | All, Detection, Classification, etc. | Filter by YOLO task type |
 | LLM Size | All, 1B, 3B, 7B, 8B, 9B | Filter by model size |
@@ -730,7 +730,7 @@ edge-ai-benchmark/
 │   └── llm_benchmark.yaml    # LLM configuration
 ├── scripts/
 │   ├── common.sh             # Common setup utilities
-│   ├── setup_jetson_nano.sh  # Jetson Nano setup
+│   ├── setup_jetson_orin_nano.sh  # Jetson Orin Nano setup
 │   ├── setup_rpi_ai_hat_plus.sh    # RPi AI HAT+ setup
 │   └── setup_rpi_ai_hat_plus_2.sh  # RPi AI HAT+ 2 setup
 ├── results/                  # Benchmark output directory

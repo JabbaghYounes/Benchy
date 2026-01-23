@@ -1,17 +1,17 @@
 #!/bin/bash
-# Edge AI Benchmark Suite - Jetson Nano Setup Script
-# Platform: NVIDIA Jetson Nano Developer Kit
+# Edge AI Benchmark Suite - Jetson Orin Nano Setup Script
+# Platform: NVIDIA Jetson Orin Nano Developer Kit
 #
-# This script sets up the complete benchmark environment on a Jetson Nano.
+# This script sets up the complete benchmark environment on a Jetson Orin Nano.
 # It is idempotent and can be run multiple times safely.
 #
 # Requirements:
-#   - NVIDIA Jetson Nano Developer Kit
-#   - JetPack 4.6+ installed
+#   - NVIDIA Jetson Orin Nano Developer Kit
+#   - JetPack 5.0+ installed
 #   - Internet connection
 #   - Sufficient storage (at least 20GB free recommended)
 #
-# Usage: sudo ./setup_jetson_nano.sh [--pull-models]
+# Usage: sudo ./setup_jetson_orin_nano.sh [--pull-models]
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_ROOT}/venv"
-LOG_FILE="${PROJECT_ROOT}/setup_jetson_nano.log"
+LOG_FILE="${PROJECT_ROOT}/setup_jetson_orin_nano.log"
 PULL_MODELS=false
 
 # Color codes for output
@@ -82,7 +82,7 @@ detect_platform() {
     tegra_release=$(cat /etc/nv_tegra_release)
     info "Tegra release: $tegra_release"
 
-    # Check for Jetson Nano specifically
+    # Check for Jetson Orin Nano specifically
     if command -v jetson_release &> /dev/null; then
         info "Jetson release info:"
         jetson_release 2>/dev/null || true
@@ -97,7 +97,7 @@ detect_platform() {
         warn "CUDA not found at /usr/local/cuda"
     fi
 
-    success "Platform detected: NVIDIA Jetson"
+    success "Platform detected: NVIDIA Jetson Orin Nano"
 }
 
 # Check if running as root (required for some operations)
@@ -197,25 +197,23 @@ install_python_deps() {
     # Install numpy first (required for many packages)
     pip install numpy
 
-    # Install PyTorch for Jetson (use NVIDIA's wheel)
-    # Check JetPack version to determine correct wheel
+    # Install PyTorch for Jetson Orin Nano (JetPack 5.x/6.x, CUDA 11.4+)
     local jetpack_version
-    jetpack_version=$(cat /etc/nv_tegra_release | grep -oP 'R\d+' | head -1 || echo "R32")
+    jetpack_version=$(cat /etc/nv_tegra_release | grep -oP 'R\d+' | head -1 || echo "R35")
 
     info "Detected JetPack base: $jetpack_version"
 
-    # Install torch from NVIDIA's index for JetPack 4.x / 5.x compatibility
-    if [[ "$jetpack_version" == "R32" ]] || [[ "$jetpack_version" == "R34" ]]; then
-        # JetPack 4.x series
-        info "Installing PyTorch for JetPack 4.x..."
-        pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu102
-    elif [[ "$jetpack_version" == "R35" ]] || [[ "$jetpack_version" == "R36" ]]; then
-        # JetPack 5.x / 6.x series
-        info "Installing PyTorch for JetPack 5.x/6.x..."
+    if [[ "$jetpack_version" == "R35" ]]; then
+        # JetPack 5.x series (CUDA 11.4)
+        info "Installing PyTorch for JetPack 5.x (CUDA 11.4)..."
         pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu118
+    elif [[ "$jetpack_version" == "R36" ]]; then
+        # JetPack 6.x series (CUDA 12.x)
+        info "Installing PyTorch for JetPack 6.x (CUDA 12.x)..."
+        pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu121
     else
-        warn "Unknown JetPack version, attempting standard PyTorch install..."
-        pip install torch torchvision
+        warn "Unknown JetPack version ($jetpack_version), attempting CUDA 11.8 install..."
+        pip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu118
     fi
 
     # Install Ultralytics YOLO
@@ -386,7 +384,7 @@ print_usage_instructions() {
 
 # Main execution
 main() {
-    info "Starting Jetson Nano setup for Edge AI Benchmark Suite"
+    info "Starting Jetson Orin Nano setup for Edge AI Benchmark Suite"
     info "Log file: $LOG_FILE"
 
     # Create log file

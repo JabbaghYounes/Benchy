@@ -1,15 +1,15 @@
 {
   "system_info": {
-    "platform": "jetson_nano",
+    "platform": "jetson_orin_nano",
     "cpu_model": "ARMv8 Processor rev 1 (v8l)",
-    "accelerator": "NVIDIA Tegra X1 (nvgpu)/integrated",
-    "ram_size_gb": 4.0,
-    "storage_type": "SD Card",
+    "accelerator": "NVIDIA Orin (Ampere GPU)",
+    "ram_size_gb": 8.0,
+    "storage_type": "NVMe SSD",
     "cooling_config": "Active (Fan)",
     "power_mode": "MAXN",
-    "os_version": "Ubuntu 20.04.6 LTS",
-    "kernel_version": "4.9.337-tegra",
-    "hostname": "jetson-nano",
+    "os_version": "Ubuntu 22.04 LTS",
+    "kernel_version": "5.15.136-tegra",
+    "hostname": "jetson-orin-nano",
     "timestamp": "2024-01-15T10:30:00.000000"
   },
   "results": [

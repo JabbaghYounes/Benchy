@@ -791,7 +791,7 @@ def main():
     )
     bench_parser.add_argument(
         "--platform",
-        choices=["jetson_nano", "rpi_ai_hat_plus", "rpi_ai_hat_plus_2"],
+        choices=["jetson_orin_nano", "rpi_ai_hat_plus", "rpi_ai_hat_plus_2"],
         help="Override platform detection",
     )
     bench_parser.add_argument(
@@ -829,7 +829,7 @@ def main():
     )
     info_parser.add_argument(
         "--platform",
-        choices=["jetson_nano", "rpi_ai_hat_plus", "rpi_ai_hat_plus_2"],
+        choices=["jetson_orin_nano", "rpi_ai_hat_plus", "rpi_ai_hat_plus_2"],
         help="Override platform detection",
     )
 

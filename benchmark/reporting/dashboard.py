@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Color palette for platforms (neutral, distinct colors)
 PLATFORM_COLORS = {
-    "jetson_nano": "#2563eb",       # Blue
+    "jetson_orin_nano": "#2563eb",       # Blue
     "rpi_ai_hat_plus": "#16a34a",   # Green
     "rpi_ai_hat_plus_2": "#dc2626", # Red
 }
@@ -464,7 +464,7 @@ class DashboardGenerator:
         cards = ""
         for summary in self.platform_summaries:
             badge_class = {
-                "jetson_nano": "badge-blue",
+                "jetson_orin_nano": "badge-blue",
                 "rpi_ai_hat_plus": "badge-green",
                 "rpi_ai_hat_plus_2": "badge-red",
             }.get(summary.platform, "badge-blue")

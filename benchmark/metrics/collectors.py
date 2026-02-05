@@ -25,7 +25,7 @@ def detect_platform() -> Platform:
             model = f.read().lower()
             if "raspberry pi" in model:
                 # Detect AI HAT variant - check for Hailo devices
-                # AI HAT+ uses Hailo-8L, AI HAT+ 2 uses Hailo-8
+                # AI HAT+ uses Hailo-8L, AI HAT+ 2 uses Hailo-10H
                 hailo_devices = list(Path("/dev").glob("hailo*"))
                 if hailo_devices:
                     # Try to determine which HAT version
@@ -36,14 +36,37 @@ def detect_platform() -> Platform:
                             text=True,
                             timeout=5,
                         )
-                        if "hailo8" in result.stdout.lower() and "hailo8l" not in result.stdout.lower():
+                        output = result.stdout.lower()
+                        # AI HAT+ 2 uses Hailo-10H
+                        if "hailo-10h" in output or "hailo10h" in output:
+                            return Platform.RPI_AI_HAT_PLUS_2
+                        # AI HAT+ uses Hailo-8L
+                        elif "hailo-8l" in output or "hailo8l" in output:
+                            return Platform.RPI_AI_HAT_PLUS
+                        # Hailo-8 (non-L) - treat as AI HAT+ 2
+                        elif "hailo-8" in output or "hailo8" in output:
                             return Platform.RPI_AI_HAT_PLUS_2
                     except (subprocess.TimeoutExpired, FileNotFoundError):
                         pass
+                    # Default to AI HAT+ if we can't determine
                     return Platform.RPI_AI_HAT_PLUS
                 else:
                     # Raspberry Pi detected but no Hailo device found
-                    # Still return RPi platform (assume AI HAT+ may need setup)
+                    # Check PCIe for Hailo device to determine HAT version
+                    try:
+                        result = subprocess.run(
+                            ["lspci", "-d", "1e60:"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        if result.returncode == 0 and result.stdout.strip():
+                            # Hailo-10H has device ID 45c4
+                            if "45c4" in result.stdout:
+                                return Platform.RPI_AI_HAT_PLUS_2
+                    except (subprocess.TimeoutExpired, FileNotFoundError):
+                        pass
+                    # Default to AI HAT+ if we can't determine
                     return Platform.RPI_AI_HAT_PLUS
     except FileNotFoundError:
         pass
@@ -94,7 +117,7 @@ def detect_hailo_device() -> Optional[str]:
     """Detect Hailo NPU and return device information.
 
     Returns:
-        Device string (e.g., "Hailo-8 (26 TOPS)") or None
+        Device string (e.g., "Hailo-10H NPU") or None
     """
     # Check for device node
     hailo_devices = list(Path("/dev").glob("hailo*"))
@@ -112,7 +135,9 @@ def detect_hailo_device() -> Optional[str]:
             output = result.stdout.lower()
 
             # Determine device type
-            if "hailo-8l" in output or "hailo8l" in output:
+            if "hailo-10h" in output or "hailo10h" in output:
+                return "Hailo-10H NPU"
+            elif "hailo-8l" in output or "hailo8l" in output:
                 return "Hailo-8L NPU (13 TOPS)"
             elif "hailo-8" in output or "hailo8" in output:
                 return "Hailo-8 NPU (26 TOPS)"
@@ -134,7 +159,7 @@ def get_hailo_device_type() -> Optional[str]:
     """Get the specific Hailo device type.
 
     Returns:
-        "hailo8" or "hailo8l" or None
+        "hailo10h", "hailo8", or "hailo8l", or None
     """
     hailo_devices = list(Path("/dev").glob("hailo*"))
     if not hailo_devices:
@@ -149,7 +174,9 @@ def get_hailo_device_type() -> Optional[str]:
         )
         if result.returncode == 0:
             output = result.stdout.lower()
-            if "hailo-8l" in output or "hailo8l" in output:
+            if "hailo-10h" in output or "hailo10h" in output:
+                return "hailo10h"
+            elif "hailo-8l" in output or "hailo8l" in output:
                 return "hailo8l"
             elif "hailo-8" in output or "hailo8" in output:
                 return "hailo8"

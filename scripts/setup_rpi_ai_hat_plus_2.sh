@@ -1,9 +1,9 @@
 #!/bin/bash
 # Edge AI Benchmark Suite - Raspberry Pi AI HAT+ 2 Setup Script
-# Platform: Raspberry Pi 5 with AI HAT+ 2 (Hailo-8 NPU)
+# Platform: Raspberry Pi 5 with AI HAT+ 2 (Hailo-10H NPU)
 #
 # This script sets up the complete benchmark environment on a Raspberry Pi 5
-# with the AI HAT+ 2 accelerator (featuring the Hailo-8 NPU - 26 TOPS).
+# with the AI HAT+ 2 accelerator (featuring the Hailo-10H NPU).
 # It is idempotent and can be run multiple times safely.
 #
 # Requirements:
@@ -25,7 +25,7 @@ LOG_FILE="${PROJECT_ROOT}/setup_rpi_ai_hat_plus_2.log"
 PULL_MODELS=false
 
 # Hailo configuration
-HAILO_DEVICE="hailo8"  # AI HAT+ 2 uses Hailo-8 (26 TOPS)
+HAILO_DEVICE="hailo10h"  # AI HAT+ 2 uses Hailo-10H
 
 # Color codes for output
 RED='\033[0;31m'
@@ -103,8 +103,8 @@ detect_platform() {
         exit 1
     fi
 
-    # Check for Hailo-8 device
-    info "Checking for Hailo-8 accelerator..."
+    # Check for Hailo-10H device
+    info "Checking for Hailo-10H accelerator..."
     local hailo_found=false
 
     if lspci 2>/dev/null | grep -qi "hailo"; then
@@ -223,13 +223,14 @@ install_system_deps() {
     success "System dependencies installed"
 }
 
-# Install Hailo-8 runtime and drivers
+# Install Hailo-10H runtime and drivers
 install_hailo_runtime() {
-    info "Installing Hailo-8 runtime for AI HAT+ 2..."
+    info "Installing Hailo-10H runtime for AI HAT+ 2..."
 
-    # For Raspberry Pi AI HAT+ 2, Hailo packages are available from the official
+    # For Raspberry Pi AI HAT+ 2, Hailo-10H packages are available from the official
     # Raspberry Pi repository (archive.raspberrypi.com), not from hailo.ai
     # The hailo.ai repository is deprecated/unavailable for RPi users.
+    # AI HAT+ 2 uses Hailo-10H which requires hailo-h10-all package.
 
     # Remove any stale Hailo repository that may cause apt errors
     if [[ -f /etc/apt/sources.list.d/hailo.list ]]; then
@@ -239,28 +240,29 @@ install_hailo_runtime() {
         apt-get update
     fi
 
-    # Install Hailo packages from Raspberry Pi repository
-    info "Installing Hailo packages from Raspberry Pi repository..."
-    apt-get install -y hailo-all || {
-        warn "hailo-all package not found, trying individual packages..."
+    # Install Hailo-10H packages from Raspberry Pi repository
+    # Note: hailo-h10-all is specifically for Hailo-10H (AI HAT+ 2)
+    # whereas hailo-all is for Hailo-8/8L (AI HAT+)
+    info "Installing Hailo-10H packages from Raspberry Pi repository..."
+    apt-get install -y hailo-h10-all || {
+        warn "hailo-h10-all package not found, trying individual packages..."
 
         apt-get install -y \
             hailort \
-            hailo-firmware \
-            2>/dev/null || warn "Some Hailo packages may not be available"
+            hailo-h10-firmware \
+            2>/dev/null || warn "Some Hailo packages may not be available. Ensure your OS is up to date."
     }
 
     # Install Hailo TAPPAS for optimized pipelines (optional)
     apt-get install -y hailo-tappas-core 2>/dev/null || info "TAPPAS not available (optional)"
 
-    # Load Hailo driver
-    if [[ -f /lib/modules/$(uname -r)/extra/hailo_pci.ko ]] || [[ -f /lib/modules/$(uname -r)/kernel/drivers/misc/hailo_pci.ko ]]; then
-        info "Loading Hailo PCIe driver..."
-        if modprobe hailo_pci 2>/dev/null; then
-            success "Hailo PCIe driver loaded"
-        else
-            warn "Could not load Hailo driver. May need reboot."
-        fi
+    # Reload Hailo driver to pick up new firmware
+    info "Loading Hailo PCIe driver..."
+    rmmod hailo_pci 2>/dev/null || true
+    if modprobe hailo_pci 2>/dev/null; then
+        success "Hailo PCIe driver loaded"
+    else
+        warn "Could not load Hailo driver. May need reboot."
     fi
 
     # Verify Hailo installation
@@ -281,17 +283,17 @@ install_hailo_runtime() {
         warn "Ensure your Raspberry Pi OS is up to date: sudo apt update && sudo apt full-upgrade"
     fi
 
-    success "Hailo-8 runtime installation complete"
+    success "Hailo-10H runtime installation complete"
 }
 
 # Set up udev rules for Hailo
 setup_udev_rules() {
-    info "Setting up udev rules for Hailo-8..."
+    info "Setting up udev rules for Hailo-10H..."
 
     local rules_file="/etc/udev/rules.d/99-hailo.rules"
 
     cat > "$rules_file" << 'EOF'
-# Hailo-8 PCIe device permissions for AI HAT+ 2
+# Hailo-10H PCIe device permissions for AI HAT+ 2
 SUBSYSTEM=="hailo", MODE="0666"
 KERNEL=="hailo*", MODE="0666"
 
@@ -557,7 +559,7 @@ print_usage_instructions() {
     echo "=========================================="
     echo "  Edge AI Benchmark Suite Setup Complete"
     echo "  Platform: Raspberry Pi 5 AI HAT+ 2"
-    echo "  Accelerator: Hailo-8 (26 TOPS)"
+    echo "  Accelerator: Hailo-10H"
     echo "=========================================="
     echo ""
     echo "To activate the virtual environment:"
@@ -582,8 +584,8 @@ print_usage_instructions() {
     echo "To generate reports:"
     echo "  python -m benchmark report --input results --output results/report"
     echo ""
-    echo "Hailo-8 NPU Notes:"
-    echo "  - The Hailo-8 provides 26 TOPS of AI performance"
+    echo "Hailo-10H NPU Notes:"
+    echo "  - The Hailo-10H is optimized for edge AI workloads"
     echo "  - For optimal YOLO performance, export models to Hailo format"
     echo "  - Example: yolo export model=yolov8n.pt format=hailo"
     echo ""

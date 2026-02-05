@@ -227,42 +227,40 @@ install_system_deps() {
 install_hailo_runtime() {
     info "Installing Hailo-8 runtime for AI HAT+ 2..."
 
-    # Check if Hailo repository is already added
-    if [[ ! -f /etc/apt/sources.list.d/hailo.list ]]; then
-        info "Adding Hailo repository..."
+    # For Raspberry Pi AI HAT+ 2, Hailo packages are available from the official
+    # Raspberry Pi repository (archive.raspberrypi.com), not from hailo.ai
+    # The hailo.ai repository is deprecated/unavailable for RPi users.
 
-        # Import Hailo GPG key
-        curl -fsSL https://hailo.ai/deb/hailo.gpg.key | gpg --dearmor -o /usr/share/keyrings/hailo-archive-keyring.gpg
-
-        # Add repository
-        echo "deb [signed-by=/usr/share/keyrings/hailo-archive-keyring.gpg] https://hailo.ai/deb stable main" > /etc/apt/sources.list.d/hailo.list
-
+    # Remove any stale Hailo repository that may cause apt errors
+    if [[ -f /etc/apt/sources.list.d/hailo.list ]]; then
+        info "Removing outdated Hailo repository..."
+        rm -f /etc/apt/sources.list.d/hailo.list
+        rm -f /usr/share/keyrings/hailo-archive-keyring.gpg
         apt-get update
     fi
 
-    # Install Hailo packages
-    info "Installing Hailo packages..."
-
-    # Try the comprehensive hailo-all package first (Raspberry Pi specific)
-    apt-get install -y hailo-all 2>/dev/null || {
-        info "hailo-all not found, installing individual packages..."
+    # Install Hailo packages from Raspberry Pi repository
+    info "Installing Hailo packages from Raspberry Pi repository..."
+    apt-get install -y hailo-all || {
+        warn "hailo-all package not found, trying individual packages..."
 
         apt-get install -y \
             hailort \
             hailo-firmware \
-            hailo-pcie-driver \
-            hailort-pcie \
             2>/dev/null || warn "Some Hailo packages may not be available"
     }
 
-    # Install Hailo TAPPAS for optimized pipelines
-    apt-get install -y hailo-tappas-core 2>/dev/null || warn "TAPPAS not available"
+    # Install Hailo TAPPAS for optimized pipelines (optional)
+    apt-get install -y hailo-tappas-core 2>/dev/null || info "TAPPAS not available (optional)"
 
     # Load Hailo driver
-    if modprobe hailo_pci 2>/dev/null; then
-        success "Hailo PCIe driver loaded"
-    else
-        warn "Could not load Hailo driver. May need reboot."
+    if [[ -f /lib/modules/$(uname -r)/extra/hailo_pci.ko ]] || [[ -f /lib/modules/$(uname -r)/kernel/drivers/misc/hailo_pci.ko ]]; then
+        info "Loading Hailo PCIe driver..."
+        if modprobe hailo_pci 2>/dev/null; then
+            success "Hailo PCIe driver loaded"
+        else
+            warn "Could not load Hailo driver. May need reboot."
+        fi
     fi
 
     # Verify Hailo installation
@@ -280,7 +278,7 @@ install_hailo_runtime() {
         fi
     else
         warn "Hailo CLI not found. Manual installation may be required."
-        warn "Visit: https://hailo.ai/developer-zone/documentation/"
+        warn "Ensure your Raspberry Pi OS is up to date: sudo apt update && sudo apt full-upgrade"
     fi
 
     success "Hailo-8 runtime installation complete"

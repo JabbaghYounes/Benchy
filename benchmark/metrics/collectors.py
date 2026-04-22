@@ -25,7 +25,8 @@ def detect_platform() -> Platform:
             model = f.read().lower()
             if "raspberry pi" in model:
                 # Detect AI HAT variant - check for Hailo devices
-                # AI HAT+ uses Hailo-8L, AI HAT+ 2 uses Hailo-10H
+                # AI HAT+ ships in two variants: Hailo-8L (13 TOPS) and Hailo-8 (26 TOPS).
+                # AI HAT+ 2 uses Hailo-10H (40 TOPS INT4).
                 hailo_devices = list(Path("/dev").glob("hailo*"))
                 if hailo_devices:
                     # Try to determine which HAT version
@@ -40,12 +41,14 @@ def detect_platform() -> Platform:
                         # AI HAT+ 2 uses Hailo-10H
                         if "hailo-10h" in output or "hailo10h" in output:
                             return Platform.RPI_AI_HAT_PLUS_2
-                        # AI HAT+ uses Hailo-8L
-                        elif "hailo-8l" in output or "hailo8l" in output:
+                        # AI HAT+ — both 8L (13 TOPS) and 8 (26 TOPS) variants
+                        elif (
+                            "hailo-8l" in output
+                            or "hailo8l" in output
+                            or "hailo-8" in output
+                            or "hailo8" in output
+                        ):
                             return Platform.RPI_AI_HAT_PLUS
-                        # Hailo-8 (non-L) - treat as AI HAT+ 2
-                        elif "hailo-8" in output or "hailo8" in output:
-                            return Platform.RPI_AI_HAT_PLUS_2
                     except (subprocess.TimeoutExpired, FileNotFoundError):
                         pass
                     # Default to AI HAT+ if we can't determine

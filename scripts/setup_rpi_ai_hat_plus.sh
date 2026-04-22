@@ -1,14 +1,19 @@
 #!/bin/bash
 # Edge AI Benchmark Suite - Raspberry Pi AI HAT+ Setup Script
-# Platform: Raspberry Pi 4/5 with AI HAT+ (Hailo-8L NPU)
+# Platform: Raspberry Pi 5 with AI HAT+ (Hailo-8L 13 TOPS or Hailo-8 26 TOPS NPU)
 #
-# This script sets up the complete benchmark environment on a Raspberry Pi
-# with the AI HAT+ accelerator (featuring the Hailo-8L NPU).
+# This script sets up the complete benchmark environment on a Raspberry Pi 5
+# with the AI HAT+ accelerator. The AI HAT+ ships in two variants — the 13 TOPS
+# board (Hailo-8L) and the 26 TOPS board (Hailo-8). Both use the same HailoRT
+# 4.x stack and the same `hailo-all` apt package, so a single script handles
+# them; the runtime detects the specific chip via `hailortcli`.
 # It is idempotent and can be run multiple times safely.
 #
+# For the AI HAT+ 2 (Hailo-10H, 40 TOPS), use setup_rpi_ai_hat_plus_2.sh instead.
+#
 # Requirements:
-#   - Raspberry Pi 4 or 5
-#   - AI HAT+ properly connected
+#   - Raspberry Pi 5 (PCIe is required by the HAT+ form factor)
+#   - AI HAT+ (13 TOPS or 26 TOPS variant) properly connected
 #   - Raspberry Pi OS (64-bit) Bookworm or later
 #   - Internet connection
 #   - Sufficient storage (at least 20GB free recommended)
@@ -24,8 +29,9 @@ VENV_DIR="${PROJECT_ROOT}/venv"
 LOG_FILE="${PROJECT_ROOT}/setup_rpi_ai_hat_plus.log"
 PULL_MODELS=false
 
-# Hailo configuration
-HAILO_DEVICE="hailo8l"  # AI HAT+ uses Hailo-8L
+# Hailo configuration — populated at runtime by detect_platform()
+# (either "hailo8" for the 26 TOPS variant or "hailo8l" for the 13 TOPS variant)
+HAILO_DEVICE=""
 
 # Color codes for output
 RED='\033[0;31m'
@@ -111,7 +117,26 @@ detect_platform() {
         warn "The HAT may need to be enabled in config.txt"
     fi
 
-    success "Platform detected: Raspberry Pi with AI HAT+"
+    # Identify which AI HAT+ variant is present (13 TOPS Hailo-8L vs 26 TOPS Hailo-8)
+    if command -v hailortcli &> /dev/null; then
+        local fw_out
+        fw_out=$(hailortcli fw-control identify 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+        if [[ "$fw_out" == *"hailo-10h"* || "$fw_out" == *"hailo10h"* ]]; then
+            error "Hailo-10H detected — this is the AI HAT+ 2."
+            error "Use scripts/setup_rpi_ai_hat_plus_2.sh instead."
+            exit 1
+        elif [[ "$fw_out" == *"hailo-8l"* || "$fw_out" == *"hailo8l"* ]]; then
+            HAILO_DEVICE="hailo8l"
+            info "AI HAT+ variant: Hailo-8L (13 TOPS)"
+        elif [[ "$fw_out" == *"hailo-8"* || "$fw_out" == *"hailo8"* ]]; then
+            HAILO_DEVICE="hailo8"
+            info "AI HAT+ variant: Hailo-8 (26 TOPS)"
+        else
+            warn "Could not identify Hailo variant via hailortcli; will detect after driver install."
+        fi
+    fi
+
+    success "Platform detected: Raspberry Pi 5 with AI HAT+"
 }
 
 # Check if running as root
@@ -458,7 +483,7 @@ print_usage_instructions() {
     echo ""
     echo "=========================================="
     echo "  Edge AI Benchmark Suite Setup Complete"
-    echo "  Platform: Raspberry Pi AI HAT+"
+    echo "  Platform: Raspberry Pi 5 AI HAT+ (${HAILO_DEVICE:-hailo-8/8L})"
     echo "=========================================="
     echo ""
     echo "To activate the virtual environment:"

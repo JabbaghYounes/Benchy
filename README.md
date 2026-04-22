@@ -11,11 +11,16 @@ This benchmark suite provides comprehensive performance evaluation for:
 
 ### Supported Platforms
 
-| Platform | Accelerator | RAM |
-|----------|-------------|-----|
-| NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU | 8GB |
-| Raspberry Pi + AI HAT+ | Hailo-8L NPU | 8GB |
-| Raspberry Pi + AI HAT+ 2 | Hailo-10H NPU | 8GB |
+| Platform | Accelerator | NPU TOPS | Host RAM | NPU RAM |
+|----------|-------------|----------|----------|---------|
+| NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU | — | 8 GB | shared |
+| Raspberry Pi 5 + AI HAT+ (13 TOPS) | Hailo-8L NPU | 13 (INT8) | 8 GB | uses host |
+| Raspberry Pi 5 + AI HAT+ (26 TOPS) | Hailo-8 NPU  | 26 (INT8) | 8 GB | uses host |
+| Raspberry Pi 5 + AI HAT+ 2            | Hailo-10H NPU | 40 (INT4) | 8 GB | 8 GB onboard SDRAM |
+
+Both AI HAT+ variants and the AI HAT+ 2 connect to the Raspberry Pi 5 via PCIe (the 26 TOPS HAT auto-switches the link to PCIe Gen 3 for full bandwidth) and conform to the Raspberry Pi HAT+ spec. Hailo-10H is the only variant with onboard SDRAM and is the only one that can run local LLMs / VLMs (~6B params) on the accelerator itself.
+
+References: [AI HAT+ product brief](https://datasheets.raspberrypi.com/ai-hat/ai-hat-plus-product-brief.pdf), [Raspberry Pi AI HAT documentation](https://www.raspberrypi.com/documentation/accessories/ai-hat-plus.html), [Hailo-8 overview](https://hailo.ai/products/ai-accelerators/hailo-8-ai-accelerator/).
 
 ## Quick Start
 
@@ -84,7 +89,7 @@ python -m benchmark run all --profile full
 |----------|-------------|
 | [CLI Reference](docs/cli.md) | Full command reference with examples |
 | [Workloads](docs/workloads.md) | YOLO and LLM benchmark details, metrics, and model groups |
-| [Hailo NPU](docs/hailo.md) | Hailo-8L/10H integration, model conversion, and limitations |
+| [Hailo NPU](docs/hailo.md) | Hailo-8 / 8L / 10H integration, model conversion, and limitations |
 | [Methodology](docs/methodology.md) | Benchmark methodology and reproducibility |
 | [Output & Configuration](docs/output.md) | Result formats, dashboard, and YAML configuration |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |

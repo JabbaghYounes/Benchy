@@ -1,6 +1,11 @@
 # Hailo NPU Integration
 
-The benchmark suite includes full support for Hailo-8 and Hailo-8L NPUs on Raspberry Pi platforms.
+The benchmark suite includes full support for the Hailo NPUs found on Raspberry Pi AI HATs:
+
+- **Hailo-8L** — Raspberry Pi AI HAT+, requires HailoRT 4.x
+- **Hailo-10H** — Raspberry Pi AI HAT+ 2, requires HailoRT 5.x
+
+HEF files compiled for one family are not compatible with the other; the backend maintains separate caches per family.
 
 ## Supported Configurations
 

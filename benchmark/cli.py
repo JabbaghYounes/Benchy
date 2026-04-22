@@ -639,8 +639,9 @@ def cmd_list_models(args) -> int:
             print(format_supported_configurations())
 
             print("\n" + "=" * 50)
-            print("NOTE: Hailo backend requires Hailo-8/8L NPU hardware")
-            print("      and HailoRT runtime installed.")
+            print("NOTE: Hailo backend requires Hailo-8L (AI HAT+) or")
+            print("      Hailo-10H (AI HAT+ 2) NPU hardware and the")
+            print("      matching HailoRT runtime (4.x or 5.x).")
             print("=" * 50)
 
     return 0

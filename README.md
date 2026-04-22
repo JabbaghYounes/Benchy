@@ -15,7 +15,7 @@ This benchmark suite provides comprehensive performance evaluation for:
 |----------|-------------|-----|
 | NVIDIA Jetson Orin Nano Developer Kit | Ampere GPU | 8GB |
 | Raspberry Pi + AI HAT+ | Hailo-8L NPU | 8GB |
-| Raspberry Pi + AI HAT+ 2 | Hailo-8 NPU | 8GB |
+| Raspberry Pi + AI HAT+ 2 | Hailo-10H NPU | 8GB |
 
 ## Quick Start
 
@@ -84,7 +84,7 @@ python -m benchmark run all --profile full
 |----------|-------------|
 | [CLI Reference](docs/cli.md) | Full command reference with examples |
 | [Workloads](docs/workloads.md) | YOLO and LLM benchmark details, metrics, and model groups |
-| [Hailo NPU](docs/hailo.md) | Hailo-8/8L integration, model conversion, and limitations |
+| [Hailo NPU](docs/hailo.md) | Hailo-8L/10H integration, model conversion, and limitations |
 | [Methodology](docs/methodology.md) | Benchmark methodology and reproducibility |
 | [Output & Configuration](docs/output.md) | Result formats, dashboard, and YAML configuration |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |

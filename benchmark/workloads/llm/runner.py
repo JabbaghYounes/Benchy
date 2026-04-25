@@ -52,9 +52,15 @@ class LLMBenchmarkConfig:
     # Phase 4 - Batching for small models
     prompt_batch_size: int = 1  # 3 for 1B/3B models per PRD
     # Prompt set selection
-    prompt_set: str = "legacy"  # "legacy", "general", "code", "all"
+    prompt_set: str = "legacy"  # "legacy", "general", "code", "all", "drone"
     # Phase 3 - Memory preflight
     enable_memory_check: bool = False  # True for 1B/3B models
+    # Phase 7 - Backend axis. "ollama-cpu" / "ollama-cuda" / "hailo-10h".
+    # When npu_metrics is True the runner attaches a HailoLLMMetricsCollector
+    # alongside the host-side ResourceMonitor. The HTTP path is unchanged —
+    # talking to HailoRT GenAI just means pointing api_base at its REST port.
+    backend: str = "ollama-cpu"
+    npu_metrics: bool = False
 
     @classmethod
     def for_lightweight_model(
@@ -216,6 +222,43 @@ CODE_GENERATION_PROMPTS = [
 # Combined prompt sets for lightweight models
 LIGHTWEIGHT_MODEL_PROMPTS = GENERAL_REASONING_PROMPTS + CODE_GENERATION_PROMPTS
 
+# Drone-use-case prompts: scene understanding, target ID, mission preflight,
+# telemetry interpretation, hazard reasoning. These are the kinds of queries
+# an on-board LLM would actually field; they replace the generic "haiku
+# about AI" set when the drone profile is selected.
+DRONE_PROMPTS = [
+    {
+        "id": "scene_description",
+        "prompt": "You are an on-board drone assistant. Describe the contents of an aerial image showing a coastal industrial port with cargo ships at dock, gantry cranes, and trucks on access roads. Use 3-4 sentences.",
+        "expected_tokens": 120,
+        "category": "drone",
+    },
+    {
+        "id": "target_identification",
+        "prompt": "From a drone vantage at 200 meters altitude, list the visual cues that distinguish a parked civilian utility vehicle from a parked emergency-response vehicle. Use bullet points.",
+        "expected_tokens": 100,
+        "category": "drone",
+    },
+    {
+        "id": "mission_preflight",
+        "prompt": "A delivery drone is planning a 5 km route over urban terrain. List the preflight checks the operator must complete before takeoff, in order of priority.",
+        "expected_tokens": 150,
+        "category": "drone",
+    },
+    {
+        "id": "telemetry_interpretation",
+        "prompt": "Telemetry: battery 23 percent, GPS lock 6 satellites, wind 8 m/s gusting 12, distance to home 1.2 km, altitude 80 m. Should the drone return to base now? Justify in one sentence.",
+        "expected_tokens": 60,
+        "category": "drone",
+    },
+    {
+        "id": "hazard_reasoning",
+        "prompt": "An aerial image from 500 meters altitude shows smoke rising from the western edge of a forest, and several hikers on a trail to the east. List the immediate hazards and the recommended drone actions.",
+        "expected_tokens": 120,
+        "category": "drone",
+    },
+]
+
 
 class PromptSet:
     """Prompt set selector for different model types."""
@@ -224,6 +267,7 @@ class PromptSet:
     CODE = "code"
     ALL = "all"
     LEGACY = "legacy"  # Original prompts for backward compatibility
+    DRONE = "drone"
 
     @staticmethod
     def get_prompts(
@@ -233,7 +277,7 @@ class PromptSet:
         """Get prompts based on set type and model specialization.
 
         Args:
-            prompt_set: "general", "code", "all", or "legacy"
+            prompt_set: "general", "code", "all", "legacy", or "drone"
             model_specialization: Model's specialization from metadata
 
         Returns:
@@ -245,6 +289,8 @@ class PromptSet:
             return GENERAL_REASONING_PROMPTS
         elif prompt_set == PromptSet.CODE:
             return CODE_GENERATION_PROMPTS
+        elif prompt_set == PromptSet.DRONE:
+            return DRONE_PROMPTS
         elif prompt_set == PromptSet.ALL:
             # For code-specialized models, prioritize code prompts
             if model_specialization == "code":
@@ -773,6 +819,15 @@ class LLMBenchmarkRunner:
             logger.debug("Running measured iterations...")
             self._resource_monitor.start()
 
+            # NPU-side metrics: only attached when explicitly enabled by a
+            # profile that targets HailoRT GenAI. Sampling on a host without
+            # Hailo hardware just yields all-None readings.
+            npu_collector = None
+            if self.config.npu_metrics:
+                from benchmark.workloads.llm.hailo_metrics import HailoLLMMetricsCollector
+                npu_collector = HailoLLMMetricsCollector()
+                npu_collector.start()
+
             run_metrics: list[InferenceMetrics] = []
             for i in range(self.config.measured_runs):
                 metrics = self._run_single_inference(prompt_text)
@@ -784,6 +839,7 @@ class LLMBenchmarkRunner:
                 )
 
             resource_utilization = self._resource_monitor.stop()
+            npu_snapshot = npu_collector.stop() if npu_collector else None
 
             # Aggregate metrics across runs
             ttft_values = [m.time_to_first_token_ms for m in run_metrics]
@@ -850,6 +906,18 @@ class LLMBenchmarkRunner:
                 tps_median=tps_median,
                 tps_min=tps_min,
                 tps_max=tps_max,
+                # Phase 7 — backend axis. NPU fields stay None on Ollama-CPU
+                # runs; populated from HailoLLMMetricsCollector otherwise.
+                backend=self.config.backend,
+                npu_utilization_percent=(
+                    npu_snapshot.npu_utilization_percent if npu_snapshot else None
+                ),
+                npu_power_watts=(
+                    npu_snapshot.npu_power_watts if npu_snapshot else None
+                ),
+                hailort_version=(
+                    npu_snapshot.hailort_version if npu_snapshot else None
+                ),
             )
 
             results.append(result)

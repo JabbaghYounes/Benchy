@@ -81,6 +81,16 @@ full:
   yolo_versions: ["v8", "v11", "v26"]
   tasks: ["detection", "segmentation", "pose", "obb", "classification"]
   model_sizes: ["n", "s", "m", "l", "x"]
+
+# Drone profile: detection-only at 1280 with VisDrone validation. `tasks`
+# stays Hailo-compatible across every listed YOLO version.
+drone:
+  yolo_versions: ["v8", "v11", "v26"]
+  tasks: ["detection"]
+  model_sizes: ["n", "s", "m"]
+  input_resolution: 1280
+  datasets:
+    detection: VisDrone.yaml
 ```
 
 ### LLM Configuration (`configs/llm_benchmark.yaml`)
@@ -100,9 +110,23 @@ generation:
 default:
   model_groups: ["7B"]
   models: ["llama2:7b"]
+  # Quantization sweep: each base model × each quant becomes one Ollama tag.
+  # Default template is `{base}-{quant}`; use `{base}-chat-{quant}` for
+  # llama2 tags or `{base}-instruct-{quant}` for instruct variants.
+  quants: ["q4_K_M", "q5_K_M", "q8_0"]
+  quant_tag_template: "{base}-chat-{quant}"
 
 full:
   model_groups: ["1B", "3B", "7B", "8B", "9B"]
+
+# Drone profile: drone-use-case prompts (scene description, target ID,
+# mission preflight, telemetry, hazard reasoning). `prompt_set: drone`
+# tells the runner to ignore the top-level `prompts:` block and pull from
+# the curated DRONE_PROMPTS set in benchmark/workloads/llm/runner.py.
+drone:
+  model_groups: ["7B"]
+  models: ["llama2:7b"]
+  prompt_set: drone
 
 lightweight:            # Profile for 1B/3B models
   model_groups: ["1B", "3B"]
@@ -111,3 +135,7 @@ lightweight:            # Profile for 1B/3B models
   top_p: 0.95
   prompt_batch_size: 3  # Batch prompts for timer accuracy
 ```
+
+The `quantization` column on `*_llm.csv` carries the actual level reported
+by Ollama's `/api/show` (e.g. `Q4_K_M`, `Q5_K_M`, `Q8_0`), making quant
+sweeps groupable in the dashboard without further config.

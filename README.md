@@ -112,7 +112,7 @@ python -m benchmark run all --profile full
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Validate locally with `black benchmark/` and `mypy benchmark/` (no test suite yet)
+4. Validate locally with `black benchmark/`, `mypy benchmark/`, and `pytest tests/` (after `pip install -e ".[dev]"`)
 5. Submit a pull request
 
 ## License

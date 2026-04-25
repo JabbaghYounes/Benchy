@@ -78,6 +78,25 @@ def _infer_yolo_model_info(model_name: str) -> tuple:
     return version, task
 
 
+def _expand_quant_sweep(
+    models: list,
+    quants: list,
+    quant_tag_template: str = "{base}-{quant}",
+) -> list:
+    """Expand a model list against a quant list into Ollama tags.
+
+    Returns models unchanged when quants is empty so callers can pass it
+    through unconditionally.
+    """
+    if not quants:
+        return list(models)
+    return [
+        quant_tag_template.format(base=base, quant=q)
+        for base in models
+        for q in quants
+    ]
+
+
 def _run_single_yolo_model(
     model_name: str,
     benchmark_settings: dict,
@@ -169,6 +188,13 @@ def run_yolo_benchmark(
     tasks = profile_config.get("tasks", ["detection"])
     model_sizes = profile_config.get("model_sizes", ["n"])
 
+    # Profile-level overrides for input resolution and per-task datasets,
+    # used by the drone profile to bump to 1280 and swap COCO128 for VisDrone.
+    input_resolution = profile_config.get(
+        "input_resolution", benchmark_settings.get("input_resolution", 640)
+    )
+    datasets_for_profile = profile_config.get("datasets", config.get("datasets", {}))
+
     # Override with CLI arguments if provided
     if yolo_version:
         yolo_versions = [yolo_version]
@@ -207,10 +233,11 @@ def run_yolo_benchmark(
                     model_name=model_name,
                     yolo_version=version,
                     task=task,
-                    input_resolution=benchmark_settings.get("input_resolution", 640),
+                    input_resolution=input_resolution,
                     warmup_runs=benchmark_settings.get("warmup_runs", 3),
                     measured_runs=benchmark_settings.get("measured_runs", 10),
                     device=inference_settings.get("device", "0"),
+                    dataset=datasets_for_profile.get(task_name),
                     conf_threshold=inference_settings.get("conf_threshold", 0.25),
                     iou_threshold=inference_settings.get("iou_threshold", 0.45),
                     backend=backend,
@@ -249,27 +276,72 @@ def run_llm_benchmark(
 
     logger = logging.getLogger(__name__)
 
-    # Check Ollama status
-    status = check_ollama_status()
-    if not status["server_running"]:
-        logger.error("Ollama server is not running. Start with 'ollama serve'")
-        return []
-
     # Get profile settings
     profile_config = config.get(profile, config.get("default", {}))
     benchmark_settings = config.get("benchmark", {})
     generation_settings = config.get("generation", {})
     ollama_settings = config.get("ollama", {})
 
+    # Phase 7 — backend axis. A profile can override the api_base (e.g. point
+    # at HailoRT GenAI's Ollama-compat REST on a different port), tag results
+    # with a backend label, and turn on the NPU metrics collector. The
+    # api_base override has to land *before* the server liveness check so
+    # we probe the correct endpoint.
+    profile_backend = profile_config.get("backend", "ollama-cpu")
+    profile_npu_metrics = profile_config.get("npu_metrics", False)
+    api_base = profile_config.get(
+        "api_base", ollama_settings.get("api_base", "http://localhost:11434")
+    )
+
+    # Hailo-10H is the only platform that can host LLMs on the NPU. Refuse
+    # to run an npu profile on a Jetson or a Pi+AI HAT+ (Hailo-8/8L) so we
+    # don't silently fall back to Ollama-CPU under the wrong backend label.
+    if profile_npu_metrics and system_info.platform != "rpi_ai_hat_plus_2":
+        logger.error(
+            f"Profile {profile!r} requires Platform.RPI_AI_HAT_PLUS_2 "
+            f"(Hailo-10H NPU); detected platform is {system_info.platform!r}. "
+            f"Use --platform rpi_ai_hat_plus_2 to override only if HailoRT "
+            f"GenAI is actually reachable at {api_base}."
+        )
+        return []
+
+    # Check Ollama / HailoRT GenAI server status. check_ollama_status() is
+    # parameterless today and assumes the default port; we still call it as
+    # a smoke check, but the real authority on liveness is the runner's
+    # OllamaClient against the resolved api_base.
+    status = check_ollama_status()
+    if not status["server_running"] and api_base.endswith(":11434"):
+        logger.error("Ollama server is not running. Start with 'ollama serve'")
+        return []
+
     model_groups = profile_config.get("model_groups", ["7B"])
     specific_models = profile_config.get("models", None)
 
-    prompts = config.get("prompts", [])
+    # If a profile selects a curated prompt_set (e.g. "drone"), let the
+    # runner pull from PromptSet rather than the top-level YAML prompts.
+    profile_prompt_set = profile_config.get("prompt_set")
+    if profile_prompt_set:
+        prompts: list = []
+    else:
+        prompts = config.get("prompts", [])
+
+    # Quantization sweep: expand `models × quants` into Ollama tags via
+    # `quant_tag_template` (default `{base}-{quant}`). The runner reads the
+    # actual quant level from Ollama's /api/show, so LLMResult.quantization
+    # reflects what was loaded — not just our intended label.
+    quants = profile_config.get("quants", [])
+    quant_tag_template = profile_config.get("quant_tag_template", "{base}-{quant}")
 
     all_results = []
 
     for group in model_groups:
-        models = specific_models or config.get("models", {}).get(group, [])
+        base_models = specific_models or config.get("models", {}).get(group, [])
+        models = _expand_quant_sweep(base_models, quants, quant_tag_template)
+        if quants:
+            logger.info(
+                f"Quant sweep enabled: expanded to {len(models)} tags via "
+                f"template {quant_tag_template!r}"
+            )
 
         for model_name in models:
             logger.info(f"Benchmarking {model_name}")
@@ -279,13 +351,16 @@ def run_llm_benchmark(
                 model_size=group,
                 warmup_runs=benchmark_settings.get("warmup_runs", 3),
                 measured_runs=benchmark_settings.get("measured_runs", 10),
-                api_base=ollama_settings.get("api_base", "http://localhost:11434"),
+                api_base=api_base,
                 temperature=generation_settings.get("temperature", 0.0),
                 top_p=generation_settings.get("top_p", 1.0),
                 top_k=generation_settings.get("top_k", 1),
                 seed=generation_settings.get("seed", 42),
                 max_tokens=generation_settings.get("max_tokens", 256),
                 prompts=prompts,
+                prompt_set=profile_prompt_set or "legacy",
+                backend=profile_backend,
+                npu_metrics=profile_npu_metrics,
             )
 
             try:
@@ -769,7 +844,7 @@ def main():
     )
     bench_parser.add_argument(
         "--profile",
-        choices=["default", "full"],
+        choices=["default", "full", "drone", "npu"],
         default="default",
         help="Benchmark profile (default: default)",
     )

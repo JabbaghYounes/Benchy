@@ -843,55 +843,8 @@ class HailoBackend(YOLOBackend):
         return metrics
 
     def _get_power_consumption(self) -> Optional[float]:
-        """Get current power consumption if available.
-
-        Attempts to read power from:
-        1. Raspberry Pi power sensors
-        2. Hailo CLI tools
-
-        Returns:
-            Power in watts or None
-        """
-        # Try Raspberry Pi power sensors
-        from glob import glob
-
-        power_paths = [
-            "/sys/class/hwmon/hwmon*/power1_input",
-            "/sys/class/hwmon/hwmon*/curr1_input",
-        ]
-
-        for pattern in power_paths:
-            matches = glob(pattern)
-            for path in matches:
-                try:
-                    with open(path, "r") as f:
-                        value = float(f.read().strip())
-                        if "power" in path:
-                            return value / 1_000_000.0  # microwatts to watts
-                        elif "curr" in path:
-                            return (value / 1000.0) * 5.0  # milliamps * 5V
-                except (IOError, ValueError):
-                    continue
-
-        # Try hailortcli
-        try:
-            result = subprocess.run(
-                ["hailortcli", "measure-power"],
-                capture_output=True,
-                text=True,
-                timeout=2,
-            )
-            if result.returncode == 0:
-                import re
-                for line in result.stdout.split("\n"):
-                    if "power" in line.lower():
-                        match = re.search(r"(\d+\.?\d*)\s*[wW]", line)
-                        if match:
-                            return float(match.group(1))
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
-        return None
+        from benchmark.backends.hailo_utils import get_power_watts
+        return get_power_watts()
 
     def start_metrics_collection(self) -> None:
         """Start background metrics collection.
@@ -1030,49 +983,12 @@ class HailoBackend(YOLOBackend):
         return info
 
     def _get_hailort_version(self) -> str:
-        """Get HailoRT version."""
-        try:
-            result = subprocess.run(
-                ["hailortcli", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip()
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-
-        try:
-            from hailo_platform import __version__
-            return __version__
-        except (ImportError, AttributeError):
-            pass
-
-        return "unknown"
+        from benchmark.backends.hailo_utils import get_hailort_version
+        return get_hailort_version()
 
     def _get_sdk_family_from_version(self) -> str:
-        """Determine SDK family from installed HailoRT version.
-
-        Returns:
-            "4.x" for HailoRT 4.x (Hailo-8 family)
-            "5.x" for HailoRT 5.x (Hailo-10 family)
-            "unknown" if version cannot be determined
-        """
-        version = self._get_hailort_version()
-        if version == "unknown":
-            return "unknown"
-
-        # Extract major version number
-        import re
-        match = re.search(r"(\d+)\.", version)
-        if match:
-            major = int(match.group(1))
-            if major == 4:
-                return "4.x"
-            elif major >= 5:
-                return "5.x"
-        return "unknown"
+        from benchmark.backends.hailo_utils import get_sdk_family
+        return get_sdk_family()
 
     def validate_sdk_device_compatibility(self) -> tuple[bool, str]:
         """Validate that installed HailoRT SDK is compatible with detected device.

@@ -1,1 +1,45 @@
+# Local Claude Code project instructions (per global rule)
 CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Build artifacts
+build/
+dist/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Benchmark outputs (raw runs and generated reports)
+results/*.json
+results/*.csv
+results/aggregated/
+results/dashboard.html
+results/report/
+# Keep checked-in example results
+!results/example_*.json
+!results/example_*.csv
+
+# Hailo conversion cache (also lives at ~/.cache/benchy/hailo/)
+.cache/
+
+# Working PRD drafts at repo root — committed copies live under documents/
+/Edge*.pdf

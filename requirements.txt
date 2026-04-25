@@ -8,6 +8,3 @@ numpy>=1.21.0
 
 # YOLO benchmarks (Ultralytics)
 ultralytics>=8.0.0
-
-# Optional: For enhanced progress display
-tqdm>=4.64.0

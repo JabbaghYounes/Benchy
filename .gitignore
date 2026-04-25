@@ -41,5 +41,10 @@ results/report/
 # Hailo conversion cache (also lives at ~/.cache/benchy/hailo/)
 .cache/
 
-# Working PRD drafts at repo root — committed copies live under documents/
+# Internal PRDs and dev-phase scoping notes — kept locally only.
+# documents/ holds the original Benchy / Hailo / Model Expansion PRDs and
+# their task breakdowns; the matching PDFs live at the repo root. Neither
+# is consumed by the runtime — `resources/` is the folder that ships with
+# the product for setup scripts.
+documents/
 /Edge*.pdf

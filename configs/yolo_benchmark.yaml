@@ -24,6 +24,19 @@ full:
     - classification
   model_sizes: ["n", "s", "m", "l", "x"]
 
+# Drone profile - small-object aerial detection at altitude.
+# Detection-only (Hailo-compatible on every supported YOLO version), 1280
+# input for small targets, sizes n/s/m only (l/x are unrealistic on a Pi 5 +
+# 8 GB at 1280×1280). Validates against VisDrone rather than COCO128 so the
+# accuracy numbers actually mean something for the use case.
+drone:
+  yolo_versions: ["v8", "v11", "v26"]
+  tasks: ["detection"]
+  model_sizes: ["n", "s", "m"]
+  input_resolution: 1280
+  datasets:
+    detection: VisDrone.yaml
+
 # Model definitions by version and task
 models:
   v8:

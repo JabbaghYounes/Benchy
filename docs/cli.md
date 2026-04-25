@@ -17,6 +17,12 @@ python -m benchmark run all
 # Run with full profile
 python -m benchmark run all --profile full
 
+# Drone profile: small-object aerial detection at 1280 input, VisDrone
+# dataset on the YOLO side; on the LLM side, drone-relevant prompts
+# (scene description, target identification, mission preflight, telemetry,
+# hazard reasoning).
+python -m benchmark run all --profile drone
+
 # Specify output directory
 python -m benchmark run all --output ./my_results
 

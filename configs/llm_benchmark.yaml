@@ -10,14 +10,29 @@ benchmark:
 ollama:
   api_base: "http://localhost:11434"
 
-# Default profile - minimal testing (llama2:7b only)
+# Default profile - llama2:7b across three quant levels.
+# `quant_tag_template` controls how `models` × `quants` is composed into
+# Ollama tags. For llama2 (which ships chat variants under -chat-*) the
+# template is `{base}-chat-{quant}`; for most modern models (llama3.x,
+# mistral, gemma2) use `{base}-instruct-{quant}` or just `{base}-{quant}`.
 default:
   model_groups: ["7B"]
   models: ["llama2:7b"]
+  quants: ["q4_K_M", "q5_K_M", "q8_0"]
+  quant_tag_template: "{base}-chat-{quant}"
 
 # Full profile - all models
 full:
   model_groups: ["7B", "8B", "9B"]
+
+# Drone profile - 7B model with drone-use-case prompts (scene description,
+# target identification, mission preflight, telemetry interpretation, hazard
+# reasoning). The prompt_set switch is honoured by the runner; the top-level
+# `prompts:` block is ignored when prompt_set is set on the profile.
+drone:
+  model_groups: ["7B"]
+  models: ["llama2:7b"]
+  prompt_set: drone
 
 # Model definitions by size group
 models:

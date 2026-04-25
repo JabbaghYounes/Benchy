@@ -78,6 +78,25 @@ def _infer_yolo_model_info(model_name: str) -> tuple:
     return version, task
 
 
+def _expand_quant_sweep(
+    models: list,
+    quants: list,
+    quant_tag_template: str = "{base}-{quant}",
+) -> list:
+    """Expand a model list against a quant list into Ollama tags.
+
+    Returns models unchanged when quants is empty so callers can pass it
+    through unconditionally.
+    """
+    if not quants:
+        return list(models)
+    return [
+        quant_tag_template.format(base=base, quant=q)
+        for base in models
+        for q in quants
+    ]
+
+
 def _run_single_yolo_model(
     model_name: str,
     benchmark_settings: dict,
@@ -169,6 +188,13 @@ def run_yolo_benchmark(
     tasks = profile_config.get("tasks", ["detection"])
     model_sizes = profile_config.get("model_sizes", ["n"])
 
+    # Profile-level overrides for input resolution and per-task datasets,
+    # used by the drone profile to bump to 1280 and swap COCO128 for VisDrone.
+    input_resolution = profile_config.get(
+        "input_resolution", benchmark_settings.get("input_resolution", 640)
+    )
+    datasets_for_profile = profile_config.get("datasets", config.get("datasets", {}))
+
     # Override with CLI arguments if provided
     if yolo_version:
         yolo_versions = [yolo_version]
@@ -207,10 +233,11 @@ def run_yolo_benchmark(
                     model_name=model_name,
                     yolo_version=version,
                     task=task,
-                    input_resolution=benchmark_settings.get("input_resolution", 640),
+                    input_resolution=input_resolution,
                     warmup_runs=benchmark_settings.get("warmup_runs", 3),
                     measured_runs=benchmark_settings.get("measured_runs", 10),
                     device=inference_settings.get("device", "0"),
+                    dataset=datasets_for_profile.get(task_name),
                     conf_threshold=inference_settings.get("conf_threshold", 0.25),
                     iou_threshold=inference_settings.get("iou_threshold", 0.45),
                     backend=backend,
@@ -264,12 +291,31 @@ def run_llm_benchmark(
     model_groups = profile_config.get("model_groups", ["7B"])
     specific_models = profile_config.get("models", None)
 
-    prompts = config.get("prompts", [])
+    # If a profile selects a curated prompt_set (e.g. "drone"), let the
+    # runner pull from PromptSet rather than the top-level YAML prompts.
+    profile_prompt_set = profile_config.get("prompt_set")
+    if profile_prompt_set:
+        prompts: list = []
+    else:
+        prompts = config.get("prompts", [])
+
+    # Quantization sweep: expand `models × quants` into Ollama tags via
+    # `quant_tag_template` (default `{base}-{quant}`). The runner reads the
+    # actual quant level from Ollama's /api/show, so LLMResult.quantization
+    # reflects what was loaded — not just our intended label.
+    quants = profile_config.get("quants", [])
+    quant_tag_template = profile_config.get("quant_tag_template", "{base}-{quant}")
 
     all_results = []
 
     for group in model_groups:
-        models = specific_models or config.get("models", {}).get(group, [])
+        base_models = specific_models or config.get("models", {}).get(group, [])
+        models = _expand_quant_sweep(base_models, quants, quant_tag_template)
+        if quants:
+            logger.info(
+                f"Quant sweep enabled: expanded to {len(models)} tags via "
+                f"template {quant_tag_template!r}"
+            )
 
         for model_name in models:
             logger.info(f"Benchmarking {model_name}")
@@ -286,6 +332,7 @@ def run_llm_benchmark(
                 seed=generation_settings.get("seed", 42),
                 max_tokens=generation_settings.get("max_tokens", 256),
                 prompts=prompts,
+                prompt_set=profile_prompt_set or "legacy",
             )
 
             try:
@@ -769,7 +816,7 @@ def main():
     )
     bench_parser.add_argument(
         "--profile",
-        choices=["default", "full"],
+        choices=["default", "full", "drone"],
         default="default",
         help="Benchmark profile (default: default)",
     )

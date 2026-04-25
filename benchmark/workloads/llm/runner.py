@@ -216,6 +216,43 @@ CODE_GENERATION_PROMPTS = [
 # Combined prompt sets for lightweight models
 LIGHTWEIGHT_MODEL_PROMPTS = GENERAL_REASONING_PROMPTS + CODE_GENERATION_PROMPTS
 
+# Drone-use-case prompts: scene understanding, target ID, mission preflight,
+# telemetry interpretation, hazard reasoning. These are the kinds of queries
+# an on-board LLM would actually field; they replace the generic "haiku
+# about AI" set when the drone profile is selected.
+DRONE_PROMPTS = [
+    {
+        "id": "scene_description",
+        "prompt": "You are an on-board drone assistant. Describe the contents of an aerial image showing a coastal industrial port with cargo ships at dock, gantry cranes, and trucks on access roads. Use 3-4 sentences.",
+        "expected_tokens": 120,
+        "category": "drone",
+    },
+    {
+        "id": "target_identification",
+        "prompt": "From a drone vantage at 200 meters altitude, list the visual cues that distinguish a parked civilian utility vehicle from a parked emergency-response vehicle. Use bullet points.",
+        "expected_tokens": 100,
+        "category": "drone",
+    },
+    {
+        "id": "mission_preflight",
+        "prompt": "A delivery drone is planning a 5 km route over urban terrain. List the preflight checks the operator must complete before takeoff, in order of priority.",
+        "expected_tokens": 150,
+        "category": "drone",
+    },
+    {
+        "id": "telemetry_interpretation",
+        "prompt": "Telemetry: battery 23 percent, GPS lock 6 satellites, wind 8 m/s gusting 12, distance to home 1.2 km, altitude 80 m. Should the drone return to base now? Justify in one sentence.",
+        "expected_tokens": 60,
+        "category": "drone",
+    },
+    {
+        "id": "hazard_reasoning",
+        "prompt": "An aerial image from 500 meters altitude shows smoke rising from the western edge of a forest, and several hikers on a trail to the east. List the immediate hazards and the recommended drone actions.",
+        "expected_tokens": 120,
+        "category": "drone",
+    },
+]
+
 
 class PromptSet:
     """Prompt set selector for different model types."""
@@ -224,6 +261,7 @@ class PromptSet:
     CODE = "code"
     ALL = "all"
     LEGACY = "legacy"  # Original prompts for backward compatibility
+    DRONE = "drone"
 
     @staticmethod
     def get_prompts(
@@ -233,7 +271,7 @@ class PromptSet:
         """Get prompts based on set type and model specialization.
 
         Args:
-            prompt_set: "general", "code", "all", or "legacy"
+            prompt_set: "general", "code", "all", "legacy", or "drone"
             model_specialization: Model's specialization from metadata
 
         Returns:
@@ -245,6 +283,8 @@ class PromptSet:
             return GENERAL_REASONING_PROMPTS
         elif prompt_set == PromptSet.CODE:
             return CODE_GENERATION_PROMPTS
+        elif prompt_set == PromptSet.DRONE:
+            return DRONE_PROMPTS
         elif prompt_set == PromptSet.ALL:
             # For code-specialized models, prioritize code prompts
             if model_specialization == "code":

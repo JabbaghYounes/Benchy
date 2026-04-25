@@ -53,6 +53,37 @@
 - **General Reasoning**: summarization, instruction_following, short_reasoning
 - **Code Generation**: function_generation, code_completion, syntax_validation
 
+*Drone Prompts (drone profile):*
+- **scene_description** — describe contents of an aerial frame
+- **target_identification** — distinguish vehicle classes from altitude
+- **mission_preflight** — preflight checks for a delivery route
+- **telemetry_interpretation** — return-to-base reasoning over live telemetry
+- **hazard_reasoning** — hazard call-out and recommended action
+
+Selected via `prompt_set: drone` on a profile (the shipped `drone` profile in
+`configs/llm_benchmark.yaml` does this). The runner ignores the top-level
+`prompts:` block in the YAML when a profile sets `prompt_set`.
+
+### Quantization Sweep
+
+Profiles can declare `quants:` and a `quant_tag_template` to expand
+`models × quants` into Ollama tags at run time:
+
+```yaml
+default:
+  model_groups: ["7B"]
+  models: ["llama2:7b"]
+  quants: ["q4_K_M", "q5_K_M", "q8_0"]
+  quant_tag_template: "{base}-chat-{quant}"  # llama2 chat tags
+```
+
+The default template is `{base}-{quant}` (works for most modern Ollama tags
+where the variant infix is already in `models`, e.g. `mistral:7b-instruct`,
+`llama3.1:8b-instruct`). Use `{base}-chat-{quant}` for llama2-style tags
+where the chat infix is implicit. The runner records the actual quantization
+level reported by Ollama's `/api/show` into `LLMResult.quantization`, so the
+column in the CSV reflects what was loaded — not just the requested label.
+
 ### Benchmark Parameters (1B/3B)
 
 - Warmup runs: 2

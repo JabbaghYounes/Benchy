@@ -7,7 +7,7 @@ A standardized, automated benchmarking framework to evaluate and compare AI infe
 This benchmark suite provides comprehensive performance evaluation for:
 
 - **Computer Vision**: YOLO inference benchmarks (v8, v11, v26)
-- **Local LLM Inference**: Ollama-based models (1B, 3B, 7B, 8B, 9B parameter sizes)
+- **Local LLM Inference**: Ollama-based models (7B, 8B, 9B parameter groups)
 
 ### Supported Platforms
 
@@ -27,8 +27,8 @@ References: [AI HAT+ product brief](https://datasheets.raspberrypi.com/ai-hat/ai
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-repo/edge-ai-benchmark.git
-cd edge-ai-benchmark
+git clone https://github.com/JabbaghYounes/Benchy.git
+cd Benchy
 ```
 
 ### 2. Platform Setup
@@ -51,7 +51,6 @@ Run the appropriate setup script for your hardware:
 The setup script creates a virtual environment at `./venv`. Activate it before running benchmarks:
 
 ```bash
-cd ~/Benchy  # or your project directory
 source venv/bin/activate
 ```
 
@@ -113,7 +112,7 @@ python -m benchmark run all --profile full
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run tests and validation
+4. Validate locally with `black benchmark/` and `mypy benchmark/` (no test suite yet)
 5. Submit a pull request
 
 ## License

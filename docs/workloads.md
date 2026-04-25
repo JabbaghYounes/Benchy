@@ -6,7 +6,7 @@
 
 **Tasks:**
 - Detection
-- Segmentation
+- Segmentation — Hailo-supported on v8/v11 (Phase 3b); v26 experimental.
 - Pose estimation
 - Oriented Bounding Box (OBB) — Hailo-supported on v8/v11 (Phase 3a); v26 experimental.
 - Classification
@@ -20,6 +20,18 @@ Default class names come from DOTA-15 (`plane`, `ship`, `large vehicle`,
 …) and the dataset is `dota8.yaml` for both calibration and validation.
 For production runs at scale, swap to a larger DOTA val subset rather
 than the bundled 8-image sample.
+
+**Segmentation output format.** Seg benchmarks return `SegmentationResult`
+objects (`postprocessing.py:SegmentationResult`) with fields `bbox,
+confidence, class_id, class_name, mask`. The mask is a boolean numpy
+array cropped to the bbox at the prototype's native resolution
+(~input/4). It is **not** serialised through `to_dict()` — to keep
+result JSON files reasonable in size, only `has_mask` and a
+`mask_pixel_count` summary are emitted. Use the in-process `mask`
+attribute for mAP-with-masks validation or visualisation. Default class
+names come from COCO-80 (the same set yolov8-seg / yolo11-seg are
+trained on); calibration and validation use `coco128-seg.yaml` per the
+existing dataset map in `benchmark/workloads/yolo/runner.py`.
 
 **Model Sizes:** nano (n), small (s), medium (m), large (l), extra-large (x)
 

@@ -140,3 +140,37 @@ def test_obb_in_hailo_supported_tasks(yolo_version):
     must be updated alongside.
     """
     assert YOLOTask.OBB in HAILO_SUPPORTED_TASKS[yolo_version]
+
+
+# ----- Phase 3b: segmentation-on-Hailo invariants ---------------------------
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_seg_optimized_models_pass_hailo_compatibility(yolo_version):
+    """Every -seg model in HAILO_OPTIMIZED_MODELS must clear the runtime
+    compatibility gate. Same shape as the OBB invariant: catches any
+    future edit that drops SEGMENTATION from HAILO_SUPPORTED_TASKS but
+    leaves -seg models in HAILO_OPTIMIZED_MODELS.
+    """
+    seg_models = HAILO_OPTIMIZED_MODELS[yolo_version].get(YOLOTask.SEGMENTATION, [])
+    assert seg_models, (
+        f"Phase 3b expects HAILO_OPTIMIZED_MODELS[{yolo_version!r}] to "
+        f"include SEGMENTATION entries; found none."
+    )
+    for model_name in seg_models:
+        ok, reason = check_hailo_compatibility(
+            model_name, yolo_version, YOLOTask.SEGMENTATION
+        )
+        assert ok, (
+            f"{model_name!r} ({yolo_version}, SEGMENTATION) failed Hailo "
+            f"compatibility: {reason}"
+        )
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_segmentation_in_hailo_supported_tasks(yolo_version):
+    """Whitelist should accept SEGMENTATION on every supported version
+    after Phase 3b. v26-seg follows the same experimental treatment as
+    v26-obb until Slice 5 hardware verification.
+    """
+    assert YOLOTask.SEGMENTATION in HAILO_SUPPORTED_TASKS[yolo_version]

@@ -22,14 +22,15 @@ References: [AI HAT+ product brief (PDF)](https://datasheets.raspberrypi.com/ai-
 
 | YOLO Version | Detection | Classification | Segmentation | Pose | OBB |
 |--------------|-----------|----------------|--------------|------|-----|
-| v8 | Yes | Yes | No | No | Yes |
-| v11 | Yes | Yes | No | No | Yes |
-| v26 | Yes | Yes | No | No | Experimental |
+| v8 | Yes | Yes | Yes | No | Yes |
+| v11 | Yes | Yes | Yes | No | Yes |
+| v26 | Yes | Yes | Experimental | No | Experimental |
 
 **Optimized Models:**
 - `yolov8n.pt`, `yolov8s.pt`, `yolov8m.pt` (Detection)
 - `yolov8n-cls.pt`, `yolov8s-cls.pt`, `yolov8m-cls.pt` (Classification)
 - `yolov8n-obb.pt`, `yolov8s-obb.pt`, `yolov8m-obb.pt` (OBB, Phase 3a)
+- `yolov8n-seg.pt`, `yolov8s-seg.pt`, `yolov8m-seg.pt` (Segmentation, Phase 3b)
 - Similar patterns for v11 and v26.
 
 **OBB note (Phase 3a).** v11-obb has official Hailo Model Zoo backing;
@@ -40,6 +41,18 @@ hardware verification (Slice 6 of Phase 3a) is what will move it from
 experimental to either Yes or No. The `_process_obb` postprocessor and
 custom rotated NMS in `benchmark/workloads/yolo/postprocessing.py` work
 identically across versions; the risk is at the conversion stage.
+
+**Segmentation note (Phase 3b).** Instance segmentation on Hailo uses
+the standard Ultralytics two-output head (detections + 32 mask
+prototypes). Mask blending happens host-side in
+`YOLOPostProcessor._process_segmentation`: the kept detections'
+32-coefficient vectors are sigmoid-blended with the prototype tensor,
+binarised at 0.5, and cropped to bbox at the prototype's native
+resolution (~input/4). Masks are intentionally NOT serialised through
+`SegmentationResult.to_dict()` — they would inflate the output JSON by
+orders of magnitude. The in-process arrays are available for
+mAP-with-masks validation. v26-seg is **experimental** for the same
+reason as v26-obb.
 
 ## Model Conversion Pipeline
 
@@ -53,7 +66,7 @@ Hailo requires model conversion from PyTorch to HEF format:
 
 ## Known Limitations
 
-1. **Supported Tasks Only**: Segmentation and pose estimation are NOT yet supported on Hailo NPU — the Ultralytics ONNX export emits custom heads that need bespoke postprocessors (Phase 3b/3c). OBB shipped in Phase 3a with a custom rotated-NMS path.
+1. **Supported Tasks**: Pose estimation is NOT yet supported on Hailo NPU — the Ultralytics ONNX export emits a custom keypoint head that needs a bespoke postprocessor (Phase 3c). OBB shipped in Phase 3a with a custom rotated-NMS path; segmentation shipped in Phase 3b with a host-side mask-prototype blender.
 2. **INT8 Quantization**: All Hailo models use INT8 quantization. Minor accuracy differences compared to FP32/FP16 models are expected.
 3. **Model Size**: Larger models (l, x variants) may have longer compilation times and higher memory requirements.
 4. **No CPU Fallback**: When using `--backend hailo`, the benchmark will NOT fall back to CPU if Hailo is unavailable. This ensures benchmark integrity.

@@ -79,6 +79,42 @@ class OrientedBox:
 
 
 @dataclass
+class SegmentationResult:
+    """A single instance-segmentation result (Phase 3b).
+
+    Carries the same bbox/confidence/class info as `Detection` plus an
+    optional binary mask cropped to the bbox at the prototype's native
+    resolution. `mask` is intentionally *not* serialised through
+    `to_dict()` — at typical YOLO output sizes a per-detection 160x160
+    boolean mask would inflate the JSON output by orders of magnitude.
+    Use the in-process `mask` array for accuracy validation /
+    visualisation; the JSON output only carries a `has_mask` flag and
+    a coarse `mask_pixel_count` summary.
+    """
+
+    bbox: Tuple[float, float, float, float]  # xyxy
+    confidence: float
+    class_id: int
+    class_name: Optional[str] = None
+    # Binary mask, cropped to bbox, at the prototype's native resolution.
+    # Shape: (mask_h, mask_w), dtype=bool. None when the postprocessor
+    # was run with masks disabled or when the bbox crop is degenerate.
+    mask: Optional[np.ndarray] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "bbox": list(self.bbox),
+            "confidence": self.confidence,
+            "class_id": self.class_id,
+            "class_name": self.class_name,
+            "has_mask": self.mask is not None,
+            "mask_pixel_count": (
+                int(self.mask.sum()) if self.mask is not None else None
+            ),
+        }
+
+
+@dataclass
 class ClassificationResult:
     """A single classification result."""
 
@@ -188,7 +224,12 @@ class YOLOPostProcessor:
         self,
         outputs: Dict[str, np.ndarray],
         config: Optional[PostProcessConfig] = None,
-    ) -> Union[List[Detection], List[ClassificationResult], List[OrientedBox]]:
+    ) -> Union[
+        List[Detection],
+        List[ClassificationResult],
+        List[OrientedBox],
+        List[SegmentationResult],
+    ]:
         """Process raw model outputs.
 
         Args:
@@ -206,6 +247,8 @@ class YOLOPostProcessor:
             return self._process_classification(outputs, cfg)
         elif self.task == YOLOTask.OBB:
             return self._process_obb(outputs, cfg)
+        elif self.task == YOLOTask.SEGMENTATION:
+            return self._process_segmentation(outputs, cfg)
         else:
             logger.warning(f"Unsupported task: {self.task}, returning empty results")
             return []
@@ -396,6 +439,216 @@ class YOLOPostProcessor:
         return oriented
 
     # ---------- end OBB processing ----------
+
+    # ---------- Segmentation processing (Phase 3b) ----------
+
+    # Number of mask coefficients used by Ultralytics yolo*-seg checkpoints.
+    # Both yolov8-seg and yolo11-seg emit 32 mask prototypes; v26-seg
+    # follows the same shape (verified during Slice 5 hardware bring-up).
+    SEG_NUM_MASK_COEFFS = 32
+
+    # Sigmoid threshold for binarising prototype-blended masks.
+    SEG_MASK_THRESHOLD = 0.5
+
+    def _process_segmentation(
+        self,
+        outputs: Dict[str, np.ndarray],
+        config: PostProcessConfig,
+    ) -> List[SegmentationResult]:
+        """Process instance-segmentation outputs from yolo*-seg checkpoints.
+
+        Expected raw shape (post Hailo HEF):
+          - Detection-style tensor: (batch, num_anchors, 4 + num_classes + 32)
+            or its transposed variant (batch, 4 + num_classes + 32, num_anchors).
+            The +32 mask coefficients live in the last channel block.
+          - Prototype tensor: (batch, 32, mask_h, mask_w). For 640 input the
+            native prototype resolution is 160x160 (input/4). Different
+            input sizes scale this proportionally.
+
+        The mask for each kept detection is `sigmoid(coeffs @ protos)`,
+        binarised at SEG_MASK_THRESHOLD, then cropped to the bbox in
+        prototype coordinates. We deliberately keep masks at the
+        prototype's native resolution rather than upsampling — accurate
+        enough for mAP validation, an order of magnitude smaller than
+        a full-resolution mask, and the upsampling can be added by a
+        consumer if needed.
+        """
+        det_output, proto_output = self._get_seg_outputs(outputs, config)
+
+        if det_output is None or proto_output is None:
+            logger.warning("Segmentation outputs missing or unrecognised")
+            return []
+
+        # Drop batch dim on the detection tensor and ensure (anchors, channels).
+        if det_output.ndim == 3:
+            det_output = det_output[0]
+        expected_channels = 4 + config.num_classes + self.SEG_NUM_MASK_COEFFS
+        if (
+            det_output.shape[0] == expected_channels
+            and det_output.shape[1] != expected_channels
+        ):
+            det_output = det_output.T
+        elif det_output.shape[-1] != expected_channels:
+            logger.warning(
+                f"Seg det-output last-dim {det_output.shape[-1]}, "
+                f"expected {expected_channels}; attempting best-effort decode."
+            )
+
+        # Decode geometry, scores, class IDs, and the 32-dim mask coefficients.
+        boxes_xywh = det_output[:, :4]
+        class_scores = det_output[:, 4 : 4 + config.num_classes]
+        mask_coeffs = det_output[:, 4 + config.num_classes :]
+        scores = np.max(class_scores, axis=1)
+        class_ids = np.argmax(class_scores, axis=1)
+
+        # Confidence threshold.
+        keep_conf = scores >= config.conf_threshold
+        if not np.any(keep_conf):
+            return []
+        boxes_xywh = boxes_xywh[keep_conf]
+        scores = scores[keep_conf]
+        class_ids = class_ids[keep_conf]
+        mask_coeffs = mask_coeffs[keep_conf]
+
+        boxes_xyxy = self._xywh_to_xyxy(boxes_xywh)
+
+        # Standard axis-aligned NMS on the bboxes.
+        keep_idx = self._nms(boxes_xyxy, scores, config.iou_threshold)
+        boxes_xyxy = boxes_xyxy[keep_idx]
+        scores = scores[keep_idx]
+        class_ids = class_ids[keep_idx]
+        mask_coeffs = mask_coeffs[keep_idx]
+
+        masks = self._generate_seg_masks(mask_coeffs, proto_output, boxes_xyxy, config)
+
+        # Box scaling (input -> original) AFTER mask generation, since masks
+        # are computed in input/proto coordinates.
+        if config.original_width and config.original_height:
+            boxes_xyxy = self._scale_boxes(
+                boxes_xyxy,
+                config.input_width,
+                config.input_height,
+                config.original_width,
+                config.original_height,
+            )
+
+        results: List[SegmentationResult] = []
+        for i in range(len(boxes_xyxy)):
+            class_name = None
+            if config.class_names and class_ids[i] < len(config.class_names):
+                class_name = config.class_names[class_ids[i]]
+            results.append(
+                SegmentationResult(
+                    bbox=tuple(boxes_xyxy[i].tolist()),
+                    confidence=float(scores[i]),
+                    class_id=int(class_ids[i]),
+                    class_name=class_name,
+                    mask=masks[i] if masks else None,
+                )
+            )
+        return results
+
+    def _get_seg_outputs(
+        self,
+        outputs: Dict[str, np.ndarray],
+        config: PostProcessConfig,
+    ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Return (detection_tensor, prototype_tensor) for a seg head.
+
+        Recognises:
+          - Two named outputs ('output0' / 'output1' or 'detections' /
+            'protos') with the canonical Ultralytics layout.
+          - Otherwise, classifies tensors by ndim: a 4-D tensor with 32 in
+            its second axis is treated as the prototype output.
+        """
+        det = None
+        proto = None
+
+        # Common Ultralytics export naming.
+        for det_name in ("output0", "detections", "boxes", "predictions"):
+            if det_name in outputs:
+                det = outputs[det_name]
+                break
+        for proto_name in ("output1", "protos", "mask_protos", "mask_coefficients"):
+            if proto_name in outputs:
+                proto = outputs[proto_name]
+                break
+
+        # Fallback: scan by shape.
+        if det is None or proto is None:
+            for tensor in outputs.values():
+                if tensor.ndim == 4 and tensor.shape[1] == self.SEG_NUM_MASK_COEFFS:
+                    if proto is None:
+                        proto = tensor
+                elif tensor.ndim >= 2:
+                    last_dim = tensor.shape[-1]
+                    expected = 4 + config.num_classes + self.SEG_NUM_MASK_COEFFS
+                    if det is None and (
+                        last_dim == expected or tensor.shape[1] == expected
+                    ):
+                        det = tensor
+
+        return det, proto
+
+    def _generate_seg_masks(
+        self,
+        coeffs: np.ndarray,
+        proto: np.ndarray,
+        boxes_xyxy: np.ndarray,
+        config: PostProcessConfig,
+    ) -> List[np.ndarray]:
+        """Compute one binary mask per detection.
+
+        Args:
+            coeffs: (N, 32) mask coefficient vectors (one per kept detection).
+            proto: (1, 32, H, W) or (32, H, W) prototype tensor.
+            boxes_xyxy: (N, 4) boxes in input-image coordinates.
+            config: Post-processing configuration (used for input dims).
+
+        Returns:
+            List of (h_box, w_box) bool arrays — one per detection — at the
+            prototype's native resolution, cropped to the bbox region.
+            Empty list if shapes are unusable.
+        """
+        if proto.ndim == 4:
+            proto = proto[0]
+        if proto.ndim != 3 or proto.shape[0] != self.SEG_NUM_MASK_COEFFS:
+            logger.warning(
+                f"Prototype tensor shape {proto.shape} not "
+                f"({self.SEG_NUM_MASK_COEFFS}, H, W); skipping mask generation."
+            )
+            return []
+
+        c, h, w = proto.shape
+        proto_flat = proto.reshape(c, h * w)
+        # sigmoid(coeffs @ proto_flat) — clip the input to keep numerics stable.
+        logits = coeffs @ proto_flat
+        masks = 1.0 / (1.0 + np.exp(-np.clip(logits, -50.0, 50.0)))
+        masks = masks.reshape(-1, h, w)
+        binary = masks >= self.SEG_MASK_THRESHOLD
+
+        # Map input-image bbox coords to prototype grid coords. Input is
+        # config.input_width × config.input_height; proto is w × h.
+        scale_x = w / max(config.input_width, 1)
+        scale_y = h / max(config.input_height, 1)
+
+        cropped: List[np.ndarray] = []
+        for i in range(binary.shape[0]):
+            x1 = int(np.floor(boxes_xyxy[i, 0] * scale_x))
+            y1 = int(np.floor(boxes_xyxy[i, 1] * scale_y))
+            x2 = int(np.ceil(boxes_xyxy[i, 2] * scale_x))
+            y2 = int(np.ceil(boxes_xyxy[i, 3] * scale_y))
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(w, x2)
+            y2 = min(h, y2)
+            if x2 <= x1 or y2 <= y1:
+                cropped.append(np.zeros((0, 0), dtype=bool))
+            else:
+                cropped.append(binary[i, y1:y2, x1:x2])
+        return cropped
+
+    # ---------- end Segmentation processing ----------
 
     def _get_detection_output(
         self,
@@ -860,7 +1113,12 @@ def decode_yolo_output(
     iou_threshold: float = 0.45,
     input_size: int = 640,
     num_classes: int = 80,
-) -> Union[List[Detection], List[ClassificationResult], List[OrientedBox]]:
+) -> Union[
+    List[Detection],
+    List[ClassificationResult],
+    List[OrientedBox],
+    List[SegmentationResult],
+]:
     """Convenience function to decode YOLO outputs.
 
     Args:

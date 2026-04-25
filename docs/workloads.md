@@ -109,6 +109,10 @@ column in the CSV reflects what was loaded — not just the requested label.
 | Accelerator % | GPU/NPU utilization |
 | Memory (MB) | Memory usage |
 | Power (W) | Power consumption |
+| `backend` | `ollama-cpu` / `ollama-cuda` / `hailo-10h` — dashboard grouping key for split-by views |
+| `npu_utilization_percent` | NPU utilization over the measured loop (currently `None` on HailoRT 5.x — see `docs/hailo.md`) |
+| `npu_power_watts` | AI HAT+ subsystem power during the NPU measured loop |
+| `hailort_version` | HailoRT version label, captured once per LLMResult on `hailo-10h` runs |
 
 ### Memory Requirements
 

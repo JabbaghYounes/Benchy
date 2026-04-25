@@ -276,17 +276,43 @@ def run_llm_benchmark(
 
     logger = logging.getLogger(__name__)
 
-    # Check Ollama status
-    status = check_ollama_status()
-    if not status["server_running"]:
-        logger.error("Ollama server is not running. Start with 'ollama serve'")
-        return []
-
     # Get profile settings
     profile_config = config.get(profile, config.get("default", {}))
     benchmark_settings = config.get("benchmark", {})
     generation_settings = config.get("generation", {})
     ollama_settings = config.get("ollama", {})
+
+    # Phase 7 — backend axis. A profile can override the api_base (e.g. point
+    # at HailoRT GenAI's Ollama-compat REST on a different port), tag results
+    # with a backend label, and turn on the NPU metrics collector. The
+    # api_base override has to land *before* the server liveness check so
+    # we probe the correct endpoint.
+    profile_backend = profile_config.get("backend", "ollama-cpu")
+    profile_npu_metrics = profile_config.get("npu_metrics", False)
+    api_base = profile_config.get(
+        "api_base", ollama_settings.get("api_base", "http://localhost:11434")
+    )
+
+    # Hailo-10H is the only platform that can host LLMs on the NPU. Refuse
+    # to run an npu profile on a Jetson or a Pi+AI HAT+ (Hailo-8/8L) so we
+    # don't silently fall back to Ollama-CPU under the wrong backend label.
+    if profile_npu_metrics and system_info.platform != "rpi_ai_hat_plus_2":
+        logger.error(
+            f"Profile {profile!r} requires Platform.RPI_AI_HAT_PLUS_2 "
+            f"(Hailo-10H NPU); detected platform is {system_info.platform!r}. "
+            f"Use --platform rpi_ai_hat_plus_2 to override only if HailoRT "
+            f"GenAI is actually reachable at {api_base}."
+        )
+        return []
+
+    # Check Ollama / HailoRT GenAI server status. check_ollama_status() is
+    # parameterless today and assumes the default port; we still call it as
+    # a smoke check, but the real authority on liveness is the runner's
+    # OllamaClient against the resolved api_base.
+    status = check_ollama_status()
+    if not status["server_running"] and api_base.endswith(":11434"):
+        logger.error("Ollama server is not running. Start with 'ollama serve'")
+        return []
 
     model_groups = profile_config.get("model_groups", ["7B"])
     specific_models = profile_config.get("models", None)
@@ -325,7 +351,7 @@ def run_llm_benchmark(
                 model_size=group,
                 warmup_runs=benchmark_settings.get("warmup_runs", 3),
                 measured_runs=benchmark_settings.get("measured_runs", 10),
-                api_base=ollama_settings.get("api_base", "http://localhost:11434"),
+                api_base=api_base,
                 temperature=generation_settings.get("temperature", 0.0),
                 top_p=generation_settings.get("top_p", 1.0),
                 top_k=generation_settings.get("top_k", 1),
@@ -333,6 +359,8 @@ def run_llm_benchmark(
                 max_tokens=generation_settings.get("max_tokens", 256),
                 prompts=prompts,
                 prompt_set=profile_prompt_set or "legacy",
+                backend=profile_backend,
+                npu_metrics=profile_npu_metrics,
             )
 
             try:
@@ -816,7 +844,7 @@ def main():
     )
     bench_parser.add_argument(
         "--profile",
-        choices=["default", "full", "drone"],
+        choices=["default", "full", "drone", "npu"],
         default="default",
         help="Benchmark profile (default: default)",
     )

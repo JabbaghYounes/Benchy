@@ -110,13 +110,15 @@ class CSVResultWriter(ResultWriter):
     # Column definitions for LLM results
     LLM_COLUMNS = [
         "platform", "cpu_model", "accelerator", "ram_size_gb",
-        "model_name", "model_size", "quantization",
+        "model_name", "model_size", "quantization", "backend",
         "prompt_tokens", "output_tokens",
         "ttft_ms", "tokens_per_second", "total_latency_ms",
         "ttft_mean_ms", "ttft_std_ms", "tps_mean", "tps_std",
         "latency_mean_ms", "latency_std_ms",
         "cpu_percent", "accelerator_percent", "memory_used_mb",
-        "power_watts", "warmup_runs", "measured_runs",
+        "power_watts",
+        "npu_utilization_percent", "npu_power_watts", "hailort_version",
+        "warmup_runs", "measured_runs",
     ]
 
     def write(self, data: Union[BenchmarkRun, AggregatedResults], path: Path) -> None:
@@ -231,6 +233,7 @@ class CSVResultWriter(ResultWriter):
             "model_name": result.model_name,
             "model_size": result.model_size,
             "quantization": result.quantization,
+            "backend": result.backend,
             "prompt_tokens": result.prompt_tokens,
             "output_tokens": result.output_tokens,
             "ttft_ms": result.time_to_first_token_ms,
@@ -246,6 +249,9 @@ class CSVResultWriter(ResultWriter):
             "accelerator_percent": ru.accelerator_percent if ru else None,
             "memory_used_mb": ru.memory_used_mb if ru else None,
             "power_watts": result.power_watts,
+            "npu_utilization_percent": result.npu_utilization_percent,
+            "npu_power_watts": result.npu_power_watts,
+            "hailort_version": result.hailort_version,
             "warmup_runs": result.warmup_runs,
             "measured_runs": result.measured_runs,
         }

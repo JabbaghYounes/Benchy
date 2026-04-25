@@ -84,6 +84,72 @@ To force recompilation:
 python -m benchmark run yolo --backend hailo --force-recompile
 ```
 
+## LLM on Hailo-10H
+
+Only the AI HAT+ 2 (Hailo-10H, 8 GB onboard SDRAM) can host LLMs on the
+NPU itself. The AI HAT+ variants (Hailo-8 / 8L) are vision-only and have
+no onboard memory, so LLMs always run on the Pi 5 CPU on those boards.
+
+### Runtime
+
+Benchy targets HailoRT GenAI's **Ollama-compatible REST API**. The runner
+keeps using the existing `OllamaClient` and just points `api_base` at the
+HailoRT GenAI server (default port 11435 — adjust to match your install).
+That means TTFT, tokens/sec, prompt/eval token counts, and truncation
+detection all work without any client changes; the Hailo side ships
+`/api/generate` streaming with the same `eval_count` / `prompt_eval_count`
+fields Ollama emits.
+
+### Prebuilt HEFs
+
+The Hailo Model Zoo GenAI catalogue ships precompiled HEFs for:
+
+| Tag (Ollama-compat) | Params |
+|---|---|
+| `llama3.2:1b` | 1B |
+| `qwen2.5:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B |
+| `deepseek_r1_distill_qwen:1.5b`, `qwen2:1.5b` | 1.5B |
+| `llama3.2:3b` | 3B |
+| `llama2:7b` | 7B |
+
+`tests/test_llm_npu_profile.py:HAILO_GENAI_PREBUILT_HEFS` is the canonical
+whitelist; profiles that list anything outside it fail in CI.
+
+### Running
+
+```bash
+# On a Pi 5 + AI HAT+ 2 with HailoRT GenAI installed and reachable at
+# http://localhost:11435 (the default in configs/llm_benchmark.yaml).
+python -m benchmark run llm --profile npu
+```
+
+The `npu` profile starts with the smallest HEF (`llama3.2:1b`) so the
+pipeline is validated end-to-end on a fast model before scaling up. Add
+larger tags to `configs/llm_benchmark.yaml` once a smaller one has
+published clean numbers.
+
+### Output
+
+Every `LLMResult` from the `npu` profile is tagged with:
+
+- `backend = "hailo-10h"` (`ollama-cpu` for the regular Ollama path)
+- `hailort_version` — recorded once per measured loop via `hailortcli --version`
+- `npu_power_watts` — read from `/sys/class/hwmon/*/power1_input`; on a
+  Pi 5 + AI HAT+ 2 during NPU inference this is approximately the AI HAT+
+  subsystem power, not a chip-level NPU reading
+- `npu_utilization_percent` — currently always `None` on HailoRT 5.x.
+  HailoRT exposes utilization only via the interactive `hailortcli monitor`
+  TUI; no scriptable probe exists yet. `benchmark/backends/hailo_utils.py:get_npu_utilization_percent`
+  is the single place to wire one in when it lands.
+
+### Platform gating
+
+The runner aborts a `--profile npu` run on anything other than
+`Platform.RPI_AI_HAT_PLUS_2` so you don't silently fall back to Ollama-CPU
+under the wrong backend label. To override (e.g. when developing against
+a remote HailoRT GenAI server), pass `--platform rpi_ai_hat_plus_2`
+explicitly.
+
 ## Cross-Platform Comparison
 
 To compare Jetson (GPU) vs Raspberry Pi + Hailo (NPU):

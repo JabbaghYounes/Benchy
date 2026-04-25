@@ -34,6 +34,23 @@ drone:
   models: ["llama2:7b"]
   prompt_set: drone
 
+# NPU profile - LLM-on-Hailo-10H via HailoRT GenAI's Ollama-compatible REST
+# server (assumed at localhost:11435 — adjust if your install differs).
+# Starts with the smallest prebuilt HEF (Llama 3.2 1B); ramp to Qwen2.5 1.5B,
+# DeepSeek R1 Distill Qwen 1.5B, Llama 3.2 3B, Llama2 7B as each is
+# validated on hardware. backend: "hailo-10h" tags every result so the
+# dashboard can split CPU-side runs from NPU-side runs on the same prompts.
+# npu_metrics: true attaches HailoLLMMetricsCollector alongside the host
+# ResourceMonitor. The runner aborts with a clear message if this profile
+# is run on anything other than Platform.RPI_AI_HAT_PLUS_2.
+npu:
+  api_base: "http://localhost:11435"
+  backend: "hailo-10h"
+  npu_metrics: true
+  model_groups: ["1B"]
+  models: ["llama3.2:1b"]
+  prompt_set: drone
+
 # Model definitions by size group
 models:
   7B:

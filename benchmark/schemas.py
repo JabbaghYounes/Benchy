@@ -175,6 +175,14 @@ class LLMResult:
     tps_median: Optional[float] = None
     tps_min: Optional[float] = None
     tps_max: Optional[float] = None
+    # Phase 7 — LLM backend axis. backend distinguishes ollama-cpu /
+    # ollama-cuda / hailo-10h so the dashboard can split CPU-side from
+    # NPU-side runs on the same prompts. NPU-only fields stay None on
+    # non-Hailo runs.
+    backend: Optional[str] = None
+    npu_utilization_percent: Optional[float] = None
+    npu_power_watts: Optional[float] = None
+    hailort_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         result = {
@@ -211,6 +219,11 @@ class LLMResult:
             "tps_median": self.tps_median,
             "tps_min": self.tps_min,
             "tps_max": self.tps_max,
+            # Phase 7 — backend axis
+            "backend": self.backend,
+            "npu_utilization_percent": self.npu_utilization_percent,
+            "npu_power_watts": self.npu_power_watts,
+            "hailort_version": self.hailort_version,
         }
         return result
 

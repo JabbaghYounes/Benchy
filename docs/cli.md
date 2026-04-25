@@ -23,6 +23,14 @@ python -m benchmark run all --profile full
 # hazard reasoning).
 python -m benchmark run all --profile drone
 
+# NPU profile (Pi 5 + AI HAT+ 2 only): runs the LLM workload through
+# HailoRT GenAI's Ollama-compatible REST endpoint on the Hailo-10H NPU.
+# Each LLMResult is tagged with backend="hailo-10h" and gets NPU-side
+# metrics (power, HailoRT version) alongside the host-side ResourceMonitor
+# readings. Starts on llama3.2:1b — see docs/hailo.md for the full
+# prebuilt HEF list and how to scale up.
+python -m benchmark run llm --profile npu
+
 # Specify output directory
 python -m benchmark run all --output ./my_results
 

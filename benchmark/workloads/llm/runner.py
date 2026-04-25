@@ -52,9 +52,15 @@ class LLMBenchmarkConfig:
     # Phase 4 - Batching for small models
     prompt_batch_size: int = 1  # 3 for 1B/3B models per PRD
     # Prompt set selection
-    prompt_set: str = "legacy"  # "legacy", "general", "code", "all"
+    prompt_set: str = "legacy"  # "legacy", "general", "code", "all", "drone"
     # Phase 3 - Memory preflight
     enable_memory_check: bool = False  # True for 1B/3B models
+    # Phase 7 - Backend axis. "ollama-cpu" / "ollama-cuda" / "hailo-10h".
+    # When npu_metrics is True the runner attaches a HailoLLMMetricsCollector
+    # alongside the host-side ResourceMonitor. The HTTP path is unchanged —
+    # talking to HailoRT GenAI just means pointing api_base at its REST port.
+    backend: str = "ollama-cpu"
+    npu_metrics: bool = False
 
     @classmethod
     def for_lightweight_model(
@@ -813,6 +819,15 @@ class LLMBenchmarkRunner:
             logger.debug("Running measured iterations...")
             self._resource_monitor.start()
 
+            # NPU-side metrics: only attached when explicitly enabled by a
+            # profile that targets HailoRT GenAI. Sampling on a host without
+            # Hailo hardware just yields all-None readings.
+            npu_collector = None
+            if self.config.npu_metrics:
+                from benchmark.workloads.llm.hailo_metrics import HailoLLMMetricsCollector
+                npu_collector = HailoLLMMetricsCollector()
+                npu_collector.start()
+
             run_metrics: list[InferenceMetrics] = []
             for i in range(self.config.measured_runs):
                 metrics = self._run_single_inference(prompt_text)
@@ -824,6 +839,7 @@ class LLMBenchmarkRunner:
                 )
 
             resource_utilization = self._resource_monitor.stop()
+            npu_snapshot = npu_collector.stop() if npu_collector else None
 
             # Aggregate metrics across runs
             ttft_values = [m.time_to_first_token_ms for m in run_metrics]
@@ -890,6 +906,18 @@ class LLMBenchmarkRunner:
                 tps_median=tps_median,
                 tps_min=tps_min,
                 tps_max=tps_max,
+                # Phase 7 — backend axis. NPU fields stay None on Ollama-CPU
+                # runs; populated from HailoLLMMetricsCollector otherwise.
+                backend=self.config.backend,
+                npu_utilization_percent=(
+                    npu_snapshot.npu_utilization_percent if npu_snapshot else None
+                ),
+                npu_power_watts=(
+                    npu_snapshot.npu_power_watts if npu_snapshot else None
+                ),
+                hailort_version=(
+                    npu_snapshot.hailort_version if npu_snapshot else None
+                ),
             )
 
             results.append(result)

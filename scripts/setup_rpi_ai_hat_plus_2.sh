@@ -13,7 +13,7 @@
 #   - Internet connection
 #   - Sufficient storage (at least 20GB free recommended)
 #
-# Usage: sudo ./setup_rpi_ai_hat_plus_2.sh [--pull-models]
+# Usage: sudo ./setup_rpi_ai_hat_plus_2.sh [--pull-models] [--with-genai]
 
 set -euo pipefail
 
@@ -23,9 +23,15 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 VENV_DIR="${PROJECT_ROOT}/venv"
 LOG_FILE="${PROJECT_ROOT}/setup_rpi_ai_hat_plus_2.log"
 PULL_MODELS=false
+WITH_GENAI=false
 
 # Hailo configuration
 HAILO_DEVICE="hailo10h"  # AI HAT+ 2 uses Hailo-10H
+
+# HailoRT GenAI configuration (--with-genai)
+HAILO_APPS_REPO="https://github.com/hailo-ai/hailo-apps.git"
+HAILO_APPS_DIR="${PROJECT_ROOT}/.cache/hailo-apps"
+HAILO_OLLAMA_PORT=8000
 
 # Color codes for output
 RED='\033[0;31m'
@@ -56,11 +62,19 @@ while [[ $# -gt 0 ]]; do
             PULL_MODELS=true
             shift
             ;;
+        --with-genai)
+            WITH_GENAI=true
+            shift
+            ;;
         --help|-h)
-            echo "Usage: $0 [--pull-models]"
+            echo "Usage: $0 [--pull-models] [--with-genai]"
             echo ""
             echo "Options:"
-            echo "  --pull-models    Download YOLO and LLM models after setup"
+            echo "  --pull-models    Download YOLO and Ollama LLM models after setup"
+            echo "  --with-genai     Install HailoRT GenAI (hailo-apps + hailo-ollama)"
+            echo "                   so the npu LLM profile can target the Hailo-10H NPU."
+            echo "                   You will still need to dpkg -i the Hailo Model Zoo"
+            echo "                   GenAI .deb manually — see docs/hailo.md for the path."
             echo "  --help, -h       Show this help message"
             exit 0
             ;;
@@ -439,6 +453,108 @@ install_ollama() {
     warn "Ollama may not be responding. Try running 'ollama serve' manually."
 }
 
+# Install HailoRT GenAI (hailo-apps + hailo-ollama) for LLM-on-NPU.
+#
+# This is opt-in via --with-genai because the catalogue ships ~6 GB of
+# prebuilt HEFs and only the Hailo-10H (AI HAT+ 2) can host them. The flow
+# follows the hailo-rpi5-examples install guide and the hailo-ollama README:
+#
+#   1. Clone hailo-apps and run its installer.
+#   2. Source setup_env.sh into the calling shell so hailo-ollama is on PATH.
+#   3. The Hailo Model Zoo GenAI .deb (hailo_gen_ai_model_zoo_<ver>_arm64.deb)
+#      is NOT auto-downloaded — Hailo gates it behind their developer EULA,
+#      and the version pinning differs by HailoRT release. We log clear
+#      next-step instructions and let the user run the dpkg step manually.
+#   4. The hailo-ollama server binds to :8000 on first run and stores HEFs
+#      under ~/.local/share/hailo-ollama/models/. We do NOT auto-start it
+#      from this script — that's a hardware-side decision and we want the
+#      user to start it under their own systemd unit / shell.
+#
+# Validation expectations (Slice 7 on the Pi):
+#   - `which hailo-ollama` resolves
+#   - `curl -sS http://localhost:8000/api/tags` returns a JSON list once
+#     the server is running
+#   - `python -m benchmark run llm --profile npu` populates backend,
+#     hailort_version, npu_power_watts on each LLMResult
+install_hailort_genai() {
+    info "Installing HailoRT GenAI (hailo-apps + hailo-ollama)..."
+
+    if ! command -v git &> /dev/null; then
+        error "git is required for --with-genai but was not found"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$HAILO_APPS_DIR")"
+
+    if [[ -d "$HAILO_APPS_DIR/.git" ]]; then
+        info "hailo-apps repo already cloned at $HAILO_APPS_DIR; pulling latest..."
+        git -C "$HAILO_APPS_DIR" pull --ff-only || warn "Could not fast-forward hailo-apps; continuing with the existing checkout."
+    else
+        info "Cloning $HAILO_APPS_REPO into $HAILO_APPS_DIR..."
+        git clone "$HAILO_APPS_REPO" "$HAILO_APPS_DIR"
+    fi
+
+    if [[ ! -x "$HAILO_APPS_DIR/install.sh" ]]; then
+        error "Expected $HAILO_APPS_DIR/install.sh to exist and be executable. The hailo-apps repo layout may have changed; consult its README."
+        return 1
+    fi
+
+    info "Running hailo-apps installer (this can take several minutes)..."
+    (cd "$HAILO_APPS_DIR" && ./install.sh) || {
+        error "hailo-apps install.sh failed. Inspect the log and re-run with --with-genai once resolved."
+        return 1
+    }
+
+    if [[ -f "$HAILO_APPS_DIR/setup_env.sh" ]]; then
+        info "hailo-apps setup_env.sh found. Source it before running hailo-ollama:"
+        info "  source $HAILO_APPS_DIR/setup_env.sh"
+    fi
+
+    # The Hailo Model Zoo GenAI .deb has to be downloaded manually from the
+    # Hailo Developer Zone (EULA-gated) and dropped into the working
+    # directory before this point. We can't fetch it without credentials.
+    local gen_ai_deb
+    gen_ai_deb=$(ls "$PROJECT_ROOT"/hailo_gen_ai_model_zoo_*_arm64.deb 2>/dev/null | head -n1 || true)
+    if [[ -n "$gen_ai_deb" ]]; then
+        info "Found GenAI Model Zoo package: $gen_ai_deb"
+        dpkg -i "$gen_ai_deb" || {
+            warn "dpkg -i $gen_ai_deb failed. apt-get install -f may help; otherwise check the package matches your HailoRT version."
+            return 1
+        }
+        success "Hailo Model Zoo GenAI installed"
+    else
+        warn "No hailo_gen_ai_model_zoo_*_arm64.deb found at $PROJECT_ROOT."
+        warn "Download it from the Hailo Developer Zone (login required, EULA-gated)"
+        warn "and run: sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_arm64.deb"
+    fi
+
+    # The npu profile in configs/llm_benchmark.yaml starts on qwen2:1.5b.
+    # We do not pre-pull it from this script — the hailo-ollama server has
+    # to be running for /api/pull, and starting the server here would
+    # complicate teardown. Instead, document the manual step.
+    success "hailo-apps + hailo-ollama install attempted"
+    info "Next steps to enable --profile npu (per docs/hailo.md):"
+    info "  1. source $HAILO_APPS_DIR/setup_env.sh"
+    info "  2. hailo-ollama   # starts the GenAI REST server on :$HAILO_OLLAMA_PORT"
+    info "  3. curl --silent http://localhost:$HAILO_OLLAMA_PORT/api/pull \\"
+    info "       -H 'Content-Type: application/json' \\"
+    info "       -d '{\"model\": \"qwen2:1.5b\", \"stream\": true}'"
+    info "  4. python -m benchmark run llm --profile npu"
+}
+
+# Probe the hailo-ollama REST endpoint to confirm an LLM-on-NPU pipeline
+# is reachable. Best-effort — does not fail the script if the server isn't
+# running, since Slice 7 expects the user to start hailo-ollama by hand.
+verify_hailort_genai_server() {
+    info "Probing hailo-ollama at http://localhost:$HAILO_OLLAMA_PORT/api/tags..."
+    if curl -sS --max-time 3 "http://localhost:$HAILO_OLLAMA_PORT/api/tags" >/dev/null 2>&1; then
+        success "hailo-ollama is reachable on :$HAILO_OLLAMA_PORT"
+    else
+        warn "hailo-ollama not responding on :$HAILO_OLLAMA_PORT yet."
+        warn "Start it manually with 'hailo-ollama' once setup_env.sh is sourced."
+    fi
+}
+
 # Configure performance settings
 configure_performance() {
     info "Configuring system for optimal performance..."
@@ -575,9 +691,20 @@ print_usage_instructions() {
     echo "  # YOLO only"
     echo "  python -m benchmark run yolo --profile default"
     echo ""
-    echo "  # LLM only"
+    echo "  # LLM only (Ollama on the Pi 5 CPU)"
     echo "  python -m benchmark run llm --profile default"
     echo ""
+    if [[ "$WITH_GENAI" == true ]]; then
+        echo "  # LLM-on-NPU (Hailo-10H via hailo-ollama on :$HAILO_OLLAMA_PORT)"
+        echo "  source $HAILO_APPS_DIR/setup_env.sh"
+        echo "  hailo-ollama &     # start the GenAI REST server"
+        echo "  python -m benchmark run llm --profile npu"
+        echo ""
+    else
+        echo "  # LLM-on-NPU (Hailo-10H via hailo-ollama):"
+        echo "  Re-run this setup with --with-genai to install hailo-apps."
+        echo ""
+    fi
     echo "To show system information:"
     echo "  python -m benchmark info"
     echo ""
@@ -618,6 +745,11 @@ main() {
     setup_venv
     install_python_deps
     install_ollama
+
+    if [[ "$WITH_GENAI" == true ]]; then
+        install_hailort_genai
+        verify_hailort_genai_server
+    fi
 
     if [[ "$PULL_MODELS" == true ]]; then
         pull_models

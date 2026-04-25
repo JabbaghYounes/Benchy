@@ -92,38 +92,56 @@ no onboard memory, so LLMs always run on the Pi 5 CPU on those boards.
 
 ### Runtime
 
-Benchy targets HailoRT GenAI's **Ollama-compatible REST API**. The runner
-keeps using the existing `OllamaClient` and just points `api_base` at the
-HailoRT GenAI server (default port 11435 — adjust to match your install).
-That means TTFT, tokens/sec, prompt/eval token counts, and truncation
-detection all work without any client changes; the Hailo side ships
-`/api/generate` streaming with the same `eval_count` / `prompt_eval_count`
-fields Ollama emits.
+Benchy targets HailoRT GenAI's **Ollama-compatible REST API**, exposed by
+the [`hailo-ollama`](https://github.com/hailo-ai/hailo-apps/blob/main/hailo_apps/python/gen_ai_apps/hailo_ollama/README.md)
+binary that ships in the [`hailo-apps`](https://github.com/hailo-ai/hailo-apps)
+repo. The runner keeps using the existing `OllamaClient` and just points
+`api_base` at the GenAI server (default port **8000** per the hailo-ollama
+README; adjust if your install binds elsewhere). TTFT, tokens/sec,
+prompt/eval token counts, and truncation detection all work without
+client changes — `hailo-ollama` mirrors Ollama's `/api/generate` streaming
+shape including `eval_count` and `prompt_eval_count`.
+
+### Setup (high level)
+
+1. `sudo apt install dkms hailo-h10-all` — Hailo-10H driver + HailoRT
+   (already covered by `scripts/setup_rpi_ai_hat_plus_2.sh`).
+2. `git clone https://github.com/hailo-ai/hailo-apps.git && cd hailo-apps && sudo ./install.sh && source setup_env.sh`
+3. `sudo dpkg -i hailo_gen_ai_model_zoo_<version>_arm64.deb` (the
+   hailo-ollama README pins this to `5.1.1` at the time of writing — adjust
+   to whatever your HailoRT 5.x install ships with).
+4. Run `hailo-ollama` to start the server. Config at
+   `~/.config/hailo-ollama/hailo-ollama.json`; HEF cache at
+   `~/.local/share/hailo-ollama/models/`.
+5. Pull a model on first use:
+   ```bash
+   curl --silent http://localhost:8000/api/pull \
+     -H 'Content-Type: application/json' \
+     -d '{ "model": "qwen2:1.5b", "stream": true }'
+   ```
 
 ### Prebuilt HEFs
 
-The Hailo Model Zoo GenAI catalogue ships precompiled HEFs for:
+The Hailo Model Zoo GenAI 5.1.1 catalogue ships precompiled HEFs for:
 
 | Tag (Ollama-compat) | Params |
 |---|---|
-| `llama3.2:1b` | 1B |
-| `qwen2.5:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B |
-| `deepseek_r1_distill_qwen:1.5b`, `qwen2:1.5b` | 1.5B |
+| `qwen2:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B |
+| `deepseek_r1_distill_qwen:1.5b` | 1.5B |
 | `llama3.2:3b` | 3B |
-| `llama2:7b` | 7B |
 
 `tests/test_llm_npu_profile.py:HAILO_GENAI_PREBUILT_HEFS` is the canonical
-whitelist; profiles that list anything outside it fail in CI.
+whitelist; profiles that list anything outside it fail the test suite.
 
 ### Running
 
 ```bash
-# On a Pi 5 + AI HAT+ 2 with HailoRT GenAI installed and reachable at
-# http://localhost:11435 (the default in configs/llm_benchmark.yaml).
+# On a Pi 5 + AI HAT+ 2 with the hailo-ollama server reachable at
+# http://localhost:8000 (the default in configs/llm_benchmark.yaml).
 python -m benchmark run llm --profile npu
 ```
 
-The `npu` profile starts with the smallest HEF (`llama3.2:1b`) so the
+The `npu` profile starts with the smallest HEF (`qwen2:1.5b`) so the
 pipeline is validated end-to-end on a fast model before scaling up. Add
 larger tags to `configs/llm_benchmark.yaml` once a smaller one has
 published clean numbers.

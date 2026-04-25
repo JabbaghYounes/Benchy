@@ -20,20 +20,17 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LLM_CONFIG = REPO_ROOT / "configs" / "llm_benchmark.yaml"
 
 
-# Prebuilt HEFs published by Hailo Model Zoo GenAI as of Phase 2's discovery.
-# See docs/hailo.md "LLM on Hailo-10H". Models added to the npu profile must
+# Prebuilt HEFs confirmed in the Hailo Model Zoo GenAI 5.1.1 catalogue —
+# served by the hailo-ollama REST endpoint and listed in its README. See
+# docs/hailo.md "LLM on Hailo-10H". Models added to the npu profile must
 # be in this set or the test fails — that's the contract that prevents the
-# YAML from drifting ahead of what the HailoRT GenAI server can actually
-# serve.
+# YAML from drifting ahead of what HailoRT GenAI can actually serve.
 HAILO_GENAI_PREBUILT_HEFS = {
-    "llama3.2:1b",
-    "llama3.2:3b",
-    "qwen2.5:1.5b",
+    "qwen2:1.5b",
     "qwen2.5-instruct:1.5b",
     "qwen2.5-coder:1.5b",
     "deepseek_r1_distill_qwen:1.5b",
-    "qwen2:1.5b",
-    "llama2:7b",
+    "llama3.2:3b",
 }
 
 
@@ -56,9 +53,9 @@ def test_npu_profile_enables_npu_metrics(llm_cfg):
 
 def test_npu_profile_overrides_api_base(llm_cfg):
     api_base = llm_cfg["npu"]["api_base"]
-    # Must point somewhere other than Ollama's default port; the canonical
-    # HailoRT GenAI port today is 11435 but the contract is just "not the
-    # default Ollama".
+    # Must point somewhere other than Ollama's default port. The hailo-ollama
+    # README defaults to port 8000 — we pin against that here so a config
+    # drift back to :11434 trips a clean failure.
     assert api_base != "http://localhost:11434"
     assert api_base.startswith("http://")
 
@@ -74,14 +71,14 @@ def test_npu_profile_models_are_prebuilt_hefs(llm_cfg):
 
 
 def test_npu_profile_starts_smallest(llm_cfg):
-    # Smallest-to-largest rollout per Phase 2 plan. Every entry in the
-    # initial npu profile must be <= 3B parameters until Slice 7 confirms
-    # the pipeline on hardware.
+    # Smallest-to-largest rollout per Phase 2 plan. The smallest prebuilt
+    # HEF in Hailo Model Zoo GenAI 5.1.1 is qwen2:1.5b (1.5B params); the
+    # largest in the catalogue is llama3.2:3b. The initial npu profile
+    # must stay within that range until Slice 7 confirms the pipeline on
+    # hardware.
     models = llm_cfg["npu"]["models"]
-    SMALL_LLAMAS = {"llama3.2:1b", "llama3.2:3b"}
-    SMALL_QWENS = {"qwen2.5:1.5b", "qwen2.5-instruct:1.5b", "qwen2.5-coder:1.5b",
-                   "deepseek_r1_distill_qwen:1.5b", "qwen2:1.5b"}
-    SMALL = SMALL_LLAMAS | SMALL_QWENS
+    SMALL = {"qwen2:1.5b", "qwen2.5-instruct:1.5b", "qwen2.5-coder:1.5b",
+             "deepseek_r1_distill_qwen:1.5b", "llama3.2:3b"}
     for tag in models:
         assert tag in SMALL, f"npu profile too aggressive: {tag} > 3B"
 

@@ -114,10 +114,13 @@ class HailoBackend(YOLOBackend):
     Steps 1-3 happen in prepare_model() if no cached HEF exists.
     """
 
-    # Supported YOLO versions and tasks for Hailo
-    # Detection is the primary supported task in v1
-    # Note: YOLOv12 support available on Hailo-10H with SDK 5.x
-    SUPPORTED_TASKS = [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION]
+    # Supported YOLO versions and tasks for Hailo. Detection and
+    # classification have shipped since v1; OBB joined in Phase 3a, with
+    # rotated-NMS postprocessing handled by `YOLOPostProcessor._process_obb`.
+    # Pose and segmentation still need custom postprocessors before they
+    # can be unblocked here (Phase 3b/3c).
+    # Note: YOLOv12 support available on Hailo-10H with SDK 5.x.
+    SUPPORTED_TASKS = [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB]
     SUPPORTED_VERSIONS = ["v8", "v11", "v26"]
 
     # Expected HailoRT SDK versions for each device family

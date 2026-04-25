@@ -51,6 +51,34 @@ class Detection:
 
 
 @dataclass
+class OrientedBox:
+    """A single rotated detection result (Phase 3a)."""
+
+    cx: float
+    cy: float
+    w: float
+    h: float
+    # Canonical angle in radians, normalised to [-pi/2, pi/2].
+    angle_rad: float
+
+    confidence: float
+    class_id: int
+    class_name: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "cx": self.cx,
+            "cy": self.cy,
+            "w": self.w,
+            "h": self.h,
+            "angle_rad": self.angle_rad,
+            "confidence": self.confidence,
+            "class_id": self.class_id,
+            "class_name": self.class_name,
+        }
+
+
+@dataclass
 class ClassificationResult:
     """A single classification result."""
 
@@ -108,6 +136,15 @@ class YOLOPostProcessor:
     4. Scale boxes to original image size
     """
 
+    # DOTA class names (15 classes used by Ultralytics yolo*-obb checkpoints).
+    # Ordering matches the Ultralytics DOTA dataset YAML; do not reorder.
+    DOTA_CLASSES = [
+        "plane", "ship", "storage tank", "baseball diamond", "tennis court",
+        "basketball court", "ground track field", "harbor", "bridge",
+        "large vehicle", "small vehicle", "helicopter", "roundabout",
+        "soccer ball field", "swimming pool",
+    ]
+
     # COCO class names (default)
     COCO_CLASSES = [
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
@@ -135,16 +172,23 @@ class YOLOPostProcessor:
         self.task = task
         self.config = config or PostProcessConfig()
 
-        # Set default class names if not provided
+        # Set default class names if not provided. OBB defaults to DOTA's 15
+        # classes (the yolo*-obb checkpoints are trained on DOTA); detection
+        # / classification keep their existing 80-class COCO default.
         if self.config.class_names is None:
-            if self.config.num_classes == 80:
+            if task == YOLOTask.OBB:
+                # Override num_classes too if the caller didn't customise it.
+                if self.config.num_classes == 80:
+                    self.config.num_classes = 15
+                self.config.class_names = self.DOTA_CLASSES
+            elif self.config.num_classes == 80:
                 self.config.class_names = self.COCO_CLASSES
 
     def process(
         self,
         outputs: Dict[str, np.ndarray],
         config: Optional[PostProcessConfig] = None,
-    ) -> Union[List[Detection], List[ClassificationResult]]:
+    ) -> Union[List[Detection], List[ClassificationResult], List[OrientedBox]]:
         """Process raw model outputs.
 
         Args:
@@ -160,6 +204,8 @@ class YOLOPostProcessor:
             return self._process_detection(outputs, cfg)
         elif self.task == YOLOTask.CLASSIFICATION:
             return self._process_classification(outputs, cfg)
+        elif self.task == YOLOTask.OBB:
+            return self._process_obb(outputs, cfg)
         else:
             logger.warning(f"Unsupported task: {self.task}, returning empty results")
             return []
@@ -240,6 +286,116 @@ class YOLOPostProcessor:
             ))
 
         return detections
+
+    # ---------- OBB processing (Phase 3a) ----------
+
+    def _process_obb(
+        self,
+        outputs: Dict[str, np.ndarray],
+        config: PostProcessConfig,
+    ) -> List[OrientedBox]:
+        """Process oriented-bounding-box outputs from yolo*-obb checkpoints.
+
+        Expected raw shape (post Hailo HEF): one tensor of shape
+        (batch, num_anchors, 5 + num_classes) or its transposed variant
+        (batch, 5 + num_classes, num_anchors). The +5 is
+        (cx, cy, w, h, angle_rad). YOLOv8/v11/v26-obb all use this layout
+        per Ultralytics convention; the angle range varies between
+        checkpoints ([-pi/4, 3pi/4] vs [-pi/2, pi/2]) so we normalise to
+        [-pi/2, pi/2] before NMS.
+
+        Args:
+            outputs: Raw model outputs
+            config: Post-processing configuration
+
+        Returns:
+            List of OrientedBox objects after rotated NMS
+        """
+        obb_output = self._get_detection_output(outputs)
+
+        if obb_output is None:
+            logger.warning("No valid OBB output found")
+            return []
+
+        # Drop the batch dim so we can reason about (anchors, channels).
+        if obb_output.ndim == 3:
+            obb_output = obb_output[0]
+
+        # Detect transposition: yolo head exports often emit
+        # (channels, anchors); transpose to (anchors, channels) when the
+        # number of channels matches our expectation.
+        expected_channels = 5 + config.num_classes
+        if obb_output.shape[0] == expected_channels and obb_output.shape[1] != expected_channels:
+            obb_output = obb_output.T
+        elif obb_output.shape[-1] != expected_channels:
+            logger.warning(
+                f"OBB output has unexpected last-dim {obb_output.shape[-1]}, "
+                f"expected {expected_channels}; attempting best-effort decode."
+            )
+
+        # Split: 5 geometric channels + num_classes class scores.
+        cx = obb_output[:, 0]
+        cy = obb_output[:, 1]
+        w = obb_output[:, 2]
+        h = obb_output[:, 3]
+        angle = obb_output[:, 4]
+        class_scores = obb_output[:, 5:]
+
+        # Normalise angle into the canonical [-pi/2, pi/2] range. Adding
+        # multiples of pi rotates the rectangle onto an equivalent OBB
+        # because rectangles have 180-degree rotational symmetry.
+        angle = ((angle + np.pi / 2) % np.pi) - np.pi / 2
+
+        scores = np.max(class_scores, axis=1)
+        class_ids = np.argmax(class_scores, axis=1)
+
+        # Confidence threshold.
+        mask = scores >= config.conf_threshold
+        if not np.any(mask):
+            return []
+
+        boxes = np.stack([cx[mask], cy[mask], w[mask], h[mask], angle[mask]], axis=1)
+        scores = scores[mask]
+        class_ids = class_ids[mask]
+
+        # Rotated NMS.
+        keep = self._rotated_nms(boxes, scores, config.iou_threshold)
+        boxes = boxes[keep]
+        scores = scores[keep]
+        class_ids = class_ids[keep]
+
+        # Scale boxes if original image dims were provided. Note: we scale
+        # cx/cy/w/h but leave angle unchanged — under non-uniform scaling
+        # an OBB's true orientation would also shift, but YOLO-OBB models
+        # are trained at the input resolution so we expect uniform scale
+        # in practice.
+        if config.original_width and config.original_height:
+            scale_x = config.original_width / config.input_width
+            scale_y = config.original_height / config.input_height
+            boxes = boxes.copy()
+            boxes[:, 0] *= scale_x  # cx
+            boxes[:, 1] *= scale_y  # cy
+            boxes[:, 2] *= scale_x  # w
+            boxes[:, 3] *= scale_y  # h
+
+        oriented = []
+        for i in range(len(boxes)):
+            class_name = None
+            if config.class_names and class_ids[i] < len(config.class_names):
+                class_name = config.class_names[class_ids[i]]
+            oriented.append(OrientedBox(
+                cx=float(boxes[i, 0]),
+                cy=float(boxes[i, 1]),
+                w=float(boxes[i, 2]),
+                h=float(boxes[i, 3]),
+                angle_rad=float(boxes[i, 4]),
+                confidence=float(scores[i]),
+                class_id=int(class_ids[i]),
+                class_name=class_name,
+            ))
+        return oriented
+
+    # ---------- end OBB processing ----------
 
     def _get_detection_output(
         self,
@@ -444,6 +600,177 @@ class YOLOPostProcessor:
 
         return intersection / (union + 1e-6)
 
+    # ---------- Rotated NMS primitives (Phase 3a, OBB on Hailo) ----------
+    # Pure-numpy implementation of rotated-rectangle IoU via Sutherland-Hodgman
+    # polygon clipping. Avoids hard-pinning OpenCV (`opencv-python-headless`
+    # is installed by the setup scripts but is NOT in setup.py's
+    # install_requires, so we keep this self-contained).
+
+    @staticmethod
+    def _obb_corners(box: np.ndarray) -> np.ndarray:
+        """Compute the four corners of an OBB.
+
+        Args:
+            box: Single OBB (5,) = (cx, cy, w, h, angle_rad)
+
+        Returns:
+            (4, 2) corner array. Local order (-,-),(+,-),(+,+),(-,+) is
+            CCW in math y-up coordinates; image y-down callers should not
+            rely on the winding directly — `_rotated_iou` normalises via
+            `_ensure_ccw`.
+        """
+        cx, cy, w, h, angle = (
+            float(box[0]), float(box[1]), float(box[2]), float(box[3]), float(box[4])
+        )
+        cos_a, sin_a = float(np.cos(angle)), float(np.sin(angle))
+        hw, hh = w / 2.0, h / 2.0
+        local = np.array([[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]])
+        rot = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+        return local @ rot.T + np.array([cx, cy])
+
+    @staticmethod
+    def _polygon_signed_area(poly: np.ndarray) -> float:
+        """Shoelace signed area (positive for CCW in math coords)."""
+        if poly.shape[0] < 3:
+            return 0.0
+        x, y = poly[:, 0], poly[:, 1]
+        return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+
+    @classmethod
+    def _ensure_ccw(cls, poly: np.ndarray) -> np.ndarray:
+        """Return polygon in CCW order (reverses if signed area < 0)."""
+        if poly.shape[0] < 3:
+            return poly
+        return poly if cls._polygon_signed_area(poly) >= 0 else poly[::-1]
+
+    @staticmethod
+    def _segment_intersect(
+        p1: np.ndarray, p2: np.ndarray, p3: np.ndarray, p4: np.ndarray
+    ) -> np.ndarray:
+        """Intersection of the lines through p1-p2 and p3-p4.
+
+        Used inside Sutherland-Hodgman where the inside-test guarantees
+        the segments actually cross. Returns p1 unchanged if the lines
+        are (nearly) parallel — the caller's outer loop will discard it.
+        """
+        x1, y1 = float(p1[0]), float(p1[1])
+        x2, y2 = float(p2[0]), float(p2[1])
+        x3, y3 = float(p3[0]), float(p3[1])
+        x4, y4 = float(p4[0]), float(p4[1])
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(denom) < 1e-12:
+            return p1.astype(np.float64)
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+        return np.array([x1 + t * (x2 - x1), y1 + t * (y2 - y1)])
+
+    @classmethod
+    def _polygon_intersect(cls, subj: np.ndarray, clip: np.ndarray) -> np.ndarray:
+        """Sutherland-Hodgman polygon intersection.
+
+        Both `subj` and `clip` must be CCW (caller's responsibility — use
+        `_ensure_ccw`). Returns the intersection polygon as an (M, 2) array,
+        or an empty (0, 2) array if there is no overlap.
+        """
+        output = subj
+        n_clip = clip.shape[0]
+        for i in range(n_clip):
+            if output.shape[0] == 0:
+                return output
+            e_start = clip[i]
+            e_end = clip[(i + 1) % n_clip]
+            edge = e_end - e_start
+            new_output = []
+            n_out = output.shape[0]
+            for j in range(n_out):
+                current = output[j]
+                previous = output[(j - 1) % n_out]
+                # Cross product test: point is "inside" (left of edge for CCW)
+                # when cross(edge, point - e_start) >= 0.
+                curr_in = (
+                    edge[0] * (current[1] - e_start[1])
+                    - edge[1] * (current[0] - e_start[0])
+                ) >= 0
+                prev_in = (
+                    edge[0] * (previous[1] - e_start[1])
+                    - edge[1] * (previous[0] - e_start[0])
+                ) >= 0
+                if curr_in:
+                    if not prev_in:
+                        new_output.append(
+                            cls._segment_intersect(previous, current, e_start, e_end)
+                        )
+                    new_output.append(current)
+                elif prev_in:
+                    new_output.append(
+                        cls._segment_intersect(previous, current, e_start, e_end)
+                    )
+            output = np.array(new_output) if new_output else np.empty((0, 2))
+        return output
+
+    def _rotated_iou(self, box: np.ndarray, boxes: np.ndarray) -> np.ndarray:
+        """IoU between one rotated box and N rotated boxes.
+
+        Mirrors `_compute_iou` but for OBBs.
+
+        Args:
+            box: Single OBB (5,) = (cx, cy, w, h, angle_rad)
+            boxes: Multiple OBBs (N, 5) in the same format
+
+        Returns:
+            IoU values (N,)
+        """
+        if len(boxes) == 0:
+            return np.array([], dtype=np.float64)
+
+        poly_a = self._ensure_ccw(self._obb_corners(box))
+        area_a = float(box[2]) * float(box[3])
+        n = boxes.shape[0]
+        ious = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            poly_b = self._ensure_ccw(self._obb_corners(boxes[i]))
+            inter_poly = self._polygon_intersect(poly_a, poly_b)
+            inter_area = abs(self._polygon_signed_area(inter_poly))
+            area_b = float(boxes[i, 2]) * float(boxes[i, 3])
+            union = area_a + area_b - inter_area
+            ious[i] = inter_area / (union + 1e-6)
+        return ious
+
+    def _rotated_nms(
+        self,
+        boxes: np.ndarray,
+        scores: np.ndarray,
+        iou_threshold: float,
+    ) -> np.ndarray:
+        """Non-Maximum Suppression on rotated boxes.
+
+        Mirrors `_nms` but uses rotated-rectangle IoU.
+
+        Args:
+            boxes: OBBs (N, 5) in (cx, cy, w, h, angle_rad)
+            scores: Confidence scores (N,)
+            iou_threshold: IoU threshold for suppression
+
+        Returns:
+            Indices of boxes to keep (descending score order, NMS applied)
+        """
+        if len(boxes) == 0:
+            return np.array([], dtype=np.int64)
+
+        order = scores.argsort()[::-1]
+        keep = []
+        while len(order) > 0:
+            i = order[0]
+            keep.append(i)
+            if len(order) == 1:
+                break
+            remaining = order[1:]
+            ious = self._rotated_iou(boxes[i], boxes[remaining])
+            mask = ious <= iou_threshold
+            order = remaining[mask]
+        return np.array(keep, dtype=np.int64)
+
+    # ---------- end rotated NMS primitives ----------
+
     def _process_classification(
         self,
         outputs: Dict[str, np.ndarray],
@@ -533,7 +860,7 @@ def decode_yolo_output(
     iou_threshold: float = 0.45,
     input_size: int = 640,
     num_classes: int = 80,
-) -> Union[List[Detection], List[ClassificationResult]]:
+) -> Union[List[Detection], List[ClassificationResult], List[OrientedBox]]:
     """Convenience function to decode YOLO outputs.
 
     Args:

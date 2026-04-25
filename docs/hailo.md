@@ -22,14 +22,24 @@ References: [AI HAT+ product brief (PDF)](https://datasheets.raspberrypi.com/ai-
 
 | YOLO Version | Detection | Classification | Segmentation | Pose | OBB |
 |--------------|-----------|----------------|--------------|------|-----|
-| v8 | Yes | Yes | No | No | No |
-| v11 | Yes | Yes | No | No | No |
-| v26 | Yes | Yes | No | No | No |
+| v8 | Yes | Yes | No | No | Yes |
+| v11 | Yes | Yes | No | No | Yes |
+| v26 | Yes | Yes | No | No | Experimental |
 
 **Optimized Models:**
 - `yolov8n.pt`, `yolov8s.pt`, `yolov8m.pt` (Detection)
 - `yolov8n-cls.pt`, `yolov8s-cls.pt`, `yolov8m-cls.pt` (Classification)
-- Similar patterns for v11 and v26
+- `yolov8n-obb.pt`, `yolov8s-obb.pt`, `yolov8m-obb.pt` (OBB, Phase 3a)
+- Similar patterns for v11 and v26.
+
+**OBB note (Phase 3a).** v11-obb has official Hailo Model Zoo backing;
+v8-obb is community-supported and well-documented. v26-obb is listed for
+whitelist symmetry but is **experimental** — no public confirmation that
+the Ultralytics → ONNX → HAR → HEF pipeline produces clean weights, and
+hardware verification (Slice 6 of Phase 3a) is what will move it from
+experimental to either Yes or No. The `_process_obb` postprocessor and
+custom rotated NMS in `benchmark/workloads/yolo/postprocessing.py` work
+identically across versions; the risk is at the conversion stage.
 
 ## Model Conversion Pipeline
 
@@ -43,7 +53,7 @@ Hailo requires model conversion from PyTorch to HEF format:
 
 ## Known Limitations
 
-1. **Supported Tasks Only**: Segmentation, pose estimation, and OBB tasks are NOT supported on Hailo NPU due to architectural constraints.
+1. **Supported Tasks Only**: Segmentation and pose estimation are NOT yet supported on Hailo NPU — the Ultralytics ONNX export emits custom heads that need bespoke postprocessors (Phase 3b/3c). OBB shipped in Phase 3a with a custom rotated-NMS path.
 2. **INT8 Quantization**: All Hailo models use INT8 quantization. Minor accuracy differences compared to FP32/FP16 models are expected.
 3. **Model Size**: Larger models (l, x variants) may have longer compilation times and higher memory requirements.
 4. **No CPU Fallback**: When using `--backend hailo`, the benchmark will NOT fall back to CPU if Hailo is unavailable. This ensures benchmark integrity.

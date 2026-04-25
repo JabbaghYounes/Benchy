@@ -277,8 +277,10 @@ class ONNXExporter:
             "errors": [],
         }
 
-        # Check supported tasks
-        supported_tasks = [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION]
+        # Check supported tasks. Detection, classification, and OBB are
+        # supported through the conversion pipeline; pose and segmentation
+        # are still blocked here pending Phase 3b/3c work.
+        supported_tasks = [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB]
         if task not in supported_tasks:
             compatibility["likely_compatible"] = False
             compatibility["errors"].append(
@@ -295,15 +297,13 @@ class ONNXExporter:
                 "Large models (x, l) may have memory constraints on Hailo NPU"
             )
 
-        # Check for pose/segment/obb models
+        # Pose and segmentation heads still need custom postprocessors before
+        # they can clear the conversion pipeline; flag them here.
         if "-pose" in model_lower:
             compatibility["likely_compatible"] = False
             compatibility["errors"].append("Pose models not yet supported")
         if "-seg" in model_lower:
             compatibility["likely_compatible"] = False
             compatibility["errors"].append("Segmentation models not yet supported")
-        if "-obb" in model_lower:
-            compatibility["likely_compatible"] = False
-            compatibility["errors"].append("OBB models not yet supported")
 
         return compatibility

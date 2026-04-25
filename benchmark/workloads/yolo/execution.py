@@ -119,9 +119,12 @@ class ExecutionResult:
 HAILO_SUPPORTED_VERSIONS = ["v8", "v11", "v26"]
 
 HAILO_SUPPORTED_TASKS = {
-    "v8": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION],
-    "v11": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION],
-    "v26": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION],
+    "v8": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB],
+    "v11": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB],
+    # v26-obb has no public Hailo Model Zoo backing yet — listed for
+    # symmetry with detection/classification, but Slice 6 hardware
+    # verification will confirm or park it.
+    "v26": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB],
 }
 
 # Models known to have Hailo support (nano and small variants work best)
@@ -129,14 +132,17 @@ HAILO_OPTIMIZED_MODELS = {
     "v8": {
         YOLOTask.DETECTION: ["yolov8n.pt", "yolov8s.pt", "yolov8m.pt"],
         YOLOTask.CLASSIFICATION: ["yolov8n-cls.pt", "yolov8s-cls.pt", "yolov8m-cls.pt"],
+        YOLOTask.OBB: ["yolov8n-obb.pt", "yolov8s-obb.pt", "yolov8m-obb.pt"],
     },
     "v11": {
         YOLOTask.DETECTION: ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt"],
         YOLOTask.CLASSIFICATION: ["yolo11n-cls.pt", "yolo11s-cls.pt", "yolo11m-cls.pt"],
+        YOLOTask.OBB: ["yolo11n-obb.pt", "yolo11s-obb.pt", "yolo11m-obb.pt"],
     },
     "v26": {
         YOLOTask.DETECTION: ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
         YOLOTask.CLASSIFICATION: ["yolo26n-cls.pt", "yolo26s-cls.pt", "yolo26m-cls.pt"],
+        YOLOTask.OBB: ["yolo26n-obb.pt", "yolo26s-obb.pt", "yolo26m-obb.pt"],
     },
 }
 

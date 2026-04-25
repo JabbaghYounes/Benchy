@@ -2,8 +2,9 @@
 
 The drone profile must:
   - parse cleanly out of the shipped YAML configs
-  - stay Hailo-compatible (detection only — seg/pose/OBB are blocked on Hailo
-    per docs/hailo.md and benchmark/workloads/yolo/execution.py)
+  - stay Hailo-compatible (currently detection only — segmentation and
+    pose are still blocked on Hailo per docs/hailo.md and
+    benchmark/workloads/yolo/execution.py; Phase 3a unblocked OBB)
   - use the bumped 1280 input resolution and a drone-relevant dataset
   - select the curated `drone` prompt set on the LLM side
 """
@@ -14,7 +15,11 @@ import yaml
 
 from benchmark.cli import _infer_yolo_model_info
 from benchmark.schemas import YOLOTask
-from benchmark.workloads.yolo.execution import HAILO_SUPPORTED_TASKS
+from benchmark.workloads.yolo.execution import (
+    HAILO_OPTIMIZED_MODELS,
+    HAILO_SUPPORTED_TASKS,
+    check_hailo_compatibility,
+)
 from benchmark.workloads.llm.runner import DRONE_PROMPTS, PromptSet
 
 
@@ -102,3 +107,36 @@ def test_drone_prompt_ids_cover_use_cases():
         "hazard_reasoning",
     }
     assert ids == expected
+
+
+# ----- Phase 3a: OBB-on-Hailo invariants ------------------------------------
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_obb_optimized_models_pass_hailo_compatibility(yolo_version):
+    """Every OBB model in HAILO_OPTIMIZED_MODELS must clear the runtime
+    compatibility gate. If a future edit drops OBB from
+    HAILO_SUPPORTED_TASKS but leaves models in HAILO_OPTIMIZED_MODELS,
+    this test catches the mismatch.
+    """
+    obb_models = HAILO_OPTIMIZED_MODELS[yolo_version].get(YOLOTask.OBB, [])
+    assert obb_models, (
+        f"Phase 3a expects HAILO_OPTIMIZED_MODELS[{yolo_version!r}] to "
+        f"include OBB entries; found none."
+    )
+    for model_name in obb_models:
+        ok, reason = check_hailo_compatibility(model_name, yolo_version, YOLOTask.OBB)
+        assert ok, (
+            f"{model_name!r} ({yolo_version}, OBB) failed Hailo "
+            f"compatibility: {reason}"
+        )
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_obb_in_hailo_supported_tasks(yolo_version):
+    """The whitelist should accept OBB on every supported version.
+    v26 is marked experimental in docs but stays in the whitelist; if it
+    needs to be dropped post-Slice-6, this test is the contract that
+    must be updated alongside.
+    """
+    assert YOLOTask.OBB in HAILO_SUPPORTED_TASKS[yolo_version]

@@ -8,8 +8,18 @@
 - Detection
 - Segmentation
 - Pose estimation
-- Oriented Bounding Box (OBB)
+- Oriented Bounding Box (OBB) — Hailo-supported on v8/v11 (Phase 3a); v26 experimental.
 - Classification
+
+**OBB output format.** OBB benchmarks return `OrientedBox` objects
+(`benchmark/workloads/yolo/postprocessing.py:OrientedBox`) with fields
+`cx, cy, w, h, angle_rad, confidence, class_id, class_name`. Angle is
+canonical: `angle_rad ∈ [-π/2, π/2]` regardless of which Ultralytics
+checkpoint emitted it (the head's native convention varies by version).
+Default class names come from DOTA-15 (`plane`, `ship`, `large vehicle`,
+…) and the dataset is `dota8.yaml` for both calibration and validation.
+For production runs at scale, swap to a larger DOTA val subset rather
+than the bundled 8-image sample.
 
 **Model Sizes:** nano (n), small (s), medium (m), large (l), extra-large (x)
 

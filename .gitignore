@@ -1,6 +1,3 @@
-# Local Claude Code project instructions (per global rule)
-CLAUDE.md
-
 # Python
 __pycache__/
 *.py[cod]

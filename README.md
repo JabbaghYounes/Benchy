@@ -66,6 +66,28 @@ python -m benchmark run all
 python -m benchmark run all --profile full
 ```
 
+### 5. Hardware verification (Hailo boards)
+
+Smart runners that sweep every Phase 2 / 3 task in one command, with
+per-step progress, timing, log capture, JSON validation, and a final
+pass/fail summary. Continue-on-failure: a single broken model doesn't
+abort the rest of the sweep, and the exit code reflects only blocking
+(non-experimental) failures.
+
+```bash
+# Pi 5 + AI HAT+ (Hailo-8 / 8L) — vision sweep (det/obb/seg/pose × v8/v11/v26)
+./scripts/verify_ai_hat_plus.sh
+
+# Pi 5 + AI HAT+ 2 (Hailo-10H) — same vision sweep + LLM-on-NPU + auto-dashboard
+./scripts/verify_ai_hat_plus_2.sh
+```
+
+Output lands in `results/hw_verify_<timestamp>/` (per-step `.log`s,
+`bench_*.json` artefacts, and on AI HAT+ 2 a generated `report/`
+dashboard). v26 entries are tagged `[experimental]` and counted
+separately at the end so a v26 failure doesn't read as a project
+regression.
+
 ## Benchmark Profiles
 
 | Profile | YOLO | LLM | Use Case |

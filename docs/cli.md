@@ -38,6 +38,14 @@ python -m benchmark run yolo --profile drone_full
 # prebuilt HEF list and how to scale up.
 python -m benchmark run llm --profile npu
 
+# Smart hardware-verification runners (Hailo boards). Each sweeps every
+# Phase 2 / 3 task with progress + timing + JSON validation + a final
+# pass/fail summary. Continue-on-failure semantics; v26 entries are
+# tagged [experimental] and counted separately. Output lands in
+# results/hw_verify_<timestamp>/.
+./scripts/verify_ai_hat_plus.sh         # Pi 5 + AI HAT+ (Hailo-8 / 8L)
+./scripts/verify_ai_hat_plus_2.sh       # Pi 5 + AI HAT+ 2 (Hailo-10H, also LLM-on-NPU)
+
 # Specify output directory
 python -m benchmark run all --output ./my_results
 

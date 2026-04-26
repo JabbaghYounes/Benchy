@@ -174,3 +174,51 @@ def test_segmentation_in_hailo_supported_tasks(yolo_version):
     v26-obb until Slice 5 hardware verification.
     """
     assert YOLOTask.SEGMENTATION in HAILO_SUPPORTED_TASKS[yolo_version]
+
+
+# ----- Phase 3c: pose-on-Hailo invariants -----------------------------------
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_pose_optimized_models_pass_hailo_compatibility(yolo_version):
+    """Every -pose model in HAILO_OPTIMIZED_MODELS must clear the runtime
+    compatibility gate. Same shape as the OBB / seg invariants.
+    """
+    pose_models = HAILO_OPTIMIZED_MODELS[yolo_version].get(YOLOTask.POSE, [])
+    assert pose_models, (
+        f"Phase 3c expects HAILO_OPTIMIZED_MODELS[{yolo_version!r}] to "
+        f"include POSE entries; found none."
+    )
+    for model_name in pose_models:
+        ok, reason = check_hailo_compatibility(
+            model_name, yolo_version, YOLOTask.POSE
+        )
+        assert ok, (
+            f"{model_name!r} ({yolo_version}, POSE) failed Hailo "
+            f"compatibility: {reason}"
+        )
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_pose_in_hailo_supported_tasks(yolo_version):
+    """Whitelist should accept POSE on every supported version after
+    Phase 3c. With this in place, all five YOLO tasks are unblocked on
+    Hailo at the whitelist layer.
+    """
+    assert YOLOTask.POSE in HAILO_SUPPORTED_TASKS[yolo_version]
+
+
+@pytest.mark.parametrize("yolo_version", ["v8", "v11", "v26"])
+def test_all_yolo_tasks_unblocked_on_hailo(yolo_version):
+    """Final invariant — no YOLO task should be missing from the Hailo
+    whitelist after Phase 3c. Catches a future regression that drops
+    one of the five.
+    """
+    expected = {
+        YOLOTask.DETECTION,
+        YOLOTask.CLASSIFICATION,
+        YOLOTask.OBB,
+        YOLOTask.SEGMENTATION,
+        YOLOTask.POSE,
+    }
+    assert expected.issubset(set(HAILO_SUPPORTED_TASKS[yolo_version]))

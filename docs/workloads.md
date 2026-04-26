@@ -7,7 +7,7 @@
 **Tasks:**
 - Detection
 - Segmentation — Hailo-supported on v8/v11 (Phase 3b); v26 experimental.
-- Pose estimation
+- Pose estimation — Hailo-supported on v8/v11 (Phase 3c); v26 experimental.
 - Oriented Bounding Box (OBB) — Hailo-supported on v8/v11 (Phase 3a); v26 experimental.
 - Classification
 
@@ -32,6 +32,21 @@ attribute for mAP-with-masks validation or visualisation. Default class
 names come from COCO-80 (the same set yolov8-seg / yolo11-seg are
 trained on); calibration and validation use `coco128-seg.yaml` per the
 existing dataset map in `benchmark/workloads/yolo/runner.py`.
+
+**Pose output format.** Pose benchmarks return `PoseResult` objects
+(`postprocessing.py:PoseResult`) with fields `bbox, confidence,
+class_id, class_name, keypoints`. `keypoints` is a `(K, 3)` numpy
+array — for COCO-Pose, K = 17 with rows
+`(x, y, visibility)` in the order
+`nose, left_eye, right_eye, left_ear, right_ear, left_shoulder,
+right_shoulder, left_elbow, right_elbow, left_wrist, right_wrist,
+left_hip, right_hip, left_knee, right_knee, left_ankle, right_ankle`.
+Visibility is the post-sigmoid score in [0, 1]; values above ~0.5 are
+conventionally treated as "visible". Unlike segmentation masks,
+keypoints **are** serialised through `to_dict()` (17 × 3 floats per
+detection is small). The default model is `yolov8n-pose.pt` (or
+v11/v26 equivalents), trained on COCO-Pose with a single
+"person" class. Calibration and validation use `coco8-pose.yaml`.
 
 **Model Sizes:** nano (n), small (s), medium (m), large (l), extra-large (x)
 

@@ -119,12 +119,21 @@ class ExecutionResult:
 HAILO_SUPPORTED_VERSIONS = ["v8", "v11", "v26"]
 
 HAILO_SUPPORTED_TASKS = {
-    "v8": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB, YOLOTask.SEGMENTATION],
-    "v11": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB, YOLOTask.SEGMENTATION],
-    # v26-obb / v26-seg have no public Hailo Model Zoo backing yet —
+    "v8": [
+        YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB,
+        YOLOTask.SEGMENTATION, YOLOTask.POSE,
+    ],
+    "v11": [
+        YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB,
+        YOLOTask.SEGMENTATION, YOLOTask.POSE,
+    ],
+    # v26-{obb,seg,pose} have no public Hailo Model Zoo backing yet —
     # listed for symmetry with detection/classification. Hardware
     # verification will confirm or park them per task.
-    "v26": [YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB, YOLOTask.SEGMENTATION],
+    "v26": [
+        YOLOTask.DETECTION, YOLOTask.CLASSIFICATION, YOLOTask.OBB,
+        YOLOTask.SEGMENTATION, YOLOTask.POSE,
+    ],
 }
 
 # Models known to have Hailo support (nano and small variants work best)
@@ -134,18 +143,21 @@ HAILO_OPTIMIZED_MODELS = {
         YOLOTask.CLASSIFICATION: ["yolov8n-cls.pt", "yolov8s-cls.pt", "yolov8m-cls.pt"],
         YOLOTask.OBB: ["yolov8n-obb.pt", "yolov8s-obb.pt", "yolov8m-obb.pt"],
         YOLOTask.SEGMENTATION: ["yolov8n-seg.pt", "yolov8s-seg.pt", "yolov8m-seg.pt"],
+        YOLOTask.POSE: ["yolov8n-pose.pt", "yolov8s-pose.pt", "yolov8m-pose.pt"],
     },
     "v11": {
         YOLOTask.DETECTION: ["yolo11n.pt", "yolo11s.pt", "yolo11m.pt"],
         YOLOTask.CLASSIFICATION: ["yolo11n-cls.pt", "yolo11s-cls.pt", "yolo11m-cls.pt"],
         YOLOTask.OBB: ["yolo11n-obb.pt", "yolo11s-obb.pt", "yolo11m-obb.pt"],
         YOLOTask.SEGMENTATION: ["yolo11n-seg.pt", "yolo11s-seg.pt", "yolo11m-seg.pt"],
+        YOLOTask.POSE: ["yolo11n-pose.pt", "yolo11s-pose.pt", "yolo11m-pose.pt"],
     },
     "v26": {
         YOLOTask.DETECTION: ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt"],
         YOLOTask.CLASSIFICATION: ["yolo26n-cls.pt", "yolo26s-cls.pt", "yolo26m-cls.pt"],
         YOLOTask.OBB: ["yolo26n-obb.pt", "yolo26s-obb.pt", "yolo26m-obb.pt"],
         YOLOTask.SEGMENTATION: ["yolo26n-seg.pt", "yolo26s-seg.pt", "yolo26m-seg.pt"],
+        YOLOTask.POSE: ["yolo26n-pose.pt", "yolo26s-pose.pt", "yolo26m-pose.pt"],
     },
 }
 

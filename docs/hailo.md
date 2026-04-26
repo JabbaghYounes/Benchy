@@ -22,15 +22,16 @@ References: [AI HAT+ product brief (PDF)](https://datasheets.raspberrypi.com/ai-
 
 | YOLO Version | Detection | Classification | Segmentation | Pose | OBB |
 |--------------|-----------|----------------|--------------|------|-----|
-| v8 | Yes | Yes | Yes | No | Yes |
-| v11 | Yes | Yes | Yes | No | Yes |
-| v26 | Yes | Yes | Experimental | No | Experimental |
+| v8 | Yes | Yes | Yes | Yes | Yes |
+| v11 | Yes | Yes | Yes | Yes | Yes |
+| v26 | Yes | Yes | Experimental | Experimental | Experimental |
 
 **Optimized Models:**
 - `yolov8n.pt`, `yolov8s.pt`, `yolov8m.pt` (Detection)
 - `yolov8n-cls.pt`, `yolov8s-cls.pt`, `yolov8m-cls.pt` (Classification)
 - `yolov8n-obb.pt`, `yolov8s-obb.pt`, `yolov8m-obb.pt` (OBB, Phase 3a)
 - `yolov8n-seg.pt`, `yolov8s-seg.pt`, `yolov8m-seg.pt` (Segmentation, Phase 3b)
+- `yolov8n-pose.pt`, `yolov8s-pose.pt`, `yolov8m-pose.pt` (Pose, Phase 3c)
 - Similar patterns for v11 and v26.
 
 **OBB note (Phase 3a).** v11-obb has official Hailo Model Zoo backing;
@@ -54,6 +55,18 @@ orders of magnitude. The in-process arrays are available for
 mAP-with-masks validation. v26-seg is **experimental** for the same
 reason as v26-obb.
 
+**Pose note (Phase 3c).** Pose estimation on Hailo uses a single
+detection-style head extended with 17 keypoints × 3 channels
+`(x, y, visibility)` per anchor, totalling 56 channels per anchor for
+COCO-Pose (1 class). `YOLOPostProcessor._process_pose` runs standard
+axis-aligned NMS on the bbox component, then sigmoid-applies the
+visibility logit so consumers see scores in [0, 1] (conventional
+threshold ~0.5). Keypoint coords scale with `original_width` /
+`original_height` if provided. Unlike segmentation masks, pose
+keypoints are small enough (17 × 3 floats per detection) to ship in
+`PoseResult.to_dict()`. v26-pose is **experimental** for the same
+reason as v26-obb / v26-seg.
+
 ## Model Conversion Pipeline
 
 Hailo requires model conversion from PyTorch to HEF format:
@@ -66,7 +79,7 @@ Hailo requires model conversion from PyTorch to HEF format:
 
 ## Known Limitations
 
-1. **Supported Tasks**: Pose estimation is NOT yet supported on Hailo NPU — the Ultralytics ONNX export emits a custom keypoint head that needs a bespoke postprocessor (Phase 3c). OBB shipped in Phase 3a with a custom rotated-NMS path; segmentation shipped in Phase 3b with a host-side mask-prototype blender.
+1. **Supported Tasks**: All five YOLO tasks (detection, classification, OBB, segmentation, pose) clear the Hailo conversion + postprocessing pipeline. OBB shipped in Phase 3a with a custom rotated-NMS path; segmentation shipped in Phase 3b with a host-side mask-prototype blender; pose shipped in Phase 3c with a 17-keypoint decoder. v26 variants of OBB / segmentation / pose are marked experimental until hardware verification.
 2. **INT8 Quantization**: All Hailo models use INT8 quantization. Minor accuracy differences compared to FP32/FP16 models are expected.
 3. **Model Size**: Larger models (l, x variants) may have longer compilation times and higher memory requirements.
 4. **No CPU Fallback**: When using `--backend hailo`, the benchmark will NOT fall back to CPU if Hailo is unavailable. This ensures benchmark integrity.

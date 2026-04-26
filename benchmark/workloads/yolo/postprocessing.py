@@ -79,6 +79,39 @@ class OrientedBox:
 
 
 @dataclass
+class PoseResult:
+    """A single pose-estimation result (Phase 3c).
+
+    `keypoints` is a (K, 3) numpy array with rows `(x, y, visibility)`.
+    For COCO-Pose, K = 17 and the row order is the standard
+    nose / eyes / ears / shoulders / elbows / wrists / hips / knees /
+    ankles convention (see `YOLOPostProcessor.COCO_POSE_KEYPOINTS`).
+    The `visibility` channel is the post-sigmoid score in [0, 1]; values
+    above ~0.5 are conventionally treated as "visible". The array is
+    serialised to JSON via `to_dict()` (unlike segmentation masks, which
+    are too large) since 17 × 3 floats per detection is tractable.
+    """
+
+    bbox: Tuple[float, float, float, float]  # xyxy
+    confidence: float
+    class_id: int
+    class_name: Optional[str] = None
+    # Keypoint array, shape (K, 3) — (x, y, visibility) per keypoint.
+    keypoints: Optional[np.ndarray] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "bbox": list(self.bbox),
+            "confidence": self.confidence,
+            "class_id": self.class_id,
+            "class_name": self.class_name,
+            "keypoints": (
+                self.keypoints.tolist() if self.keypoints is not None else None
+            ),
+        }
+
+
+@dataclass
 class SegmentationResult:
     """A single instance-segmentation result (Phase 3b).
 
@@ -181,6 +214,15 @@ class YOLOPostProcessor:
         "soccer ball field", "swimming pool",
     ]
 
+    # COCO-Pose keypoint names (17 keypoints used by yolo*-pose checkpoints).
+    # Order matches the COCO-Pose dataset convention; do not reorder.
+    COCO_POSE_KEYPOINTS = [
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist", "left_hip", "right_hip",
+        "left_knee", "right_knee", "left_ankle", "right_ankle",
+    ]
+
     # COCO class names (default)
     COCO_CLASSES = [
         "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
@@ -229,6 +271,7 @@ class YOLOPostProcessor:
         List[ClassificationResult],
         List[OrientedBox],
         List[SegmentationResult],
+        List[PoseResult],
     ]:
         """Process raw model outputs.
 
@@ -249,6 +292,8 @@ class YOLOPostProcessor:
             return self._process_obb(outputs, cfg)
         elif self.task == YOLOTask.SEGMENTATION:
             return self._process_segmentation(outputs, cfg)
+        elif self.task == YOLOTask.POSE:
+            return self._process_pose(outputs, cfg)
         else:
             logger.warning(f"Unsupported task: {self.task}, returning empty results")
             return []
@@ -649,6 +694,131 @@ class YOLOPostProcessor:
         return cropped
 
     # ---------- end Segmentation processing ----------
+
+    # ---------- Pose processing (Phase 3c) ----------
+
+    # COCO-Pose checkpoints all use 17 keypoints. v8/v11/v26 follow this
+    # convention; if a future checkpoint diverges, override via
+    # PostProcessConfig.num_classes (which we re-purpose as keypoint count
+    # at processor init when task=POSE — see __init__).
+    POSE_NUM_KEYPOINTS = 17
+
+    # Channels per keypoint: (x, y, visibility).
+    POSE_KEYPOINT_CHANNELS = 3
+
+    # Sigmoid threshold for treating a keypoint as "visible". Used only for
+    # downstream filtering by callers; the postprocessor stores the raw
+    # post-sigmoid score so consumers can choose their own threshold.
+    POSE_KPT_VISIBILITY_THRESHOLD = 0.5
+
+    def _process_pose(
+        self,
+        outputs: Dict[str, np.ndarray],
+        config: PostProcessConfig,
+    ) -> List[PoseResult]:
+        """Process pose-estimation outputs from yolo*-pose checkpoints.
+
+        Expected raw shape (post Hailo HEF):
+          - Single tensor of shape (batch, num_anchors, 4 + num_classes
+            + num_keypoints * 3) or its transposed variant
+            (batch, 4 + num_classes + num_keypoints * 3, num_anchors).
+            For COCO-Pose: 4 + 1 + 17*3 = 56 channels per anchor.
+
+        Decoding:
+          - Bbox + class scores -> standard NMS (axis-aligned).
+          - Keypoint logits split into (x, y, vis) triples; vis is
+            sigmoid-applied so consumers see a [0, 1] visibility score.
+          - Keypoint coordinates are scaled when the caller provides
+            original_width / original_height (input -> original).
+        """
+        pose_output = self._get_detection_output(outputs)
+
+        if pose_output is None:
+            logger.warning("No valid pose output found")
+            return []
+
+        if pose_output.ndim == 3:
+            pose_output = pose_output[0]
+
+        num_kpts = self.POSE_NUM_KEYPOINTS
+        kpt_dims = self.POSE_KEYPOINT_CHANNELS
+        expected_channels = 4 + config.num_classes + num_kpts * kpt_dims
+
+        # Auto-transpose (channels, anchors) -> (anchors, channels).
+        if (
+            pose_output.shape[0] == expected_channels
+            and pose_output.shape[1] != expected_channels
+        ):
+            pose_output = pose_output.T
+        elif pose_output.shape[-1] != expected_channels:
+            logger.warning(
+                f"Pose output last-dim {pose_output.shape[-1]}, expected "
+                f"{expected_channels}; attempting best-effort decode."
+            )
+
+        boxes_xywh = pose_output[:, :4]
+        class_scores = pose_output[:, 4 : 4 + config.num_classes]
+        kpt_block = pose_output[:, 4 + config.num_classes :]
+
+        scores = np.max(class_scores, axis=1)
+        class_ids = np.argmax(class_scores, axis=1)
+
+        # Confidence threshold first.
+        keep_conf = scores >= config.conf_threshold
+        if not np.any(keep_conf):
+            return []
+        boxes_xywh = boxes_xywh[keep_conf]
+        scores = scores[keep_conf]
+        class_ids = class_ids[keep_conf]
+        kpt_block = kpt_block[keep_conf]
+
+        boxes_xyxy = self._xywh_to_xyxy(boxes_xywh)
+
+        # Standard axis-aligned NMS on bboxes.
+        keep_idx = self._nms(boxes_xyxy, scores, config.iou_threshold)
+        boxes_xyxy = boxes_xyxy[keep_idx]
+        scores = scores[keep_idx]
+        class_ids = class_ids[keep_idx]
+        kpt_block = kpt_block[keep_idx]
+
+        # Reshape keypoint block to (N, num_kpts, 3) and apply sigmoid to
+        # the visibility channel only (x, y stay raw, in input pixels).
+        keypoints = kpt_block.reshape(-1, num_kpts, kpt_dims).astype(np.float64)
+        # Clip the visibility logit before sigmoid for numerical stability.
+        vis_logits = np.clip(keypoints[:, :, 2], -50.0, 50.0)
+        keypoints[:, :, 2] = 1.0 / (1.0 + np.exp(-vis_logits))
+
+        # Box scaling — also rescale keypoint x/y so they stay aligned.
+        if config.original_width and config.original_height:
+            scale_x = config.original_width / max(config.input_width, 1)
+            scale_y = config.original_height / max(config.input_height, 1)
+            boxes_xyxy = self._scale_boxes(
+                boxes_xyxy,
+                config.input_width,
+                config.input_height,
+                config.original_width,
+                config.original_height,
+            )
+            keypoints[:, :, 0] *= scale_x
+            keypoints[:, :, 1] *= scale_y
+
+        results: List[PoseResult] = []
+        for i in range(len(boxes_xyxy)):
+            class_name = None
+            if config.class_names and class_ids[i] < len(config.class_names):
+                class_name = config.class_names[class_ids[i]]
+            results.append(
+                PoseResult(
+                    bbox=tuple(boxes_xyxy[i].tolist()),
+                    confidence=float(scores[i]),
+                    class_id=int(class_ids[i]),
+                    class_name=class_name,
+                    keypoints=keypoints[i],
+                )
+            )
+        return results
+
+    # ---------- end Pose processing ----------
 
     def _get_detection_output(
         self,
@@ -1118,6 +1288,7 @@ def decode_yolo_output(
     List[ClassificationResult],
     List[OrientedBox],
     List[SegmentationResult],
+    List[PoseResult],
 ]:
     """Convenience function to decode YOLO outputs.
 

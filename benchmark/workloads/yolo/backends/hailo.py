@@ -117,14 +117,16 @@ class HailoBackend(YOLOBackend):
     # Supported YOLO versions and tasks for Hailo. Detection and
     # classification have shipped since v1; OBB joined in Phase 3a (rotated
     # NMS via `YOLOPostProcessor._process_obb`); segmentation joined in
-    # Phase 3b (mask decoder via `_process_segmentation`). Pose still needs
-    # a custom postprocessor before it can be unblocked here (Phase 3c).
+    # Phase 3b (mask decoder via `_process_segmentation`); pose joined in
+    # Phase 3c (keypoint decoder via `_process_pose`). All five YOLO tasks
+    # are now supported through the Hailo path.
     # Note: YOLOv12 support available on Hailo-10H with SDK 5.x.
     SUPPORTED_TASKS = [
         YOLOTask.DETECTION,
         YOLOTask.CLASSIFICATION,
         YOLOTask.OBB,
         YOLOTask.SEGMENTATION,
+        YOLOTask.POSE,
     ]
     SUPPORTED_VERSIONS = ["v8", "v11", "v26"]
 

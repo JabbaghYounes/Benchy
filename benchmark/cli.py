@@ -253,6 +253,46 @@ def run_yolo_benchmark(
     return all_results
 
 
+def _build_unsupported_npu_stubs(profile_config: dict, backend: str) -> list:
+    """Zero-valued LLMResult stubs for an `npu` profile run on hardware
+    that can't host LLMs on the NPU (Hailo-8/8L, Jetson, bare hosts).
+
+    Emitted instead of an empty list so the cross-platform dashboard
+    renders an explicit "tried, 0 TPS" bar on the Hailo-10H backend
+    axis. The verify_ai_hat_plus.sh runner is the primary consumer —
+    it tags the matching step `[unsupported-on-this-hw]`, which the
+    summary treats as advisory (non-blocking) but still records.
+    """
+    from benchmark.schemas import LLMResult
+
+    models = profile_config.get("models") or []
+    groups = profile_config.get("model_groups") or ["unknown"]
+    group = groups[0] if groups else "unknown"
+
+    stubs: list = []
+    for model_name in models:
+        stubs.append(
+            LLMResult(
+                model_name=model_name,
+                model_size=group,
+                prompt_id="unsupported-on-this-hardware",
+                tokens_per_second=0.0,
+                tps_mean=0.0,
+                tps_std=0.0,
+                ttft_mean_ms=0.0,
+                ttft_std_ms=0.0,
+                latency_mean_ms=0.0,
+                latency_std_ms=0.0,
+                total_latency_ms=0.0,
+                time_to_first_token_ms=0.0,
+                backend=backend,
+                warmup_runs=0,
+                measured_runs=0,
+            )
+        )
+    return stubs
+
+
 def run_llm_benchmark(
     config: dict,
     profile: str,
@@ -291,17 +331,23 @@ def run_llm_benchmark(
         "api_base", ollama_settings.get("api_base", "http://localhost:11434")
     )
 
-    # Hailo-10H is the only platform that can host LLMs on the NPU. Refuse
-    # to run an npu profile on a Jetson or a Pi+AI HAT+ (Hailo-8/8L) so we
-    # don't silently fall back to Ollama-CPU under the wrong backend label.
+    # Hailo-10H is the only platform that can host LLMs on the NPU. On any
+    # other platform we emit zero-valued unsupported-on-this-hw stub
+    # LLMResults instead of running Ollama under the wrong backend label.
+    # The stubs land in the bench_*.json so the cross-platform dashboard
+    # gets explicit "tried, 0 TPS" rows on Hailo-10H's backend axis
+    # rather than missing data — the verify_ai_hat_plus.sh runner relies
+    # on this for chart-comparison parity with verify_ai_hat_plus_2.sh.
     if profile_npu_metrics and system_info.platform != "rpi_ai_hat_plus_2":
         logger.error(
             f"Profile {profile!r} requires Platform.RPI_AI_HAT_PLUS_2 "
             f"(Hailo-10H NPU); detected platform is {system_info.platform!r}. "
-            f"Use --platform rpi_ai_hat_plus_2 to override only if HailoRT "
-            f"GenAI is actually reachable at {api_base}."
+            f"Emitting unsupported-on-this-hardware stub rows so the "
+            f"dashboard shows an explicit zero bar. Use --platform "
+            f"rpi_ai_hat_plus_2 to override only if HailoRT GenAI is "
+            f"actually reachable at {api_base}."
         )
-        return []
+        return _build_unsupported_npu_stubs(profile_config, profile_backend)
 
     # Check Ollama / HailoRT GenAI server status. check_ollama_status() is
     # parameterless today and assumes the default port; we still call it as

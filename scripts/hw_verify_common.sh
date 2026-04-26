@@ -219,18 +219,21 @@ hw_summary() {
     printf "  Wall time: %dm %02ds\n" "$minutes" "$seconds"
     echo
 
-    # Count v26 / experimental entries separately so a v26 failure
-    # doesn't look like a project regression.
+    # Non-blocking failures: anything tagged [experimental] (v26 isn't
+    # graduated yet) or [unsupported-on-this-hw] (e.g. LLM-on-NPU stub
+    # row on AI HAT+ where Hailo-8/8L can't host LLMs by design). Both
+    # produce dashboard rows but don't gate the exit code.
     local fail_total="${#HW_FAILED[@]}"
-    local fail_experimental=0
+    local fail_advisory=0
     if (( fail_total > 0 )); then
         echo "Failures:"
         local entry name dur
         for entry in "${HW_FAILED[@]}"; do
             name="${entry%%|*}"
             dur="${entry##*|}"
-            if [[ "$name" == *"[experimental]"* ]]; then
-                fail_experimental=$(( fail_experimental + 1 ))
+            if [[ "$name" == *"[experimental]"* ]] \
+               || [[ "$name" == *"[unsupported-on-this-hw]"* ]]; then
+                fail_advisory=$(( fail_advisory + 1 ))
             fi
             printf "  - %s (%ss)\n" "$name" "$dur"
         done
@@ -240,13 +243,13 @@ hw_summary() {
     echo "Results bundle: $HW_RESULTS_DIR"
     echo
 
-    local fail_blocking=$(( fail_total - fail_experimental ))
+    local fail_blocking=$(( fail_total - fail_advisory ))
     if (( fail_blocking > 0 )); then
         error "${fail_blocking} blocking failure(s); see logs for details."
         return 1
     fi
-    if (( fail_experimental > 0 )); then
-        warn "${fail_experimental} experimental failure(s); v26 is still tagged experimental."
+    if (( fail_advisory > 0 )); then
+        warn "${fail_advisory} advisory failure(s) (experimental / unsupported-on-this-hw); not gating exit."
     fi
     success "All blocking checks passed."
     return 0

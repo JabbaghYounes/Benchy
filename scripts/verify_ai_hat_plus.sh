@@ -1,9 +1,14 @@
 #!/bin/bash
 # Hardware verification sweep for Pi 5 + AI HAT+ (Hailo-8 or Hailo-8L).
 #
-# Vision-only — Hailo-8/8L cannot host LLMs (no onboard SDRAM and the
-# silicon isn't a transformer accelerator). For the LLM-on-NPU sweep,
-# use verify_ai_hat_plus_2.sh on the Hailo-10H board.
+# Mirrors the AI HAT+ 2 runner shape so the two boards produce
+# directly-comparable result bundles. Vision sweep is identical (10
+# steps including pytest). The LLM-on-NPU step is included and *will*
+# fail on Hailo-8/8L — no onboard SDRAM, not a transformer accelerator
+# — but the Python runner emits a zero-valued unsupported-on-this-hw
+# stub so the cross-platform dashboard gets an explicit "tried, 0 TPS"
+# row instead of a missing one. The LLM-on-CPU comparison row works
+# identically on both Pi 5 boards (same Cortex-A76 SoC).
 #
 # Run once per Pi after `setup_rpi_ai_hat_plus.sh` has completed and the
 # venv is activated:
@@ -12,16 +17,18 @@
 #     ./scripts/verify_ai_hat_plus.sh
 #
 # Output lands in `results/hw_verify_<timestamp>/` with per-step logs,
-# bench_*.json artefacts, and a final pass/fail summary. Exit code is 0
-# when all blocking steps passed (experimental v26 failures don't gate).
+# bench_*.json artefacts, an auto-generated dashboard, and a final
+# pass/fail summary. Exit code is 0 when all blocking steps passed —
+# `[experimental]` and `[unsupported-on-this-hw]` failures don't gate.
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=hw_verify_common.sh
 source "$SCRIPT_DIR/hw_verify_common.sh"
 
-# 1 (sanity) + 9 (Phase 3 a/b/c × v8/v11/v26) + 1 (pytest) = 11 steps.
-HW_TOTAL_STEPS=11
+# 1 (sanity) + 9 (Phase 3 a/b/c × v8/v11/v26) + 1 (pytest)
+# + 1 (LLM-on-NPU stub) + 1 (LLM-on-CPU comparison row) = 13 steps.
+HW_TOTAL_STEPS=13
 
 hw_init
 hw_preflight_rpi_ai_hat_plus
@@ -69,4 +76,20 @@ hw_run_step "yolo-v26-pose [experimental]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-pose.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task pose --backend hailo
 
+# LLM-on-NPU. Hailo-8/8L can't host LLMs, so this step always fails on
+# AI HAT+ — by design. The Python runner emits an unsupported-on-this-hw
+# stub LLMResult (backend=hailo-10h, tps=0) so the dashboard renders an
+# explicit zero bar for cross-platform comparison rather than a missing
+# row. We deliberately don't gate on a curl preflight to :8000 here —
+# we want the stub written regardless of hailo-ollama's reachability.
+hw_run_step "llm-npu-qwen2:1.5b [unsupported-on-this-hw]" \
+    "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
+    --workload llm --backend hailo-10h --require-npu-metrics
+
+# CPU-side comparison row — same on both Pi 5 boards (Cortex-A76).
+hw_run_step "llm-cpu-llama2:7b (drone prompts)" \
+    "python -m benchmark run llm --profile drone --output $HW_RESULTS_DIR" \
+    --workload llm --backend ollama-cpu
+
+hw_finalize_with_report
 hw_summary

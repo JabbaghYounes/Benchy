@@ -68,13 +68,14 @@ v11/v26 equivalents), trained on COCO-Pose with a single
 
 ### Model Groups
 
-| Group | Models | Architecture | Specialization |
-|-------|--------|--------------|----------------|
-| **1B** | llama3.2:1b, granite3.1-moe:1b, sailor2:1b | Dense/MoE | General |
-| **3B** | llama3.2:3b, granite3.1-moe:3b, starcoder2:3b | Dense/MoE | General/Code |
-| **7B** | llama2:7b, mistral:7b, olmo2:7b | Dense | General |
-| **8B** | llama3.1:8b, dolphin3:8b, dolphin-llama3:8b | Dense | General |
-| **9B** | gemma2:9b | Dense | General |
+| Group | Models | Architecture | Specialization | Backend |
+|-------|--------|--------------|----------------|---------|
+| **1B** | llama3.2:1b, granite3.1-moe:1b, sailor2:1b | Dense/MoE | General | Ollama (CPU) |
+| **1.5B** | qwen2:1.5b, qwen2.5-instruct:1.5b, qwen2.5-coder:1.5b, deepseek_r1_distill_qwen:1.5b | Dense | General/Code | Hailo-10H NPU (HailoRT GenAI prebuilt HEFs) |
+| **3B** | llama3.2:3b, granite3.1-moe:3b, starcoder2:3b | Dense/MoE | General/Code | Ollama (CPU); llama3.2:3b also has a Hailo HEF |
+| **7B** | llama2:7b, mistral:7b, olmo2:7b | Dense | General | Ollama (CPU); llama2:7b also has a Hailo HEF (community-supported) |
+| **8B** | llama3.1:8b, dolphin3:8b, dolphin-llama3:8b | Dense | General | Ollama (CPU) |
+| **9B** | gemma2:9b | Dense | General | Ollama (CPU) |
 
 **Important Constraints:**
 - Models are **only compared within the same parameter group**
@@ -156,6 +157,7 @@ column in the CSV reflects what was loaded — not just the requested label.
 | Group | Minimum Available RAM |
 |-------|----------------------|
 | 1B | 2 GB |
+| 1.5B | 3 GB (Ollama-CPU); on Hailo-10H the model resides in the AI HAT+ 2's onboard 8 GB SDRAM and host RAM is mostly free |
 | 3B | 4 GB |
 | 7B | 8 GB |
 | 8B | 10 GB |

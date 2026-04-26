@@ -6,8 +6,28 @@ A standardized, automated benchmarking framework to evaluate and compare AI infe
 
 This benchmark suite provides comprehensive performance evaluation for:
 
-- **Computer Vision**: YOLO inference benchmarks (v8, v11, v26)
-- **Local LLM Inference**: Ollama-based models (7B, 8B, 9B parameter groups)
+- **Computer Vision**: YOLO inference (v8, v11, v26) across all five tasks —
+  detection, classification, OBB, segmentation, and pose — on Hailo NPU,
+  Jetson GPU, or PyTorch CPU.
+- **Local LLM Inference**: Ollama-based models (1.5B, 7B, 8B, 9B groups) on
+  CPU; or via HailoRT GenAI's Ollama-compatible REST endpoint on the
+  Hailo-10H NPU (qwen2:1.5b, qwen2.5-{instruct,coder}:1.5b,
+  deepseek_r1_distill_qwen:1.5b, llama3.2:3b).
+- **Backend axis**: Every `LLMResult` is tagged with a backend label
+  (`ollama-cpu` / `ollama-cuda` / `hailo-10h`) and the dashboard splits
+  CPU and NPU runs into separate filterable rows.
+
+### Hailo task coverage
+
+| YOLO Version | Detection | Classification | OBB | Segmentation | Pose |
+|---|---|---|---|---|---|
+| v8 | ✓ | ✓ | ✓ (Phase 3a) | ✓ (Phase 3b) | ✓ (Phase 3c) |
+| v11 | ✓ | ✓ | ✓ (Phase 3a) | ✓ (Phase 3b) | ✓ (Phase 3c) |
+| v26 | ✓ | ✓ | experimental | experimental | experimental |
+
+v26 entries clear the conversion + postprocessor pipeline but lack public
+Hailo Model Zoo backing; hardware verification (the HW-verify runners
+below) is what moves them from experimental to verified.
 
 ### Supported Platforms
 
@@ -92,8 +112,16 @@ regression.
 
 | Profile | YOLO | LLM | Use Case |
 |---------|------|-----|----------|
-| **default** | v8 detection, nano size | llama2:7b only | Quick validation |
-| **full** | All versions, all tasks, all sizes | All model groups (7B-9B) | Thorough evaluation |
+| **default** | v8 detection, nano size | llama2:7b across q4_K_M / q5_K_M / q8_0 (quant sweep) | Quick validation + INT-quant baseline |
+| **full** | All versions, all tasks, all sizes | All CPU model groups (7B / 8B / 9B) | Thorough evaluation |
+| **drone** | v8/v11/v26 detection at 1280, sizes n/s/m, VisDrone dataset | llama2:7b on the curated drone prompt set (scene / target / mission / telemetry / hazard) | Realistic small-object aerial detection |
+| **drone_full** | Detection + OBB + seg + pose at 1280, sizes n/s — broadest drone-relevant Hailo sweep | _(YOLO-only)_ | Exercises every Phase 3 task at altitude-realistic resolution |
+| **npu** | _(LLM-only)_ | qwen2:1.5b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+
+Profiles are configured in `configs/yolo_benchmark.yaml` and
+`configs/llm_benchmark.yaml`. They can declare `input_resolution`,
+per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
+(LLM-only) `api_base`, `backend`, `npu_metrics`.
 
 ## Key Assumptions
 
@@ -101,7 +129,7 @@ regression.
 2. **Single device** - One benchmark instance per device at a time
 3. **Stable power** - Consistent power supply during benchmarking
 4. **Thermal stability** - Allow device to reach thermal equilibrium before full runs
-5. **Ollama server** - LLM benchmarks require Ollama running on localhost:11434
+5. **LLM server** - CPU-side LLM benchmarks require Ollama on `localhost:11434`. The `npu` profile additionally requires the HailoRT GenAI server (`hailo-ollama`) reachable at `localhost:8000`; see `docs/hailo.md` for setup.
 6. **Network isolation** - No network-dependent operations during benchmarks
 
 ## Documentation

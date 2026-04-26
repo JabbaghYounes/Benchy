@@ -31,8 +31,35 @@ This ensures reproducible results across runs.
 
 Results are aggregated only within the same parameter group:
 - 1B models are compared only with other 1B models
+- 1.5B models (the Hailo Model Zoo GenAI HEFs — qwen2:1.5b,
+  qwen2.5-instruct/coder:1.5b, deepseek_r1_distill_qwen:1.5b) form their
+  own group, used by the `npu` profile
 - Cross-group comparisons are visualized separately in the dashboard
 - MoE and code-specialized models are clearly labeled
+
+**Backend axis (Phase 7).** `aggregate_llm_results` additionally groups by
+`backend` so that an Ollama-CPU run of `qwen2:1.5b` and a Hailo-10H run of
+the same model on the same prompt do not collapse into one aggregated row.
+The dashboard exposes a `Backend` filter chip + table column so you can
+view "all backends", "Ollama CPU only", "Hailo-10H only", or "legacy
+(pre-Phase-7)" data.
+
+## YOLO Task Coverage on Hailo
+
+Phase 3 unblocked all five YOLO tasks on the Hailo NPU through bespoke
+post-processors in `benchmark/workloads/yolo/postprocessing.py`:
+
+| Task | Hailo support | Postprocessor |
+|---|---|---|
+| Detection | shipped pre-Phase 3 | `_process_detection` (axis-aligned NMS) |
+| Classification | shipped pre-Phase 3 | `_process_classification` |
+| OBB | Phase 3a | `_process_obb` + `_rotated_nms` (Sutherland-Hodgman polygon clipping in pure numpy) |
+| Segmentation | Phase 3b | `_process_segmentation` + `_generate_seg_masks` (sigmoid mask blender, threshold 0.5, bbox-cropped at proto resolution) |
+| Pose | Phase 3c | `_process_pose` (17-keypoint COCO-Pose decoder, sigmoid visibility) |
+
+v8 and v11 are verified candidates across all five; v26 entries are
+whitelisted for symmetry but tagged **experimental** until hardware
+verification (the HW-verify runners) clears them.
 
 ## YOLO Accuracy Validation
 

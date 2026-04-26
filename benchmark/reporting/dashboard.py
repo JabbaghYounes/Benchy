@@ -3,14 +3,8 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
-from benchmark.aggregation import (
-    ResultsAggregator,
-    YOLOAggregatedMetrics,
-    LLMAggregatedMetrics,
-    PlatformSummary,
-)
+from benchmark.aggregation import ResultsAggregator
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +284,9 @@ class DashboardGenerator:
         .badge-red { background: #fee2e2; color: #991b1b; }
         .badge-purple { background: #ede9fe; color: #5b21b6; }
         .badge-orange { background: #ffedd5; color: #9a3412; }
+        /* Phase 7: backend axis (Hailo NPU runs in teal, legacy/unset gray). */
+        .badge-teal { background: #ccfbf1; color: #115e59; }
+        .badge-gray { background: #e5e7eb; color: #374151; }
 
         .download-links {
             display: flex;
@@ -379,6 +376,13 @@ class DashboardGenerator:
             if m.specialization
         ))
 
+        # Phase 7: Backend axis. Distinct backend labels in the corpus,
+        # plus a "(legacy)" entry when any rows predate backend tagging.
+        llm_backends = list(set(
+            m.backend for m in self.llm_metrics if m.backend
+        ))
+        has_legacy_llm = any(m.backend is None for m in self.llm_metrics)
+
         platform_options = "".join(f'<option value="{p}">{p.replace("_", " ").title()}</option>' for p in platforms)
         version_options = "".join(f'<option value="{v}">{v}</option>' for v in sorted(yolo_versions))
         task_options = "".join(f'<option value="{t}">{t.title()}</option>' for t in sorted(tasks))
@@ -397,6 +401,22 @@ class DashboardGenerator:
             f'<option value="{s}">{s.title()}</option>'
             for s in sorted(llm_specializations)
         )
+
+        # Phase 7: Backend filter options. Display label tweaks make the
+        # CPU vs NPU distinction obvious at a glance ("Hailo-10H (NPU)"
+        # rather than the bare "hailo-10h"). The legacy bucket only
+        # surfaces when the data contains pre-Phase-7 rows.
+        backend_display = {
+            "ollama-cpu": "Ollama (CPU)",
+            "ollama-cuda": "Ollama (CUDA)",
+            "hailo-10h": "Hailo-10H (NPU)",
+        }
+        backend_options = "".join(
+            f'<option value="{b}">{backend_display.get(b, b)}</option>'
+            for b in sorted(llm_backends)
+        )
+        if has_legacy_llm:
+            backend_options += '<option value="legacy">Legacy (pre-Phase 7)</option>'
 
         return f"""
         <section id="filters">
@@ -449,6 +469,13 @@ class DashboardGenerator:
                     <select id="filter-specialization" onchange="applyFilters()">
                         <option value="all">All (General + Code)</option>
                         {spec_options}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Backend:</label>
+                    <select id="filter-backend" onchange="applyFilters()">
+                        <option value="all">All (CPU + NPU)</option>
+                        {backend_options}
                     </select>
                 </div>
                 <button onclick="resetFilters()">Reset</button>
@@ -687,10 +714,20 @@ class DashboardGenerator:
                 "9B": "badge-red",
             }.get(param_group, "badge-blue")
 
+            # Phase 7: Backend badge. Hailo runs get a teal accent so the
+            # NPU rows pop visually against the CPU rows.
+            backend_label = m.backend or "—"
+            backend_class = (
+                "badge-teal" if m.backend == "hailo-10h"
+                else "badge-blue" if m.backend
+                else "badge-gray"
+            )
+
             llm_rows += f"""
             <tr>
                 <td>{m.model_name} {badges}</td>
                 <td><span class="badge {param_group_class}">{param_group}</span></td>
+                <td><span class="badge {backend_class}">{backend_label}</span></td>
                 <td>{m.prompt_id}</td>
                 <td>{m.tps_mean:.2f}</td>
                 <td>{m.ttft_mean_ms:.2f}</td>
@@ -729,6 +766,7 @@ class DashboardGenerator:
                         <tr>
                             <th>Model</th>
                             <th>Group</th>
+                            <th>Backend</th>
                             <th>Prompt</th>
                             <th>TPS</th>
                             <th>TTFT Mean (ms)</th>
@@ -738,7 +776,7 @@ class DashboardGenerator:
                         </tr>
                     </thead>
                     <tbody>
-                        {llm_rows if llm_rows else '<tr><td colspan="8" class="no-data">No data</td></tr>'}
+                        {llm_rows if llm_rows else '<tr><td colspan="9" class="no-data">No data</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -899,7 +937,7 @@ class DashboardGenerator:
                     const sizeOrder = ['n', 's', 'm', 'l', 'x'];
                     const bySize = {{}};
                     yoloData.forEach(d => {{
-                        const size = d.model_name.match(/([nsmlx])[\.-]/)?.[1] || 'n';
+                        const size = d.model_name.match(/([nsmlx])[-.]/)?.[1] || 'n';
                         if (!bySize[size]) bySize[size] = [];
                         bySize[size].push(d.throughput_mean_fps);
                     }});
@@ -1129,6 +1167,9 @@ class DashboardGenerator:
             const paramGroup = document.getElementById('filter-param-group')?.value || 'all';
             const architecture = document.getElementById('filter-architecture')?.value || 'all';
             const specialization = document.getElementById('filter-specialization')?.value || 'all';
+            // Phase 7: Backend axis. "legacy" maps to null/undefined (rows
+            // that predate backend tagging); explicit labels match exactly.
+            const backend = document.getElementById('filter-backend')?.value || 'all';
 
             // Filter YOLO data
             let filteredYolo = yoloData;
@@ -1154,6 +1195,14 @@ class DashboardGenerator:
             if (specialization !== 'all') {{
                 filteredLlm = filteredLlm.filter(d => d.specialization === specialization);
             }}
+            // Phase 7: Backend filter
+            if (backend !== 'all') {{
+                if (backend === 'legacy') {{
+                    filteredLlm = filteredLlm.filter(d => !d.backend);
+                }} else {{
+                    filteredLlm = filteredLlm.filter(d => d.backend === backend);
+                }}
+            }}
 
             // Update charts with filtered data
             updateChartsWithData(filteredYolo, filteredLlm);
@@ -1173,6 +1222,10 @@ class DashboardGenerator:
             }}
             if (document.getElementById('filter-specialization')) {{
                 document.getElementById('filter-specialization').value = 'all';
+            }}
+            // Phase 7: Reset backend filter
+            if (document.getElementById('filter-backend')) {{
+                document.getElementById('filter-backend').value = 'all';
             }}
             updateChartsWithData(yoloData, llmData);
         }}

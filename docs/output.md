@@ -91,6 +91,21 @@ drone:
   input_resolution: 1280
   datasets:
     detection: VisDrone.yaml
+
+# Drone-full profile: exercises every Phase-3-unlocked task on the Hailo
+# path. Detection on VisDrone, OBB on DOTA, plus segmentation and pose on
+# COCO defaults. Sizes drop to n/s only because at 1280 with five tasks
+# the total runtime grows fast.
+drone_full:
+  yolo_versions: ["v8", "v11", "v26"]
+  tasks: ["detection", "obb", "segmentation", "pose"]
+  model_sizes: ["n", "s"]
+  input_resolution: 1280
+  datasets:
+    detection: VisDrone.yaml
+    obb: DOTAv1.yaml
+    segmentation: coco128-seg.yaml
+    pose: coco8-pose.yaml
 ```
 
 ### LLM Configuration (`configs/llm_benchmark.yaml`)

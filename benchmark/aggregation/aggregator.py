@@ -126,6 +126,14 @@ class LLMAggregatedMetrics:
     accelerator_percent_mean: Optional[float] = None
     memory_used_mb_mean: Optional[float] = None
     power_watts_mean: Optional[float] = None
+    # Phase 7 — backend axis. backend is a group_by key (CPU and NPU runs
+    # don't merge into a single row); the NPU-side aggregates are
+    # mean-over-group, hailort_version is "first seen" (it's a label, not
+    # a metric).
+    backend: Optional[str] = None
+    npu_utilization_percent_mean: Optional[float] = None
+    npu_power_watts_mean: Optional[float] = None
+    hailort_version: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -160,6 +168,11 @@ class LLMAggregatedMetrics:
             "accelerator_percent_mean": self.accelerator_percent_mean,
             "memory_used_mb_mean": self.memory_used_mb_mean,
             "power_watts_mean": self.power_watts_mean,
+            # Phase 7 — backend axis
+            "backend": self.backend,
+            "npu_utilization_percent_mean": self.npu_utilization_percent_mean,
+            "npu_power_watts_mean": self.npu_power_watts_mean,
+            "hailort_version": self.hailort_version,
         }
 
 
@@ -321,6 +334,9 @@ class ResultsAggregator:
         """Parse LLMResult from dict.
 
         Model Expansion PRD - Phase 6: Handle new metadata and metrics fields.
+        Phase 7: also pulls the backend axis fields (backend label and
+        NPU-side metrics) so dashboard / aggregation can split CPU and
+        NPU runs cleanly.
         """
         return LLMResult(
             model_name=data.get("model_name", ""),
@@ -358,6 +374,12 @@ class ResultsAggregator:
             tps_median=data.get("tps_median"),
             tps_min=data.get("tps_min"),
             tps_max=data.get("tps_max"),
+            # Phase 7 — backend axis. Older runs predate these fields; the
+            # `or None` clauses keep historical JSON readable.
+            backend=data.get("backend"),
+            npu_utilization_percent=data.get("npu_utilization_percent"),
+            npu_power_watts=data.get("npu_power_watts"),
+            hailort_version=data.get("hailort_version"),
         )
 
     def _parse_benchmark_run(self, data: dict) -> BenchmarkRun:
@@ -465,13 +487,16 @@ class ResultsAggregator:
         """Aggregate LLM results.
 
         Args:
-            group_by: Fields to group by (default: model_name, model_size, prompt_id)
+            group_by: Fields to group by. The default includes `backend`
+                so that Ollama-CPU and Hailo-NPU runs of the same model +
+                prompt don't collapse into a single row — that's the
+                whole point of Phase 7's backend axis.
 
         Returns:
             List of aggregated metrics
         """
         if group_by is None:
-            group_by = ["model_name", "model_size", "prompt_id"]
+            group_by = ["model_name", "model_size", "prompt_id", "backend"]
 
         # Group results
         groups: dict[tuple, list[tuple[SystemInfo, LLMResult]]] = defaultdict(list)
@@ -649,6 +674,15 @@ class ResultsAggregator:
                         if r.resource_utilization]
         power_usages = [r.power_watts for _, r in results if r.power_watts]
 
+        # Phase 7 — backend-axis aggregates. NPU fields are None on the
+        # Ollama path; only group + average over actual readings.
+        npu_utils = [r.npu_utilization_percent for _, r in results
+                     if r.npu_utilization_percent is not None]
+        npu_powers = [r.npu_power_watts for _, r in results
+                      if r.npu_power_watts is not None]
+        hailort_versions = [r.hailort_version for _, r in results
+                            if r.hailort_version]
+
         return LLMAggregatedMetrics(
             model_name=first_result.model_name,
             model_size=first_result.model_size,
@@ -687,6 +721,15 @@ class ResultsAggregator:
             accelerator_percent_mean=round(statistics.mean(accel_percents), 1) if accel_percents else None,
             memory_used_mb_mean=round(statistics.mean(memory_usages), 1) if memory_usages else None,
             power_watts_mean=round(statistics.mean(power_usages), 2) if power_usages else None,
+            # Phase 7 — backend axis
+            backend=first_result.backend,
+            npu_utilization_percent_mean=(
+                round(statistics.mean(npu_utils), 2) if npu_utils else None
+            ),
+            npu_power_watts_mean=(
+                round(statistics.mean(npu_powers), 2) if npu_powers else None
+            ),
+            hailort_version=hailort_versions[0] if hailort_versions else None,
         )
 
     def get_platform_summaries(self) -> list[PlatformSummary]:

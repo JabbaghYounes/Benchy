@@ -98,7 +98,17 @@ When benchmarking Raspberry Pi with Hailo:
 First-time model compilation requires:
 - **HailoRT SDK** installed (version 4.17+ recommended)
 - **Hailo Dataflow Compiler** for .har -> .hef conversion
-- **Calibration data**: Uses 100 images from COCO validation set
+- **Calibration data**: 100 images sampled from a task-appropriate Ultralytics
+  dataset:
+  - Detection: `coco128` (~7 MB)
+  - Segmentation: `coco128-seg` (~10 MB)
+  - OBB: `DOTAv1` (~10 GB on first download — was `dota8` (8 imgs) before
+    Polish 4; the small sample produced poor INT8 calibration)
+  - Pose: `coco-pose` (~20 GB on first download — was `coco8-pose` (8 imgs)
+    before Polish 4)
+  - Classification: `imagenet10` (~50 MB)
+  Override per-task via `CalibrationConfig.dataset_path` if you have a
+  pre-curated subset and want to skip the full download.
 - **Disk space**: ~500MB per compiled model
 - **Time**: 5-30 minutes per model depending on size
 

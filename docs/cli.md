@@ -23,6 +23,13 @@ python -m benchmark run all --profile full
 # hazard reasoning).
 python -m benchmark run all --profile drone
 
+# Drone-full profile: extends drone with the Phase-3-unlocked tasks —
+# OBB on DOTA (the drone-priority addition), plus segmentation (COCO128)
+# and pose (COCO8) for completeness. Sizes drop to n/s only since five
+# tasks at 1280 grow runtime fast. Use this when you want the broadest
+# drone-relevant Hailo coverage in a single YOLO command.
+python -m benchmark run yolo --profile drone_full
+
 # NPU profile (Pi 5 + AI HAT+ 2 only): runs the LLM workload through
 # HailoRT GenAI's Ollama-compatible REST endpoint on the Hailo-10H NPU.
 # Each LLMResult is tagged with backend="hailo-10h" and gets NPU-side

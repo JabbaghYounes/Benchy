@@ -12,9 +12,7 @@ import yaml
 
 from benchmark.schemas import (
     Platform,
-    WorkloadType,
     YOLOTask,
-    Backend,
     BenchmarkRun,
     SystemInfo,
 )
@@ -844,7 +842,7 @@ def main():
     )
     bench_parser.add_argument(
         "--profile",
-        choices=["default", "full", "drone", "npu"],
+        choices=["default", "full", "drone", "drone_full", "npu"],
         default="default",
         help="Benchmark profile (default: default)",
     )

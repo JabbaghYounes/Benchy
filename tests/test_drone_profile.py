@@ -222,3 +222,67 @@ def test_all_yolo_tasks_unblocked_on_hailo(yolo_version):
         YOLOTask.POSE,
     }
     assert expected.issubset(set(HAILO_SUPPORTED_TASKS[yolo_version]))
+
+
+# ----- Polish 2: drone_full profile -----------------------------------------
+
+
+def test_drone_full_profile_exists(yolo_cfg):
+    assert "drone_full" in yolo_cfg, (
+        "drone_full profile missing from yolo_benchmark.yaml"
+    )
+
+
+def test_drone_full_exercises_phase3_tasks(yolo_cfg):
+    drone_full = yolo_cfg["drone_full"]
+    # Must run beyond detection — that's the whole point of drone_full.
+    tasks = set(drone_full["tasks"])
+    assert "detection" in tasks
+    assert "obb" in tasks, "drone_full should run OBB (aerial DOTA)"
+    assert tasks - {"detection", "obb", "segmentation", "pose", "classification"} == set(), (
+        "drone_full has unknown task entries"
+    )
+
+
+def test_drone_full_uses_1280_input(yolo_cfg):
+    assert yolo_cfg["drone_full"]["input_resolution"] == 1280
+
+
+def test_drone_full_drops_large_sizes(yolo_cfg):
+    # Sweeping all five tasks at 1280 is already expensive; reject l/x.
+    sizes = yolo_cfg["drone_full"]["model_sizes"]
+    assert "l" not in sizes
+    assert "x" not in sizes
+
+
+def test_drone_full_uses_aerial_datasets_where_relevant(yolo_cfg):
+    drone_full = yolo_cfg["drone_full"]
+    datasets = drone_full["datasets"]
+    # Detection on a drone-specific dataset, OBB on DOTA (aerial). seg
+    # and pose use COCO defaults — there is no widely-used aerial seg
+    # or aerial pose dataset, so we don't pretend.
+    assert datasets["detection"] == "VisDrone.yaml"
+    assert datasets["obb"].lower().startswith("dota"), (
+        f"drone_full OBB dataset should be a DOTA variant; got {datasets['obb']!r}"
+    )
+
+
+def test_drone_full_tasks_all_clear_hailo_compatibility(yolo_cfg):
+    """Every (version, task) combo in drone_full must clear the Hailo
+    compatibility gate. If a future edit drops POSE from
+    HAILO_SUPPORTED_TASKS but leaves it in drone_full, this trips.
+    """
+    drone_full = yolo_cfg["drone_full"]
+    for version in drone_full["yolo_versions"]:
+        for task_name in drone_full["tasks"]:
+            task = YOLOTask(task_name)
+            # Pick the first optimised model for this (version, task) so
+            # the test exercises something realistic.
+            models = HAILO_OPTIMIZED_MODELS[version].get(task, [])
+            if not models:
+                continue
+            ok, reason = check_hailo_compatibility(models[0], version, task)
+            assert ok, (
+                f"drone_full has ({version}, {task_name}) but "
+                f"{models[0]!r} fails Hailo compat: {reason}"
+            )

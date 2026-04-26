@@ -5,7 +5,7 @@
 #
 # Phase 4 - Task 4.1 of Hailo PRD
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np

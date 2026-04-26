@@ -90,12 +90,22 @@ class CalibrationDatasetLoader:
         # Use dataset.images for calibration
     """
 
-    # Default datasets per task type (from Ultralytics)
+    # Default datasets per task type (from Ultralytics).
+    #
+    # Polish 4: OBB and POSE were previously pointed at the 8-image samples
+    # (dota8 / coco8-pose), which is too few for INT8 quantisation
+    # calibration — quantised accuracy can drop dramatically when the
+    # calibration sample doesn't cover the input distribution. The full
+    # DOTAv1 / coco-pose datasets are now the default; CalibrationConfig
+    # caps actual sample use at `num_samples=100` so we don't burn
+    # disk space at calibration time, but the first-run download is
+    # heavier (DOTAv1 ~10 GB, coco-pose ~20 GB). Override via
+    # `CalibrationConfig.dataset_path` if you need a lighter setup.
     DEFAULT_DATASETS = {
         YOLOTask.DETECTION: "coco128",
         YOLOTask.SEGMENTATION: "coco128-seg",
-        YOLOTask.POSE: "coco8-pose",
-        YOLOTask.OBB: "dota8",
+        YOLOTask.POSE: "coco-pose",
+        YOLOTask.OBB: "DOTAv1",
         YOLOTask.CLASSIFICATION: "imagenet10",
     }
 

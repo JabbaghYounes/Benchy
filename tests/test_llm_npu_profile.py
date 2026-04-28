@@ -20,16 +20,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LLM_CONFIG = REPO_ROOT / "configs" / "llm_benchmark.yaml"
 
 
-# Prebuilt HEFs confirmed in the Hailo Model Zoo GenAI 5.1.1 catalogue —
-# served by the hailo-ollama REST endpoint and listed in its README. See
-# docs/hailo.md "LLM on Hailo-10H". Models added to the npu profile must
-# be in this set or the test fails — that's the contract that prevents the
-# YAML from drifting ahead of what HailoRT GenAI can actually serve.
+# Llama-family models with a published Hailo HEF (per docs/hailo.md).
+# Post-Issue-7 the benchmark surface is llama-only, so the qwen2 /
+# deepseek prebuilt HEFs are out of scope even though they are present
+# in the Hailo Model Zoo GenAI catalogue. Models added to the npu profile
+# must be in this set or the test fails — that's the contract that
+# prevents the YAML from drifting ahead of what HailoRT GenAI can serve
+# *and* what the project has scoped in.
 HAILO_GENAI_PREBUILT_HEFS = {
-    "qwen2:1.5b",
-    "qwen2.5-instruct:1.5b",
-    "qwen2.5-coder:1.5b",
-    "deepseek_r1_distill_qwen:1.5b",
     "llama3.2:3b",
 }
 
@@ -70,15 +68,12 @@ def test_npu_profile_models_are_prebuilt_hefs(llm_cfg):
         )
 
 
-def test_npu_profile_starts_smallest(llm_cfg):
-    # Smallest-to-largest rollout per Phase 2 plan. The smallest prebuilt
-    # HEF in Hailo Model Zoo GenAI 5.1.1 is qwen2:1.5b (1.5B params); the
-    # largest in the catalogue is llama3.2:3b. The initial npu profile
-    # must stay within that range until Slice 7 confirms the pipeline on
-    # hardware.
+def test_npu_profile_stays_at_or_below_3b(llm_cfg):
+    # The npu profile must stay within the llama-family models that have
+    # a published Hailo HEF. Currently that is llama3.2:3b only; if a
+    # llama 1B HEF lands later it can be added to SMALL.
     models = llm_cfg["npu"]["models"]
-    SMALL = {"qwen2:1.5b", "qwen2.5-instruct:1.5b", "qwen2.5-coder:1.5b",
-             "deepseek_r1_distill_qwen:1.5b", "llama3.2:3b"}
+    SMALL = {"llama3.2:3b"}
     for tag in models:
         assert tag in SMALL, f"npu profile too aggressive: {tag} > 3B"
 

@@ -13,17 +13,21 @@ ollama:
 # Default profile - llama2:7b across three quant levels.
 # `quant_tag_template` controls how `models` × `quants` is composed into
 # Ollama tags. For llama2 (which ships chat variants under -chat-*) the
-# template is `{base}-chat-{quant}`; for most modern models (llama3.x,
-# mistral, gemma2) use `{base}-instruct-{quant}` or just `{base}-{quant}`.
+# template is `{base}-chat-{quant}`; for llama3.x use `{base}-instruct-{quant}`
+# or just `{base}-{quant}` depending on the tag namespace in Ollama.
 default:
   model_groups: ["7B"]
   models: ["llama2:7b"]
   quants: ["q4_K_M", "q5_K_M", "q8_0"]
   quant_tag_template: "{base}-chat-{quant}"
 
-# Full profile - all models
+# Full profile - sweeps the three canonical CPU groups (1B, 3B, 7B).
+# 1B/3B exercise the lightweight prompt set and finish quickly; 7B is the
+# realistic-workload tier. Higher-parameter groups (8B, 9B) are no longer
+# part of the benchmark surface — see Issue 6 in
+# resources/session_issues_2026-04-27.md for rationale.
 full:
-  model_groups: ["7B", "8B", "9B"]
+  model_groups: ["1B", "3B", "7B"]
 
 # Drone profile - 7B model with drone-use-case prompts (scene description,
 # target identification, mission preflight, telemetry interpretation, hazard
@@ -36,40 +40,33 @@ drone:
 
 # NPU profile - LLM-on-Hailo-10H via HailoRT GenAI's Ollama-compatible REST
 # server (default port 8000 per the hailo-ollama README; adjust api_base
-# if your install binds elsewhere). Starts with the smallest prebuilt HEF
-# (qwen2:1.5b); ramp to qwen2.5-instruct:1.5b, qwen2.5-coder:1.5b,
-# deepseek_r1_distill_qwen:1.5b, llama3.2:3b as each is validated on
-# hardware. backend: "hailo-10h" tags every result so the dashboard can
-# split CPU-side runs from NPU-side runs on the same prompts. npu_metrics:
-# true attaches HailoLLMMetricsCollector alongside the host ResourceMonitor.
-# The runner aborts with a clear message if this profile is run on anything
-# other than Platform.RPI_AI_HAT_PLUS_2.
+# if your install binds elsewhere). Uses llama3.2:3b — per docs/hailo.md
+# this is the llama-family model with a published Hailo HEF. backend:
+# "hailo-10h" tags every result so the dashboard can split CPU-side runs
+# from NPU-side runs on the same prompts. npu_metrics: true attaches
+# HailoLLMMetricsCollector alongside the host ResourceMonitor. The runner
+# aborts with a clear message if this profile is run on anything other
+# than Platform.RPI_AI_HAT_PLUS_2.
 npu:
   api_base: "http://localhost:8000"
   backend: "hailo-10h"
   npu_metrics: true
-  model_groups: ["1.5B"]
-  models: ["qwen2:1.5b"]
+  model_groups: ["3B"]
+  models: ["llama3.2:3b"]
   prompt_set: drone
 
-# Model definitions by size group
+# Model definitions by size group. Llama-family only — three groups, one
+# model per group. See Issue 7 in resources/session_issues_2026-04-27.md
+# for the consolidation rationale (provenance/licensing/architecture
+# parity across groups). The `npu` profile reuses the 3B group (llama3.2:3b
+# has a published Hailo HEF per docs/hailo.md).
 models:
-  1.5B:
-    # Hailo Model Zoo GenAI 5.1.1 prebuilt HEFs — only valid on the npu profile.
-    - qwen2:1.5b
-    - qwen2.5-instruct:1.5b
-    - qwen2.5-coder:1.5b
-    - deepseek_r1_distill_qwen:1.5b
+  1B:
+    - llama3.2:1b
+  3B:
+    - llama3.2:3b
   7B:
     - llama2:7b
-    - mistral:7b
-    - olmo2:7b
-  8B:
-    - llama3.1:8b
-    - dolphin3:8b
-    - dolphin-llama3:8b
-  9B:
-    - gemma2:9b
 
 # Deterministic generation settings
 generation:

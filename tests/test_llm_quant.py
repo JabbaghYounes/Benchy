@@ -42,15 +42,15 @@ def test_default_profile_expands_to_three_tags(llm_cfg):
 
 
 def test_expand_with_default_template():
-    out = _expand_quant_sweep(["llama3.1:8b"], ["q4_K_M", "q8_0"])
-    assert out == ["llama3.1:8b-q4_K_M", "llama3.1:8b-q8_0"]
+    out = _expand_quant_sweep(["llama3.2:3b"], ["q4_K_M", "q8_0"])
+    assert out == ["llama3.2:3b-q4_K_M", "llama3.2:3b-q8_0"]
 
 
 def test_expand_with_instruct_template():
     out = _expand_quant_sweep(
-        ["mistral:7b"], ["q4_K_M", "q5_K_M"], "{base}-instruct-{quant}"
+        ["llama3.2:3b"], ["q4_K_M", "q5_K_M"], "{base}-instruct-{quant}"
     )
-    assert out == ["mistral:7b-instruct-q4_K_M", "mistral:7b-instruct-q5_K_M"]
+    assert out == ["llama3.2:3b-instruct-q4_K_M", "llama3.2:3b-instruct-q5_K_M"]
 
 
 def test_expand_cross_product():
@@ -60,8 +60,8 @@ def test_expand_cross_product():
 
 
 def test_no_quants_returns_models_unchanged():
-    out = _expand_quant_sweep(["llama2:7b", "mistral:7b"], [])
-    assert out == ["llama2:7b", "mistral:7b"]
+    out = _expand_quant_sweep(["llama3.2:1b", "llama2:7b"], [])
+    assert out == ["llama3.2:1b", "llama2:7b"]
 
 
 def test_no_quants_returns_a_copy():

@@ -44,16 +44,16 @@ def _fake_system_info(platform: str) -> SystemInfo:
 
 def test_helper_emits_one_stub_per_model():
     profile_config = {
-        "models": ["qwen2:1.5b", "qwen2.5-instruct:1.5b"],
-        "model_groups": ["1.5B"],
+        "models": ["llama3.2:3b", "llama2:7b"],
+        "model_groups": ["3B", "7B"],
     }
     stubs = _build_unsupported_npu_stubs(profile_config, "hailo-10h")
     assert len(stubs) == 2
-    assert {s.model_name for s in stubs} == {"qwen2:1.5b", "qwen2.5-instruct:1.5b"}
+    assert {s.model_name for s in stubs} == {"llama3.2:3b", "llama2:7b"}
 
 
 def test_helper_zeroes_all_perf_fields():
-    profile_config = {"models": ["qwen2:1.5b"], "model_groups": ["1.5B"]}
+    profile_config = {"models": ["llama3.2:3b"], "model_groups": ["3B"]}
     stub = _build_unsupported_npu_stubs(profile_config, "hailo-10h")[0]
     assert stub.tokens_per_second == 0.0
     assert stub.tps_mean == 0.0
@@ -65,7 +65,7 @@ def test_helper_zeroes_all_perf_fields():
 
 
 def test_helper_tags_backend_for_dashboard_axis():
-    profile_config = {"models": ["qwen2:1.5b"], "model_groups": ["1.5B"]}
+    profile_config = {"models": ["llama3.2:3b"], "model_groups": ["3B"]}
     stub = _build_unsupported_npu_stubs(profile_config, "hailo-10h")[0]
     # backend must be hailo-10h so the stub lands on the same dashboard
     # axis as the real Hailo-10H runs from verify_ai_hat_plus_2.sh.
@@ -73,7 +73,7 @@ def test_helper_tags_backend_for_dashboard_axis():
 
 
 def test_helper_marks_prompt_id_for_provenance():
-    profile_config = {"models": ["qwen2:1.5b"], "model_groups": ["1.5B"]}
+    profile_config = {"models": ["llama3.2:3b"], "model_groups": ["3B"]}
     stub = _build_unsupported_npu_stubs(profile_config, "hailo-10h")[0]
     # Prompt-id is the discriminator a reader uses to tell a stub from a
     # real-but-very-slow run; LLMResult has no dedicated status field.

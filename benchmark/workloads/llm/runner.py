@@ -91,45 +91,28 @@ class LLMBenchmarkConfig:
         )
 
 
-# Model groups as defined in PRD
-# Phase 1: Extended with 1B and 3B models per Model Expansion PRD
+# Llama-family only — three groups, one model per group.
+# See Issue 7 in resources/session_issues_2026-04-27.md for the
+# llama-only consolidation rationale.
 LLM_MODELS = {
-    "1B": ["llama3.2:1b", "granite3.1-moe:1b", "sailor2:1b"],
-    "3B": ["llama3.2:3b", "granite3.1-moe:3b", "starcoder2:3b"],
-    "7B": ["llama2:7b", "mistral:7b", "olmo2:7b"],
-    "8B": ["llama3.1:8b", "dolphin3:8b", "dolphin-llama3:8b"],
-    "9B": ["gemma2:9b"],
+    "1B": ["llama3.2:1b"],
+    "3B": ["llama3.2:3b"],
+    "7B": ["llama2:7b"],
 }
 
 
 @dataclass
 class ModelMetadata:
-    """Metadata for LLM models per Model Expansion PRD Task 1.2."""
-    parameter_group: str  # "1B", "3B", "7B", "8B", "9B"
+    """Metadata for LLM models."""
+    parameter_group: str  # "1B", "3B", "7B" (or "1.5B" on the NPU profile)
     architecture: str  # "dense" or "moe"
     specialization: str  # "general" or "code"
 
 
-# Model metadata registry - Task 1.2
 MODEL_METADATA: dict[str, ModelMetadata] = {
-    # 1B models
     "llama3.2:1b": ModelMetadata("1B", "dense", "general"),
-    "granite3.1-moe:1b": ModelMetadata("1B", "moe", "general"),
-    "sailor2:1b": ModelMetadata("1B", "dense", "general"),
-    # 3B models
     "llama3.2:3b": ModelMetadata("3B", "dense", "general"),
-    "granite3.1-moe:3b": ModelMetadata("3B", "moe", "general"),
-    "starcoder2:3b": ModelMetadata("3B", "dense", "code"),
-    # 7B models
     "llama2:7b": ModelMetadata("7B", "dense", "general"),
-    "mistral:7b": ModelMetadata("7B", "dense", "general"),
-    "olmo2:7b": ModelMetadata("7B", "dense", "general"),
-    # 8B models
-    "llama3.1:8b": ModelMetadata("8B", "dense", "general"),
-    "dolphin3:8b": ModelMetadata("8B", "dense", "general"),
-    "dolphin-llama3:8b": ModelMetadata("8B", "dense", "general"),
-    # 9B models
-    "gemma2:9b": ModelMetadata("9B", "dense", "general"),
 }
 
 
@@ -536,7 +519,7 @@ class OllamaClient:
                 f"{self.base_url}/api/generate",
                 json=payload,
                 stream=True,
-                timeout=300,
+                timeout=600,
             )
             response.raise_for_status()
 
@@ -578,7 +561,7 @@ class OllamaClient:
             response = self.session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=300,
+                timeout=600,
             )
             response.raise_for_status()
             return response.json()
@@ -762,8 +745,6 @@ class LLMBenchmarkRunner:
                 "1B": 2.0,
                 "3B": 4.0,
                 "7B": 8.0,
-                "8B": 10.0,
-                "9B": 12.0,
             }.get(self.config.model_size, 4.0)
 
             mem_status = check_memory_preflight(min_memory_gb)

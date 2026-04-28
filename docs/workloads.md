@@ -68,19 +68,17 @@ v11/v26 equivalents), trained on COCO-Pose with a single
 
 ### Model Groups
 
-| Group | Models | Architecture | Specialization | Backend |
-|-------|--------|--------------|----------------|---------|
-| **1B** | llama3.2:1b, granite3.1-moe:1b, sailor2:1b | Dense/MoE | General | Ollama (CPU) |
-| **1.5B** | qwen2:1.5b, qwen2.5-instruct:1.5b, qwen2.5-coder:1.5b, deepseek_r1_distill_qwen:1.5b | Dense | General/Code | Hailo-10H NPU (HailoRT GenAI prebuilt HEFs) |
-| **3B** | llama3.2:3b, granite3.1-moe:3b, starcoder2:3b | Dense/MoE | General/Code | Ollama (CPU); llama3.2:3b also has a Hailo HEF |
-| **7B** | llama2:7b, mistral:7b, olmo2:7b | Dense | General | Ollama (CPU); llama2:7b also has a Hailo HEF (community-supported) |
-| **8B** | llama3.1:8b, dolphin3:8b, dolphin-llama3:8b | Dense | General | Ollama (CPU) |
-| **9B** | gemma2:9b | Dense | General | Ollama (CPU) |
+| Group | Model | Architecture | Specialization | Backend |
+|-------|-------|--------------|----------------|---------|
+| **1B** | llama3.2:1b | Dense | General | Ollama (CPU) |
+| **3B** | llama3.2:3b | Dense | General | Ollama (CPU); also has a Hailo HEF — reused by the `npu` profile on Hailo-10H |
+| **7B** | llama2:7b | Dense | General | Ollama (CPU); community-supported Hailo HEF |
 
 **Important Constraints:**
 - Models are **only compared within the same parameter group**
-- **MoE models** (granite3.1-moe) may show different performance characteristics than dense models
-- **Code-specialized models** (starcoder2:3b) are evaluated with both general and code prompts
+- The benchmark surface is **llama-family only** (one model per group). The
+  consolidation rationale is in Issue 7 of
+  `resources/session_issues_2026-04-27.md`.
 
 ### Prompt Sets
 
@@ -115,10 +113,10 @@ default:
   quant_tag_template: "{base}-chat-{quant}"  # llama2 chat tags
 ```
 
-The default template is `{base}-{quant}` (works for most modern Ollama tags
-where the variant infix is already in `models`, e.g. `mistral:7b-instruct`,
-`llama3.1:8b-instruct`). Use `{base}-chat-{quant}` for llama2-style tags
-where the chat infix is implicit. The runner records the actual quantization
+The default template is `{base}-{quant}` (works for llama3.x tags where the
+variant infix is already in `models`, e.g. `llama3.2:3b-instruct`). Use
+`{base}-chat-{quant}` for llama2-style tags where the chat infix is
+implicit. The runner records the actual quantization
 level reported by Ollama's `/api/show` into `LLMResult.quantization`, so the
 column in the CSV reflects what was loaded — not just the requested label.
 
@@ -157,10 +155,7 @@ column in the CSV reflects what was loaded — not just the requested label.
 | Group | Minimum Available RAM |
 |-------|----------------------|
 | 1B | 2 GB |
-| 1.5B | 3 GB (Ollama-CPU); on Hailo-10H the model resides in the AI HAT+ 2's onboard 8 GB SDRAM and host RAM is mostly free |
-| 3B | 4 GB |
+| 3B | 4 GB (Ollama-CPU); on Hailo-10H the model resides in the AI HAT+ 2's onboard 8 GB SDRAM and host RAM is mostly free |
 | 7B | 8 GB |
-| 8B | 10 GB |
-| 9B | 12 GB |
 
 The benchmark performs memory preflight checks before loading models. If insufficient memory is detected or swap usage is required, the benchmark will abort with an error.

@@ -159,25 +159,29 @@ shape including `eval_count` and `prompt_eval_count`.
 4. Run `hailo-ollama` to start the server. Config at
    `~/.config/hailo-ollama/hailo-ollama.json`; HEF cache at
    `~/.local/share/hailo-ollama/models/`.
-5. Pull a model on first use:
+5. Pull the model on first use:
    ```bash
    curl --silent http://localhost:8000/api/pull \
      -H 'Content-Type: application/json' \
-     -d '{ "model": "qwen2:1.5b", "stream": true }'
+     -d '{ "model": "llama3.2:3b", "stream": true }'
    ```
 
 ### Prebuilt HEFs
 
-The Hailo Model Zoo GenAI 5.1.1 catalogue ships precompiled HEFs for:
+The Hailo Model Zoo GenAI 5.1.1 catalogue ships precompiled HEFs for
+several model families. The benchmark consumes only the llama-family
+entry from this set (Issue 7 in
+`resources/session_issues_2026-04-27.md` — llama-only consolidation):
 
-| Tag (Ollama-compat) | Params |
-|---|---|
-| `qwen2:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B |
-| `deepseek_r1_distill_qwen:1.5b` | 1.5B |
-| `llama3.2:3b` | 3B |
+| Tag (Ollama-compat) | Params | Used by benchmark? |
+|---|---|---|
+| `llama3.2:3b` | 3B | ✅ — `npu` profile |
+| `qwen2:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B | ❌ out of scope |
+| `deepseek_r1_distill_qwen:1.5b` | 1.5B | ❌ out of scope |
 
 `tests/test_llm_npu_profile.py:HAILO_GENAI_PREBUILT_HEFS` is the canonical
-whitelist; profiles that list anything outside it fail the test suite.
+whitelist of in-scope HEFs; profiles that list anything outside it fail
+the test suite.
 
 ### Running
 
@@ -187,10 +191,9 @@ whitelist; profiles that list anything outside it fail the test suite.
 python -m benchmark run llm --profile npu
 ```
 
-The `npu` profile starts with the smallest HEF (`qwen2:1.5b`) so the
-pipeline is validated end-to-end on a fast model before scaling up. Add
-larger tags to `configs/llm_benchmark.yaml` once a smaller one has
-published clean numbers.
+The `npu` profile uses `llama3.2:3b` so the cross-platform dashboard
+gets a clean "same model, two backends" comparison row when paired
+with the CPU-side 3B run from `--profile drone` or `--profile full`.
 
 ### Output
 

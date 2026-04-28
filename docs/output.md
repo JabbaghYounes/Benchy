@@ -38,15 +38,17 @@ The HTML dashboard includes:
 | Platform | All, Jetson Orin Nano, RPi AI HAT+, etc. | Filter by hardware platform |
 | YOLO Version | All, v8, v11, v26 | Filter YOLO results by version |
 | Task | All, Detection, Classification, etc. | Filter by YOLO task type |
-| LLM Size | All, 1B, 3B, 7B, 8B, 9B | Filter by model size |
-| Parameter Group | All, 1B, 3B, 7B, 8B, 9B | Filter by parameter group (same as size) |
-| Architecture | All, Dense, MoE | Filter by model architecture |
-| Specialization | All, General, Code | Filter by model specialization |
+| LLM Size | All, 1B, 3B, 7B | Filter by model size |
+| Parameter Group | All, 1B, 3B, 7B | Filter by parameter group (same as size) |
 
 **Visual Indicators:**
-- **MoE Badge** (purple): Indicates Mixture of Experts models (e.g., granite3.1-moe)
-- **Code Badge** (orange): Indicates code-specialized models (e.g., starcoder2)
-- **Parameter Group Badge**: Color-coded by size (green=1B, blue=3B/7B/8B, red=9B)
+- **Parameter Group Badge**: Color-coded by size (green=1B, blue=3B, red=7B)
+
+The Architecture and Specialization filter chips are no longer rendered:
+the llama-only consolidation (Issue 7) means every shipped model is
+`dense` / `general`, so those filters would always select the entire
+data set. The schema fields remain on `LLMResult` for forward
+compatibility if a future PR widens the surface.
 
 Open in browser:
 ```bash
@@ -132,7 +134,7 @@ default:
   quant_tag_template: "{base}-chat-{quant}"
 
 full:
-  model_groups: ["1B", "3B", "7B", "8B", "9B"]
+  model_groups: ["1B", "3B", "7B"]   # one llama model per group; see configs/llm_benchmark.yaml
 
 # Drone profile: drone-use-case prompts (scene description, target ID,
 # mission preflight, telemetry, hazard reasoning). `prompt_set: drone`

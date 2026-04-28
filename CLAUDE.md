@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Benchy is an edge AI benchmarking suite that evaluates YOLO (computer vision) and LLM (via Ollama) inference across three hardware platforms: NVIDIA Jetson Orin Nano (GPU), Raspberry Pi + AI HAT+ (Hailo-8L 13 TOPS or Hailo-8 26 TOPS, both HailoRT 4.x), and Raspberry Pi + AI HAT+ 2 (Hailo-10H NPU, HailoRT 5.x). It collects latency, throughput, accuracy, resource utilization, and power metrics.
+Benchy is an edge AI benchmarking suite that evaluates YOLO (computer vision) and LLM (via Ollama) inference across three hardware platforms: NVIDIA Jetson Orin Nano (GPU), Raspberry Pi + AI HAT+ (Hailo-8L 13 TOPS or Hailo-8 26 TOPS, both HailoRT 4.x), and Raspberry Pi + AI HAT+ 2 (Hailo-10H NPU, HailoRT 5.x).
+
+It collects latency, throughput, accuracy, resource utilization, and power metrics.
 
 ## Running Benchmarks
 
-Activate the project venv (created by the setup scripts in `scripts/`) before running anything: `source venv/bin/activate` from the repo root. Both `python -m benchmark <cmd>` and the installed `edge-bench <cmd>` console script (from `setup.py` entry point) invoke the same CLI.
+Platform setup is one of three scripts in `scripts/`: `setup_jetson_orin_nano.sh`, `setup_rpi_ai_hat_plus.sh` (Hailo-8 / 8L, HailoRT 4.x), or `setup_rpi_ai_hat_plus_2.sh` (Hailo-10H, HailoRT 5.x). Each installs platform-specific system packages and creates the project venv. Activate it before running anything: `source venv/bin/activate` from the repo root. Both `python -m benchmark <cmd>` and the installed `edge-bench <cmd>` console script (from `setup.py` entry point) invoke the same CLI.
 
 ```bash
 # Quick benchmark (yolov8n detection + llama2:7b)
@@ -28,14 +30,23 @@ python -m benchmark run yolo --yolo-version v11 --backend hailo
 # Force Hailo model recompile (ignores ~/.cache/benchy/hailo/)
 python -m benchmark run yolo --backend hailo --force-recompile
 
-# LLM only — default profile sweeps llama2:7b across q4_K_M/q5_K_M/q8_0;
-# full runs the 7B+8B+9B groups defined in configs/llm_benchmark.yaml; drone
-# runs llama2:7b on the curated drone prompt set.
+# Drone-focused YOLO profiles: `drone` is detection at 1280 across
+# v8/v11/v26 sizes n/s/m on VisDrone; `drone_full` extends to det + OBB
+# + seg + pose at 1280 (YOLO-only — no LLM step).
+python -m benchmark run yolo --profile drone
+python -m benchmark run yolo --profile drone_full
+
+# LLM only — llama-family only, one model per group (see Issue 7 in
+# resources/session_issues_2026-04-27.md). default sweeps llama2:7b
+# across q4_K_M/q5_K_M/q8_0; full runs all three groups
+# (1B=llama3.2:1b / 3B=llama3.2:3b / 7B=llama2:7b); drone runs llama2:7b
+# on the curated drone prompt set; npu uses llama3.2:3b on Hailo-10H.
 python -m benchmark run llm
 python -m benchmark run llm --profile full
 python -m benchmark run llm --profile drone
 
-# Diagnostic subcommands
+# Diagnostic subcommands — run `info` first on a new host to confirm
+# platform detection without invoking a benchmark.
 python -m benchmark info            # detected platform + system info
 python -m benchmark list-models     # YOLO models supported per backend
 python -m benchmark backends        # available inference backends
@@ -51,7 +62,7 @@ python -m benchmark verify run_a.json run_b.json  # cross-platform comparison
 
 ## Development Commands
 
-Activate the project venv first (`source venv/bin/activate`); on Raspberry Pi OS Bookworm system-wide pip is blocked by PEP 668, so the venv is mandatory there.
+Python 3.10+ is required (see `setup.py:python_requires`). Activate the project venv first (`source venv/bin/activate`); on Raspberry Pi OS Bookworm system-wide pip is blocked by PEP 668, so the venv is mandatory there.
 
 ```bash
 # Install with dev dependencies
@@ -79,7 +90,7 @@ pytest tests/test_dashboard_backend_filter.py                                   
 
 **Data flow**: CLI → workload runners → metrics collectors → result writers → aggregation → dashboard HTML.
 
-**Platform detection**: `benchmark/metrics/collectors.py:detect_platform()` identifies the platform by checking `/etc/nv_tegra_release` (Jetson), `/proc/device-tree/model` (RPi), and `hailortcli fw-control identify` output (Hailo-8L vs Hailo-10H/8 → distinguishes AI HAT+ from AI HAT+ 2). Override with `--platform`.
+**Platform detection**: `benchmark/metrics/collectors.py:detect_platform()` identifies the platform by checking `/etc/nv_tegra_release` (Jetson), `/proc/device-tree/model` (RPi), and `hailortcli fw-control identify` output. Hailo-8L (13 TOPS) and Hailo-8 (26 TOPS) both map to `Platform.RPI_AI_HAT_PLUS`; only Hailo-10H maps to `Platform.RPI_AI_HAT_PLUS_2`. Override with `--platform`.
 
 **YOLO model name parsing**: `benchmark/cli.py:_infer_yolo_model_info()` infers version and task from the filename — pattern `yolov8` / `yolo11` / `yolo26` + optional suffix (`-seg`, `-pose`, `-obb`, `-cls`; no suffix = detection). This means `--yolo-model` accepts any standard Ultralytics filename without extra metadata.
 
@@ -105,23 +116,36 @@ Key modules:
 
 YAML configs in `configs/` define profiles, model lists, inference params, and prompt sets. Profile fields: `input_resolution`, per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and (LLM-only) `api_base`, `backend`, `npu_metrics`. The LLM backend axis (`ollama-cpu` / `ollama-cuda` / `hailo-10h`) is recorded on every `LLMResult` and surfaced as a dashboard filter chip + column. Built-in profiles (`default` / `full` / `drone` / `drone_full` / `npu`) are summarised in the README; see `docs/workloads.md` and `docs/output.md` for field-level reference, and `docs/hailo.md` for the NPU metric path (`benchmark/workloads/{yolo,llm}/hailo_metrics.py` + `benchmark/backends/hailo_utils.py`).
 
+**LLM model surface (post-Issue-7).** The benchmark surface is **llama-family only, one model per group**: `1B=llama3.2:1b`, `3B=llama3.2:3b`, `7B=llama2:7b`. The 1.5B / 8B / 9B groups and all non-llama families (qwen2, deepseek, mistral, olmo2, granite, sailor2, starcoder2) were removed for within-group provenance/architecture parity. The `npu` profile reuses the 3B group (`llama3.2:3b` has a published Hailo HEF). Adding any non-llama model requires updating Issue 7 in `resources/session_issues_2026-04-27.md`, the YAML, the runner constants, and the docs together.
+
 ## Hardware Verification
 
 `scripts/verify_ai_hat_plus.sh` and `scripts/verify_ai_hat_plus_2.sh` are smart runners that sweep every Hailo-supported YOLO task on the respective board. Both source `scripts/hw_verify_common.sh` (built on top of `scripts/common.sh` for log primitives), call `python -m benchmark run …` per step, and validate the produced `bench_*.json` against per-task contracts via `scripts/hw_verify_validators.py`. Continue-on-failure semantics; the final exit code is non-zero only on blocking failures — anything tagged `[experimental]` (v26-{obb,seg,pose}) or `[unsupported-on-this-hw]` (NPU LLM on Hailo-8/8L) is treated as advisory and recorded but doesn't gate exit. Both runners produce identical 13-step bundles (vision sweep + LLM-on-NPU + LLM-on-CPU comparison row) plus an auto-generated dashboard via `hw_finalize_with_report`, so the two boards' `results/hw_verify_<timestamp>/` directories are directly diff-able. The validator is the test surface (`tests/test_hw_verify_validators.py` + `tests/test_llm_npu_unsupported_stub.py`) since bash orchestration is hard to unit-test on dev.
 
+`hw_verify_common.sh:hw_ensure_python_deps` is a verify-time self-heal step: it `import`-probes `onnx` and `onnxruntime` against the active venv and pip-installs anything missing before the sweep starts. Both verify entrypoints call it right after `hw_init`. This means an existing venv that pre-dates a dep change doesn't need a sudo-driven setup re-run — just running the verify script fixes itself. New deps that fall into the same trap (silently swallowed `ModuleNotFoundError` deep in the runner) should be added to the `pairs=()` array in this function — see Issue 8 in `resources/session_issues_2026-04-27.md` for the failure mode that motivated it.
+
 When the `npu` profile runs on a non-`rpi_ai_hat_plus_2` platform, `cli.py:_build_unsupported_npu_stubs()` emits zero-valued `LLMResult` rows tagged `backend="hailo-10h"` and `prompt_id="unsupported-on-this-hardware"` instead of returning an empty list. This guarantees the cross-platform dashboard renders an explicit "tried, 0 TPS" bar on the NPU axis for the AI HAT+ Pi, matching the row count of the AI HAT+ 2 Pi for chart comparison.
+
+## Critical Rules
+
+**Benchmark integrity — no CPU fallback on Hailo platforms.** CPU inference on Hailo-equipped platforms is NOT a valid configuration. The Hailo backend deliberately does NOT fall back to CPU — do not add such a fallback, and do not suggest running YOLO without `--backend hailo` (or auto-selection) on RPi + AI HAT+. See `docs/hailo.md`.
 
 ## Hardware-Specific Notes
 
 - Hailo backend supports all five YOLO tasks: detection, classification, OBB, segmentation, pose. OBB uses `postprocessing.py:_rotated_nms` / `_process_obb`; segmentation uses `_process_segmentation` / `_generate_seg_masks`; pose uses `_process_pose` with a 17-keypoint COCO-Pose decoder. v8/v11 are verified across all tasks; v26-{obb,seg,pose} are marked experimental until hardware confirmation.
 - Hailo models use INT8 quantization; first compilation per model takes 5-30 minutes.
-- **Benchmark integrity rule**: CPU inference on Hailo-equipped platforms is NOT a valid configuration. The Hailo backend deliberately does NOT fall back to CPU — do not add such a fallback, and do not suggest running YOLO without `--backend hailo` (or auto-selection) on RPi + AI HAT+. See `docs/hailo.md`.
-- LLM benchmarks require an Ollama-compatible server: `ollama serve` on `:11434` for CPU profiles (`default` / `full` / `drone`), or `hailo-ollama` on `:8000` for the `npu` profile (Hailo-10H only). The `api_base` profile field selects which.
+- LLM benchmarks require an Ollama-compatible server: `ollama serve` on `:11434` for CPU profiles (`default` / `full` / `drone`), or `hailo-ollama` on `:8000` for the `npu` profile (Hailo-10H only). The `api_base` profile field selects which. The HTTP read timeout in `benchmark/workloads/llm/runner.py` is 600s (lines 522 / 564) — sized for `llama2:7b` cold-loading from SD storage on a Pi 5. Lowering it risks Issue 9; if you ever need to raise it further, make it a yaml field rather than another hardcode.
+- The Hailo conversion pipeline (`.pt → .onnx → .har → .hef`) requires `onnx` + `onnxruntime`. Both are pinned in `setup.py:install_requires` and explicitly listed in the platform setup scripts; `hw_verify_common.sh:hw_ensure_python_deps` self-heals existing venvs that pre-date the pin. Don't move them out of `install_requires` — silently shipping a venv where `onnx_export.py` can't import is exactly Issue 8.
 - `resources/hailo-8/` and `resources/hailo-10H/` bundle the HailoRT 4.x and 5.x `.deb` installers + user guides consumed by `scripts/setup_rpi_ai_hat_plus*.sh` — they are not stray docs.
+- Runtime artifacts: HailoRT writes `hailort.log` to the working directory and `scripts/setup_rpi_ai_hat_plus*.sh` writes `setup_rpi_ai_hat_plus.log` at the repo root. Neither is in `.gitignore` — leave them out of commits.
 
 ## Additional Documentation
 
 `docs/` contains the authoritative reference for CLI flags (`cli.md`), workload metrics and model groups (`workloads.md`), Hailo integration and limits (`hailo.md`), benchmark methodology and reproducibility verification (`methodology.md`), output file layout and dashboard filters (`output.md`), and common failures (`troubleshooting.md`). Consult these before duplicating information here.
+
+`resources/` contains:
+- `hailo-8/` and `hailo-10H/` — bundled HailoRT 4.x and 5.x `.deb` installers + user guides consumed by the platform setup scripts.
+- `session_issues_<YYYY-MM-DD>.md` — dated incident logs from setup-and-verify sessions on real hardware. The 2026-04-27 entry documents ten issues fixed during the AI HAT+ Pi bring-up: 1-5 setup hygiene (HailoRT 5.x stray, root-owned log/egg-info, venv `hailo_platform` symlink bug, missing `[dev]` extras), 6-7 LLM model-surface consolidation (1B/3B/7B llama-only), and 8-10 from the first end-to-end verify run (missing `onnx`/`onnxruntime` deps killing the YOLO Hailo conversion pipeline; LLM HTTP timeout too short for cold-loaded `llama2:7b` on Pi 5; `csv_writer.py` LLM column list out of sync with `LLMAggregatedMetrics.to_dict()`). Read the relevant file before debugging Hailo-stack, venv, LLM-config, or report-pipeline failures — most failure modes are already catalogued there with root cause and verified fix.
 
 ## Git Conventions
 

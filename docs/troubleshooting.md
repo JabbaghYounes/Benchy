@@ -69,7 +69,7 @@ curl -sS http://localhost:8000/api/tags
 |-------|----------|
 | "profile 'npu' requires Platform.RPI_AI_HAT_PLUS_2" | The `npu` LLM profile gates on the Hailo-10H (only board that can host LLMs on the NPU). Run on AI HAT+ 2 or use `--profile drone` for the CPU-side path. |
 | `:8000` not responding | Source `setup_env.sh` and start the server: `source .cache/hailo-apps/setup_env.sh && hailo-ollama &` |
-| Model not in `/api/tags` | Pull a prebuilt HEF: `curl -sS http://localhost:8000/api/pull -H 'Content-Type: application/json' -d '{"model":"qwen2:1.5b","stream":true}'` |
+| Model not in `/api/tags` | Pull the llama HEF: `curl -sS http://localhost:8000/api/pull -H 'Content-Type: application/json' -d '{"model":"llama3.2:3b","stream":true}'` |
 | Model Zoo GenAI `.deb` not installed | Download `hailo_gen_ai_model_zoo_<ver>_arm64.deb` from Hailo Developer Zone (EULA-gated), drop it at the repo root, then re-run `sudo ./scripts/setup_rpi_ai_hat_plus_2.sh --with-genai` |
 
 ## Hardware verification runner failures
@@ -84,12 +84,15 @@ place to look when the summary reports a FAIL.
 |-------|----------|
 | "Platform mismatch" at preflight | Run the matching script for your board (`verify_ai_hat_plus.sh` on Hailo-8/8L, `verify_ai_hat_plus_2.sh` on Hailo-10H), or override `python -m benchmark info` detection with `--platform`. |
 | Validator reports `backend=pytorch, expected hailo` | The runner fell back to CPU silently (rare — this is what `enforce_no_fallback` in execution.py is supposed to prevent). Re-run with `python -m benchmark backends` to confirm Hailo is detected. |
-| `llm-npu-qwen2:1.5b` reports SKIP rather than FAIL | hailo-ollama wasn't reachable on `:8000` at preflight. See the GenAI section above. |
+| `llm-npu-llama3.2:3b` reports SKIP rather than FAIL | hailo-ollama wasn't reachable on `:8000` at preflight. See the GenAI section above. |
 | All v26 steps FAIL but v8/v11 PASS | Expected during the experimental-v26 phase. The summary tags those failures as experimental and the script still exits 0. To park v26, drop the failing tasks from `HAILO_SUPPORTED_TASKS["v26"]`. |
+| All YOLO steps PASS-but-empty (`yolo_results: []`); validator reports "the runner produced no rows" | The Hailo conversion pipeline failed at `.pt → .onnx`. Almost always a missing `onnx` / `onnxruntime` in the venv. The verify script's `hw_ensure_python_deps` step now self-heals this on the next run; if you've patched it out, do `pip install onnx onnxruntime` in the venv. See Issue 8 in `resources/session_issues_2026-04-27.md`. |
+| `llm-cpu-llama2:7b` step times out with `Read timed out (read timeout=300)` | Old runner timeout. Pull the latest `benchmark/workloads/llm/runner.py` — both `generate` and `generate_stream` use 600s now. The 300s window was too tight for an Ollama cold-load of 7B weights from SD storage on a Pi 5. See Issue 9 in the same log. |
+| `cmd_report` crashes with `dict contains fields not in fieldnames` | `LLM_AGGREGATED_COLUMNS` in `benchmark/aggregation/csv_writer.py` has drifted from `LLMAggregatedMetrics.to_dict()`. The fix is to add the missing fields to the columns list — they must stay in lockstep. See Issue 10 in the same log. |
 
 ## Insufficient Memory
 
 - Use smaller model sizes (n, s)
 - Run workloads separately instead of `all`
 - Close other applications
-- For LLM-on-NPU runs, the `npu` profile starts on `qwen2:1.5b` (smallest prebuilt HEF, ~1 GB) so memory should rarely be the bottleneck on AI HAT+ 2
+- For LLM-on-NPU runs, the `npu` profile uses `llama3.2:3b` (~2 GB HEF) — well within the AI HAT+ 2's 8 GB onboard SDRAM, so memory should rarely be the bottleneck

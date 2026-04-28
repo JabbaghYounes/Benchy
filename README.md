@@ -9,10 +9,10 @@ This benchmark suite provides comprehensive performance evaluation for:
 - **Computer Vision**: YOLO inference (v8, v11, v26) across all five tasks —
   detection, classification, OBB, segmentation, and pose — on Hailo NPU,
   Jetson GPU, or PyTorch CPU.
-- **Local LLM Inference**: Ollama-based models (1.5B, 7B, 8B, 9B groups) on
-  CPU; or via HailoRT GenAI's Ollama-compatible REST endpoint on the
-  Hailo-10H NPU (qwen2:1.5b, qwen2.5-{instruct,coder}:1.5b,
-  deepseek_r1_distill_qwen:1.5b, llama3.2:3b).
+- **Local LLM Inference**: Llama-family only — three CPU groups
+  (`llama3.2:1b`, `llama3.2:3b`, `llama2:7b`) via Ollama on Cortex-A76 /
+  Jetson CPU. The `npu` profile reuses `llama3.2:3b` on the Hailo-10H
+  NPU via HailoRT GenAI's Ollama-compatible REST endpoint.
 - **Backend axis**: Every `LLMResult` is tagged with a backend label
   (`ollama-cpu` / `ollama-cuda` / `hailo-10h`) and the dashboard splits
   CPU and NPU runs into separate filterable rows.
@@ -53,18 +53,28 @@ cd Benchy
 
 ### 2. Platform Setup
 
-Run the appropriate setup script for your hardware:
+Run the appropriate setup script for your hardware. **`sudo` is required**
+(the script installs apt packages, udev rules, and the kernel
+HailoRT/PCIe driver). Pass `--pull-models` to also pre-pull the three
+llama LLM models (`llama3.2:1b` / `llama3.2:3b` / `llama2:7b`, ~7 GB
+total) so the LLM benchmarks can run without an extra `ollama pull`
+step:
 
 ```bash
 # NVIDIA Jetson Orin Nano
-./scripts/setup_jetson_orin_nano.sh
+sudo ./scripts/setup_jetson_orin_nano.sh --pull-models
 
 # Raspberry Pi with AI HAT+
-./scripts/setup_rpi_ai_hat_plus.sh
+sudo ./scripts/setup_rpi_ai_hat_plus.sh --pull-models
 
 # Raspberry Pi with AI HAT+ 2
-./scripts/setup_rpi_ai_hat_plus_2.sh
+sudo ./scripts/setup_rpi_ai_hat_plus_2.sh --pull-models
 ```
+
+Drop `--pull-models` if you only need YOLO benchmarks or want a leaner
+install (~7 GB smaller). The setup script also installs the project's
+`[dev]` extras (pytest / black / mypy) into the venv so the verify
+runners' first pytest step works out of the box.
 
 ### 3. Activate the Virtual Environment
 
@@ -94,11 +104,18 @@ pass/fail summary. Continue-on-failure: a single broken model doesn't
 abort the rest of the sweep, and the exit code reflects only blocking
 (non-experimental) failures.
 
+Both scripts produce identical 13-step bundles (vision sweep
+det/obb/seg/pose × v8/v11/v26 + LLM-on-NPU + LLM-on-CPU comparison row
++ auto-generated dashboard) so the two boards' result directories are
+directly diff-able. The LLM-on-NPU step writes a documented
+`[unsupported-on-this-hw]` stub on AI HAT+ (no onboard SDRAM, can't
+host LLMs) and a real run on AI HAT+ 2.
+
 ```bash
-# Pi 5 + AI HAT+ (Hailo-8 / 8L) — vision sweep (det/obb/seg/pose × v8/v11/v26)
+# Pi 5 + AI HAT+ (Hailo-8 / 8L)
 ./scripts/verify_ai_hat_plus.sh
 
-# Pi 5 + AI HAT+ 2 (Hailo-10H) — same vision sweep + LLM-on-NPU + auto-dashboard
+# Pi 5 + AI HAT+ 2 (Hailo-10H)
 ./scripts/verify_ai_hat_plus_2.sh
 ```
 
@@ -113,10 +130,10 @@ regression.
 | Profile | YOLO | LLM | Use Case |
 |---------|------|-----|----------|
 | **default** | v8 detection, nano size | llama2:7b across q4_K_M / q5_K_M / q8_0 (quant sweep) | Quick validation + INT-quant baseline |
-| **full** | All versions, all tasks, all sizes | All CPU model groups (7B / 8B / 9B) | Thorough evaluation |
+| **full** | All versions, all tasks, all sizes | All three CPU model groups (1B / 3B / 7B) | Thorough evaluation |
 | **drone** | v8/v11/v26 detection at 1280, sizes n/s/m, VisDrone dataset | llama2:7b on the curated drone prompt set (scene / target / mission / telemetry / hazard) | Realistic small-object aerial detection |
 | **drone_full** | Detection + OBB + seg + pose at 1280, sizes n/s — broadest drone-relevant Hailo sweep | _(YOLO-only)_ | Exercises every Phase 3 task at altitude-realistic resolution |
-| **npu** | _(LLM-only)_ | qwen2:1.5b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+| **npu** | _(LLM-only)_ | llama3.2:3b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set | LLM-on-NPU comparison row (AI HAT+ 2 only) |
 
 Profiles are configured in `configs/yolo_benchmark.yaml` and
 `configs/llm_benchmark.yaml`. They can declare `input_resolution`,
@@ -151,11 +168,11 @@ per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 - pyyaml >= 6.0
 - numpy >= 1.21.0
 - ultralytics >= 8.0.0
+- onnx >= 1.14.0, onnxruntime >= 1.15.0 (drive the `.pt → .onnx → .har → .hef` Hailo conversion pipeline; pinned in `setup.py:install_requires`)
 
 ### Hailo NPU (Raspberry Pi only)
 - hailo-platform >= 4.17.0 (HailoRT SDK)
 - hailo-dataflow-compiler >= 3.26.0 (for model compilation)
-- onnx >= 1.14.0, onnxruntime >= 1.15.0
 
 ## Contributing
 

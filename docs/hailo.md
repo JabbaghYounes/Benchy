@@ -174,7 +174,9 @@ curl -sSL -o resources/hefs/v8_detection_n_hailo8.hef \
 **Coverage gaps in the Model Zoo (as of 2026-04-28):** no OBB HEFs
 exist for any YOLO version; pose is published at sizes s and m only
 (not n); segmentation / pose / OBB are not published for v11 or v26.
-Those tasks require workstation compilation from `.pt`.
+Those tasks require workstation compilation from `.pt` — see
+[docs/hef_compilation.md](hef_compilation.md) for the end-to-end
+workflow.
 
 ## Cache Management
 

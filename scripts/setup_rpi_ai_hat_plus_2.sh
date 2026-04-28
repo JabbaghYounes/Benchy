@@ -127,7 +127,7 @@ detect_platform() {
         hailo_found=true
     fi
 
-    if ls /dev/hailo* 2>/dev/null; then
+    if ls /dev/hailo* /dev/h1x-* 2>/dev/null; then
         success "Hailo device node found"
         hailo_found=true
     fi

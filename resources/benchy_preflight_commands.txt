@@ -1,0 +1,84 @@
+================================================================
+Benchy pre-flight command list — Pi 5 + AI HAT+ 2 (Hailo-10H)
+Run from repo root: /home/vpn/Documents/Benchy
+================================================================
+
+--- 1. Clear the stale root-owned log ----------------------------
+sudo rm -f hailort.log
+
+
+--- 2. Install HailoRT 5.x (the AI HAT+ 2 blocker) ---------------
+# Bundles HailoRT 5.2.0 .deb from resources/hailo-10H/ + DKMS driver.
+# Will likely prompt for reboot at the end.
+sudo ./scripts/setup_rpi_ai_hat_plus_2.sh
+
+# After reboot, confirm the chip is reachable:
+dpkg -l | grep -E '^ii.*hailort'         # expect 5.x.x-1
+ls /dev/hailo*                           # expect /dev/hailo0
+hailortcli scan                          # expect a Hailo-10H device line
+hailortcli fw-control identify           # expect non-empty body
+# Troubleshooting if scan finds nothing: dmesg | grep -i hailo
+
+
+--- 3. (OPTIONAL) GenAI / NPU LLM stack --------------------------
+# Only needed if you want --profile npu (Hailo-10H LLM).
+# Skip this block if you only care about the YOLO sweep.
+sudo ./scripts/setup_rpi_ai_hat_plus_2.sh --with-genai
+
+# In a separate terminal (or run as a service):
+hailo-ollama serve
+
+# Pull the only llama HEF in the HailoRT 5.3.0 GenAI Model Zoo.
+# NOTE: the field is `model`, NOT `name` — sending `name` returns a
+# 500 null-pointer error from oatpp. Verified 2026-04-28.
+curl -X POST http://localhost:8000/api/pull \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"llama3.2:1b","stream":true}'
+
+
+--- 4. Activate venv (every new terminal) ------------------------
+cd /home/vpn/Documents/Benchy
+source venv/bin/activate
+
+
+--- 5. Sanity check that the platform is detected ----------------
+python -m benchmark info
+python -m benchmark backends
+
+
+--- 6. Run the verify sweep (in tmux) ----------------------------
+# Long-running (1-3h on first run due to HEF compilation).
+# tmux survives SSH drops; detach with Ctrl-b then d.
+sudo apt install -y tmux                 # if not installed
+tmux new -s verify
+# --- inside tmux ---
+cd /home/vpn/Documents/Benchy
+source venv/bin/activate
+./scripts/verify_ai_hat_plus_2.sh 2>&1 | tee verify_$(date +%Y%m%d_%H%M%S).log
+# Detach: Ctrl-b then d
+# Reattach later:  tmux attach -t verify
+# List sessions:   tmux ls
+# Kill when done:  tmux kill-session -t verify
+
+
+--- 7. Inspect results -------------------------------------------
+ls -dt results/hw_verify_*/report/ | head -1
+xdg-open "$(ls -dt results/hw_verify_*/report/index.html | head -1)"
+
+
+================================================================
+Notes
+================================================================
+- Step 2 is the actual blocker. Without HailoRT 5.x the chip is
+  invisible (`hailortcli scan` finds nothing) and every
+  `--backend hailo` invocation will fail.
+- Step 3 is only needed for the LLM-on-NPU portion; the YOLO
+  sweep works without it.
+- Step 6 is continue-on-failure. Rows tagged [experimental]
+  (v26-{obb,seg,pose}) and [unsupported-on-this-hw] are
+  advisory and don't gate the exit code.
+- Models already pulled (Ollama CPU side):
+    llama3.2:1b   1.3 GB
+    llama3.2:3b   2.0 GB
+    llama2:7b     3.8 GB
+- Disk after pulls: 20 GB used / 7.1 GB free on /dev/mmcblk0p2.

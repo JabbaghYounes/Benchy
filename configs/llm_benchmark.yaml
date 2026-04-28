@@ -10,20 +10,20 @@ benchmark:
 ollama:
   api_base: "http://localhost:11434"
 
-# Default profile - llama2:7b across three quant levels.
-# `quant_tag_template` controls how `models` × `quants` is composed into
-# Ollama tags. For llama2 (which ships chat variants under -chat-*) the
-# template is `{base}-chat-{quant}`; for most modern models (llama3.x,
-# mistral, gemma2) use `{base}-instruct-{quant}` or just `{base}-{quant}`.
+# Default profile — bare llama2:7b for a quick CPU smoke test.
+# Quant sweeps are intentionally NOT enabled here: the project policy is
+# llama-only across 1B / 3B / 7B, and chat-quant variants are too heavy
+# on disk for an SD-card-backed Pi. To re-enable a quant sweep, add
+# `quants:` and `quant_tag_template:` back (see git history).
 default:
   model_groups: ["7B"]
   models: ["llama2:7b"]
-  quants: ["q4_K_M", "q5_K_M", "q8_0"]
-  quant_tag_template: "{base}-chat-{quant}"
 
-# Full profile - all models
+# Full profile — all three llama sizes (1B / 3B / 7B) for thorough CPU
+# benchmarking. Each group resolves to a single llama tag (see `models:`
+# below).
 full:
-  model_groups: ["7B", "8B", "9B"]
+  model_groups: ["1B", "3B", "7B"]
 
 # Drone profile - 7B model with drone-use-case prompts (scene description,
 # target identification, mission preflight, telemetry interpretation, hazard
@@ -34,42 +34,57 @@ drone:
   models: ["llama2:7b"]
   prompt_set: drone
 
-# NPU profile - LLM-on-Hailo-10H via HailoRT GenAI's Ollama-compatible REST
-# server (default port 8000 per the hailo-ollama README; adjust api_base
-# if your install binds elsewhere). Starts with the smallest prebuilt HEF
-# (qwen2:1.5b); ramp to qwen2.5-instruct:1.5b, qwen2.5-coder:1.5b,
-# deepseek_r1_distill_qwen:1.5b, llama3.2:3b as each is validated on
-# hardware. backend: "hailo-10h" tags every result so the dashboard can
-# split CPU-side runs from NPU-side runs on the same prompts. npu_metrics:
-# true attaches HailoLLMMetricsCollector alongside the host ResourceMonitor.
-# The runner aborts with a clear message if this profile is run on anything
-# other than Platform.RPI_AI_HAT_PLUS_2.
+# NPU profile — LLM-on-Hailo-10H via HailoRT GenAI's Ollama-compatible
+# REST server (default port 8000 per the hailo-ollama README; adjust
+# api_base if your install binds elsewhere). Uses llama3.2:1b — the only
+# llama-family model with a prebuilt HEF in the HailoRT 5.3.0 GenAI Model
+# Zoo (5.1.1 had llama3.2:3b but Hailo dropped it in 5.3.0; no 7B HEFs
+# have ever shipped). Matches the project's llama-only policy.
+# backend: "hailo-10h" tags every result so the dashboard can split
+# CPU-side runs from NPU-side runs on the same prompts. npu_metrics: true
+# attaches HailoLLMMetricsCollector alongside the host ResourceMonitor.
+# The runner aborts with a clear message if this profile is run on
+# anything other than Platform.RPI_AI_HAT_PLUS_2.
+# Pull the matching HEF onto the GenAI server before the first run:
+#   curl -sS http://localhost:8000/api/pull \
+#     -H 'Content-Type: application/json' \
+#     -d '{"model":"llama3.2:1b","stream":true}'
 npu:
   api_base: "http://localhost:8000"
   backend: "hailo-10h"
   npu_metrics: true
-  model_groups: ["1.5B"]
-  models: ["qwen2:1.5b"]
+  model_groups: ["1B"]
+  models: ["llama3.2:1b"]
   prompt_set: drone
 
-# Model definitions by size group
+# Compare profile — CPU-side mirror of the npu profile. Runs the SAME
+# model (llama3.2:1b) and SAME drone prompts on Ollama CPU so the
+# dashboard can split a real apples-to-apples NPU-vs-CPU comparison
+# row from a single verify-sweep bundle. Used by
+# scripts/verify_ai_hat_plus_2.sh as the "CPU comparison row".
+#
+# Why this exists separately from `drone`: the standalone `drone` profile
+# uses llama2:7b for users with 8 GB Pi 5s, but llama2:7b needs ~5.5 GB
+# RAM at runtime and won't fit on a 4 GB Pi 5. The `compare` profile is
+# the RAM-safe, fits-on-any-Pi-5 alternative whose primary purpose is
+# cross-backend dashboard comparison, not realistic drone load.
+compare:
+  model_groups: ["1B"]
+  models: ["llama3.2:1b"]
+  prompt_set: drone
+
+# Model definitions by size group. Llama-only policy: one model per size
+# group, all from the llama family. Other families (qwen, mistral, gemma,
+# dolphin, olmo) and other sizes (1.5B, 8B, 9B) were dropped on
+# 2026-04-27 to fit an SD-card-backed Pi 5; see
+# resources/session_notes_2026-04-27.md for the rationale.
 models:
-  1.5B:
-    # Hailo Model Zoo GenAI 5.1.1 prebuilt HEFs — only valid on the npu profile.
-    - qwen2:1.5b
-    - qwen2.5-instruct:1.5b
-    - qwen2.5-coder:1.5b
-    - deepseek_r1_distill_qwen:1.5b
+  1B:
+    - llama3.2:1b   # also the npu-profile model (only llama HEF in HailoRT 5.3.0 GenAI Model Zoo)
+  3B:
+    - llama3.2:3b
   7B:
     - llama2:7b
-    - mistral:7b
-    - olmo2:7b
-  8B:
-    - llama3.1:8b
-    - dolphin3:8b
-    - dolphin-llama3:8b
-  9B:
-    - gemma2:9b
 
 # Deterministic generation settings
 generation:

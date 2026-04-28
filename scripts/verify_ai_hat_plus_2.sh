@@ -84,16 +84,21 @@ hw_run_step "yolo-v26-pose [experimental]" \
 # the runner's platform precondition would error-but-exit-0 anyway, but
 # a friendly skip is more helpful.
 if curl -sS --max-time 3 http://localhost:8000/api/tags >/dev/null 2>&1; then
-    hw_run_step "llm-npu-qwen2:1.5b" \
+    hw_run_step "llm-npu-llama3.2:1b" \
         "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
         --workload llm --backend hailo-10h --require-npu-metrics
 else
-    hw_skip "llm-npu-qwen2:1.5b" "hailo-ollama not reachable on :8000"
+    hw_skip "llm-npu-llama3.2:1b" "hailo-ollama not reachable on :8000"
 fi
 
 # CPU-side comparison row so the dashboard has something to split on.
-hw_run_step "llm-cpu-llama2:7b (drone prompts)" \
-    "python -m benchmark run llm --profile drone --output $HW_RESULTS_DIR" \
+# Uses the `compare` profile (llama3.2:1b on Ollama CPU + drone prompts)
+# to mirror the npu profile exactly, giving a true apples-to-apples
+# 1B-vs-1B cross-backend comparison row. The standalone `drone` profile
+# uses llama2:7b which needs ~5.5 GB RAM at runtime and won't fit on a
+# 4 GB Pi 5; `compare` is the RAM-safe alternative.
+hw_run_step "llm-cpu-llama3.2:1b (drone prompts)" \
+    "python -m benchmark run llm --profile compare --output $HW_RESULTS_DIR" \
     --workload llm --backend ollama-cpu
 
 hw_finalize_with_report

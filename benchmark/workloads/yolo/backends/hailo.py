@@ -219,8 +219,9 @@ class HailoBackend(YOLOBackend):
         Returns:
             True if a Hailo device was found
         """
-        # Check for /dev/hailo* devices
-        hailo_devices = list(Path("/dev").glob("hailo*"))
+        # Check for /dev/hailo* (HailoRT 4.x) or /dev/h1x-* (HailoRT 5.x; new
+        # driver registers as hailo1x_pci and creates /dev/h1x-N nodes).
+        hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
         if not hailo_devices:
             return False
 

@@ -150,34 +150,65 @@ shape including `eval_count` and `prompt_eval_count`.
 
 ### Setup (high level)
 
-1. `sudo apt install dkms hailo-h10-all` — Hailo-10H driver + HailoRT
-   (already covered by `scripts/setup_rpi_ai_hat_plus_2.sh`).
-2. `git clone https://github.com/hailo-ai/hailo-apps.git && cd hailo-apps && sudo ./install.sh && source setup_env.sh`
-3. `sudo dpkg -i hailo_gen_ai_model_zoo_<version>_arm64.deb` (the
-   hailo-ollama README pins this to `5.1.1` at the time of writing — adjust
-   to whatever your HailoRT 5.x install ships with).
-4. Run `hailo-ollama` to start the server. Config at
-   `~/.config/hailo-ollama/hailo-ollama.json`; HEF cache at
-   `~/.local/share/hailo-ollama/models/`.
-5. Pull a model on first use:
+> **Important — verified 2026-04-28 on Pi OS Bookworm.** `scripts/setup_rpi_ai_hat_plus_2.sh` is apt-only and Raspberry Pi's apt repo currently caps at **HailoRT 4.20.0** (no `hailo-h10-all`, no 5.x packages). Running the setup script will report "SUCCESS" but leave you on 4.x with the chip invisible (`/dev/hailo0` missing, `hailortcli scan` empty). The HailoRT 5.x install for the Hailo-10H must currently be done manually from the Hailo Developer Zone. The bundled `resources/hailo-10H/hailort_5.2.0_arm64.deb` is **userspace only** — it covers the `hailort` package, but the kernel driver and Hailo-10 firmware (now bundled together inside `hailort-pcie-driver_5.x.x_all.deb`) and the Python wheel must be downloaded separately.
+
+1. **Download from the [Hailo Developer Zone](https://hailo.ai/developer-zone/) (free account)**, picking HailoRT 5.x for arm64 / Hailo-10:
+   - `hailort_<ver>_arm64.deb` — userspace lib + `hailortcli`
+   - `hailort-pcie-driver_<ver>_all.deb` — DKMS kernel driver **and** Hailo-10H firmware (bundled into `/lib/firmware/hailo/hailo10h/`; no separate `hailofw` package in 5.x)
+   - `hailort-<ver>-cp311-cp311-linux_aarch64.whl` — Python bindings; pick the wheel whose `cpXY` matches the venv's Python version (`venv/bin/python --version`)
+   - `hailo_gen_ai_model_zoo_<ver>_arm64.deb` — `hailo-ollama` server + LLM HEF manifests; only needed for the `npu` LLM profile
+2. **Remove the old 4.x stack first** — otherwise both `hailo_pci 4.x` and `hailo1x_pci 5.x` modules co-exist on boot and the old one may claim PCIe device `1e60:45c4` first:
+   ```bash
+   sudo apt-get remove hailo-all hailo-dkms hailofw python3-hailort
+   ```
+3. **Install in dependency order** — driver first because the userspace and model-zoo .debs both depend on `hailort`:
+   ```bash
+   sudo dpkg -i hailort-pcie-driver_<ver>_all.deb       # DKMS compiles against running kernel
+   sudo dpkg -i hailort_<ver>_arm64.deb                  # userspace
+   sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_arm64.deb  # optional, for npu profile
+   ```
+4. **Reboot.** The 4.x kernel module stays resident in memory until reboot; the chip won't enumerate under the new driver until then.
+5. **Verify post-reboot:**
+   ```bash
+   lsmod | grep hailo                  # expect ONLY hailo1x_pci (NOT hailo_pci)
+   ls /dev/h1x-*                       # expect /dev/h1x-0 — HailoRT 5.x renamed
+                                       # the device node from /dev/hailo* to /dev/h1x-*
+   hailortcli scan                     # expect a Hailo device line (pci/0001:01:00.0)
+   hailortcli fw-control identify      # expect non-empty body, "Device Architecture: HAILO10H",
+                                       # "Firmware Version: 5.x.x (release,app)"
+   ```
+6. **Install the Python wheel into the project venv** (replaces the `python3-hailort` removed in step 2):
+   ```bash
+   source venv/bin/activate
+   pip install hailort-<ver>-cpXY-cpXY-linux_aarch64.whl
+   python -c "import hailort; print(hailort.__version__)"
+   ```
+7. **Start hailo-ollama** for the `npu` LLM profile: `hailo-ollama serve` (binds `:8000`). Config at `~/.config/hailo-ollama/hailo-ollama.json`; HEF cache at `~/.local/share/hailo-ollama/models/`.
+8. **Pull a model on first use** (note the field is `model`, not `name` — `name` triggers a 500 null-pointer error from oatpp):
    ```bash
    curl --silent http://localhost:8000/api/pull \
      -H 'Content-Type: application/json' \
-     -d '{ "model": "qwen2:1.5b", "stream": true }'
+     -d '{ "model": "llama3.2:1b", "stream": true }'
    ```
 
 ### Prebuilt HEFs
 
-The Hailo Model Zoo GenAI 5.1.1 catalogue ships precompiled HEFs for:
+The HailoRT 5.3.0 GenAI Model Zoo catalogue ships precompiled HEFs for the following — **verified 2026-04-28** by hitting `/api/tags` on the running hailo-ollama server after installing `hailo_gen_ai_model_zoo_5.3.0_arm64.deb`:
 
-| Tag (Ollama-compat) | Params |
-|---|---|
-| `qwen2:1.5b`, `qwen2.5-instruct:1.5b`, `qwen2.5-coder:1.5b` | 1.5B |
-| `deepseek_r1_distill_qwen:1.5b` | 1.5B |
-| `llama3.2:3b` | 3B |
+| Tag (Ollama-compat) | Params | Family | Used by |
+|---|---|---|---|
+| `llama3.2:1b` | 1B | llama | **`npu` profile** |
+| `qwen2:1.5b` | 1.5B | qwen | not used (non-llama; outside project policy) |
+| `qwen2.5:1.5b` | 1.5B | qwen | not used (non-llama; outside project policy) |
+| `qwen2.5-coder:1.5b` | 1.5B | qwen | not used (non-llama; outside project policy) |
+| `qwen3:1.7b` | 1.7B | qwen | not used (non-llama; outside project policy) |
+| `deepseek_r1:1.5b` | 1.5B | deepseek | not used (non-llama; outside project policy) |
 
-`tests/test_llm_npu_profile.py:HAILO_GENAI_PREBUILT_HEFS` is the canonical
-whitelist; profiles that list anything outside it fail the test suite.
+**Catalogue history:** The 5.1.1 zoo had `llama3.2:3b`; Hailo dropped it in 5.3.0 and added `llama3.2:1b` instead. No 7B HEFs have ever shipped in any HailoRT GenAI release — Hailo positions the Hailo-10H for ~1-2B edge inference, not 7B-class workloads. This is why cross-backend (CPU vs NPU) comparison is only available at the **1B** size group; 3B and 7B llamas remain CPU-only by virtue of Hailo not shipping HEFs at those sizes.
+
+The project's llama-only policy means only `llama3.2:1b` is exercised on the Hailo-10H. The other prebuilt HEFs remain documented because they are in the Model Zoo catalogue, but they are not part of the verify sweep.
+
+`tests/test_llm_npu_profile.py:HAILO_GENAI_PREBUILT_HEFS` is the canonical whitelist; profiles that list anything outside it fail the test suite.
 
 ### Running
 
@@ -187,10 +218,7 @@ whitelist; profiles that list anything outside it fail the test suite.
 python -m benchmark run llm --profile npu
 ```
 
-The `npu` profile starts with the smallest HEF (`qwen2:1.5b`) so the
-pipeline is validated end-to-end on a fast model before scaling up. Add
-larger tags to `configs/llm_benchmark.yaml` once a smaller one has
-published clean numbers.
+The `npu` profile uses `llama3.2:1b` — the only llama-family prebuilt HEF in the HailoRT 5.3.0 GenAI Model Zoo catalogue, in line with the project's llama-only policy. To exercise other catalogue HEFs (qwen, deepseek), add them under a separate profile in `configs/llm_benchmark.yaml`; they are intentionally not part of the verify sweep.
 
 ### Output
 

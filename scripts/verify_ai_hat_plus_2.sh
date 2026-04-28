@@ -70,9 +70,13 @@ hw_run_step "yolo-v26-seg [experimental]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
 
-# Phase 3c — Pose.
+# Phase 3c — Pose. Size 's' instead of the 'n' used elsewhere because
+# the Hailo Model Zoo only publishes pose HEFs at sizes s and m (no n).
+# Verify is a smoke test, not a benchmark — the size mismatch is fine
+# here, but consumer-facing benchmark profiles should keep sizes
+# consistent. See Issue 11 in resources/session_issues_2026-04-27.md.
 hw_run_step "yolo-v8-pose" \
-    "python -m benchmark run yolo --backend hailo --yolo-model yolov8n-pose.pt --output $HW_RESULTS_DIR" \
+    "python -m benchmark run yolo --backend hailo --yolo-model yolov8s-pose.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task pose --backend hailo
 hw_run_step "yolo-v11-pose" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo11n-pose.pt --output $HW_RESULTS_DIR" \

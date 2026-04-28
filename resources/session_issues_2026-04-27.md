@@ -1076,12 +1076,42 @@ print(find_prebuilt_hef('yolov8n.pt', 'v8', YOLOTask.DETECTION, 'hailo8'))
 None
 ```
 
+### Follow-up: HEFs sourced from Hailo Model Zoo (2026-04-28)
+
+After landing the source layer, the user grabbed Hailo Developer Zone software packages thinking they contained HEFs — they didn't (those are SDKs, not compiled models). The actual HEFs live in the Hailo Model Zoo public S3 catalogue, which serves them over plain HTTPS with no auth:
+
+```
+https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<version>/<arch>/<name>.hef
+```
+
+`<version>` matches the Model Zoo release (`v2.16.0` pairs with HailoRT 4.20.x — what the Pi runs, so we used that). `<arch>` is `hailo8` / `hailo8l`. The Zoo's filename convention uses `<family><size>` for detection (e.g. `yolov8n.hef`) and `<family><size>_<task>` otherwise (e.g. `yolov8n_seg.hef`). Browse `docs/public_models/HAILO8/HAILO8_*.rst` in [hailo-ai/hailo_model_zoo](https://github.com/hailo-ai/hailo_model_zoo) for the canonical list.
+
+Staged in `resources/hefs/` (renamed to our convention):
+
+```
+yolov8n.hef       -> v8_detection_n_hailo8.hef       4.9 MB
+yolov8n_seg.hef   -> v8_segmentation_n_hailo8.hef    5.1 MB
+yolov8s_pose.hef  -> v8_pose_s_hailo8.hef             11 MB
+yolov11n.hef      -> v11_detection_n_hailo8.hef      8.3 MB
+```
+
+URL pattern + the staged set are documented in `resources/hefs/NAMING.txt` and `docs/hailo.md` "Sourcing HEFs from the Hailo Model Zoo".
+
+**Coverage gaps in the Model Zoo (as of 2026-04-28):**
+- **No OBB HEFs** for any YOLO version, any size. `yolo-v{8,11,26}-obb` verify steps remain unresolved unless someone compiles from `.pt` on a workstation.
+- **No pose at size `n`** — Zoo publishes `yolov8s_pose` and `yolov8m_pose` only.
+- **No v11 segmentation / pose / OBB**.
+- **No v26 segmentation / pose / OBB** (v26 detection HEFs are in v2.18.0 but verify only asks for v26 OBB/seg/pose, all tagged experimental).
+
+**Verify-script update (2026-04-28).** `scripts/verify_ai_hat_plus.sh` and `scripts/verify_ai_hat_plus_2.sh` were updated to use `yolov8s-pose.pt` for the `yolo-v8-pose` step (was `yolov8n-pose.pt`). Verify is a smoke test, not a benchmark — the size mismatch is fine here, but consumer-facing profiles (`--profile full`, `--profile drone`, `--profile drone_full`) should keep sizes consistent across tasks. With this change, three of ten YOLO verify steps resolve to a prebuilt HEF (det + seg + pose); the other seven still require workstation HEFs.
+
 ### Don't reintroduce this
 
 - **Don't try to install `hailo-dataflow-compiler` on the Pi.** It will not work, and the error path is more confusing than the prebuilt-HEF flow.
+- **Don't grab the Hailo AI Software Suite or Dataflow Compiler from the Developer Zone if you're targeting the Pi only** — they're x86_64 binaries weighing ~1.1 GB and will not install on aarch64. The Developer Zone has a separate Model Zoo HEF catalogue; that's what you actually want.
 - **Extend `SYSTEM_PACKAGE_MAP` only with files that physically exist in `/usr/share/hailo-models/`.** The locking test in `tests/test_hef_source.py` asserts the value set, but the *list* of observed filenames in that test should be kept honest. If a new system package version adds HEFs, run `ls /usr/share/hailo-models/` and update both the map and the test fixture in the same commit.
-- The verify suite still requests `yolov8n` (and its `-seg`/`-pose`/`-obb` variants) plus all v11/v26 variants. Most are not in the system package, so a clean verify run on the Pi requires the user to either (a) compile those HEFs on an x86_64 workstation and stage them in `resources/hefs/`, or (b) accept that those steps will fail until they do. The verify script's continue-on-failure semantics means the rest of the sweep still runs.
-- For boards we want to ship "Just Works", consider committing a curated set of HEFs to `resources/hefs/` (with appropriate licence checks). Out of scope for this session.
+- **Pin the Model Zoo version in any new HEF download script.** v2.16.0 pairs with HailoRT 4.20.x; v2.18.0 with HailoRT 4.22+. Mixing versions across the staged HEF set is a load-time-failure trap.
+- For boards we want to ship "Just Works" without resources/hefs/ being checked in, consider an opt-in download script (`scripts/fetch_hefs.sh`) that pulls from the Model Zoo S3 at setup time. Out of scope for this session — the four HEFs we needed fit comfortably in the repo at ~29 MB.
 
 ---
 

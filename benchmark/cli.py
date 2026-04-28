@@ -405,6 +405,12 @@ def run_llm_benchmark(
                 prompt_set=profile_prompt_set or "legacy",
                 backend=profile_backend,
                 npu_metrics=profile_npu_metrics,
+                http_timeout_seconds=benchmark_settings.get(
+                    "http_timeout_seconds", 600
+                ),
+                prewarm_timeout_seconds=benchmark_settings.get(
+                    "prewarm_timeout_seconds", 1800
+                ),
             )
 
             try:

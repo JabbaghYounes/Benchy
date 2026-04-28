@@ -5,6 +5,19 @@
 benchmark:
   warmup_runs: 3
   measured_runs: 10
+  # Per-request HTTP read timeout (seconds) for /api/generate calls in
+  # the warmup + measured loop. 600s is comfortable for llama2:7b on a
+  # Pi 5 once the model is resident; the cold-load is absorbed by the
+  # prewarm step (next field). Raise this only if a single request
+  # legitimately runs longer (e.g. larger max_tokens against a slow
+  # NPU).
+  http_timeout_seconds: 600
+  # Long timeout (seconds) for the one-shot prewarm call the runner
+  # issues before the measured loop. Sized for the worst-case Ollama
+  # cold-load: 7B weights from SD storage on a Pi 5 with no thermal
+  # headroom can take 600+ seconds. See Issue 12 in
+  # resources/session_issues_2026-04-27.md.
+  prewarm_timeout_seconds: 1800
 
 # Ollama API settings
 ollama:

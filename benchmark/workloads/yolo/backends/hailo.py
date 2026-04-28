@@ -26,6 +26,9 @@ from benchmark.workloads.yolo.conversion.validation import (
     ValidationResult,
     validate_hef_model,
 )
+# Issue 11: prebuilt HEF source layer (Pi can't compile, so we look in
+# repo + system locations before falling through to the compile path).
+from benchmark.workloads.yolo.conversion.hef_source import find_prebuilt_hef
 # Phase 4: Post-processing and metrics
 from benchmark.workloads.yolo.postprocessing import (
     YOLOPostProcessor,
@@ -390,6 +393,21 @@ class HailoBackend(YOLOBackend):
 
         if hef_path.exists() and not force_recompile:
             logger.info(f"Using cached HEF: {hef_path}")
+        elif not force_recompile and (
+            prebuilt := find_prebuilt_hef(
+                model_name=model_name,
+                yolo_version=yolo_version,
+                task=task,
+                arch=self.get_target_device(),
+            )
+        ):
+            # Issue 11: Pi has no Dataflow Compiler. If a prebuilt HEF
+            # is staged in resources/hefs/ or in the system package, copy
+            # it into the runtime cache and skip the compile pipeline.
+            import shutil
+            hef_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(prebuilt, hef_path)
+            logger.info(f"Cached prebuilt HEF: {prebuilt} -> {hef_path}")
         else:
             # Run the conversion pipeline
             logger.info(f"HEF not found at {hef_path}, starting conversion pipeline...")

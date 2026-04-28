@@ -112,6 +112,39 @@ First-time model compilation requires:
 - **Disk space**: ~500MB per compiled model
 - **Time**: 5-30 minutes per model depending on size
 
+**Compilation must run on x86_64 Linux.** The Hailo Dataflow Compiler
+(provider of `hailo_sdk_client`) is not available on aarch64, so a
+Raspberry Pi cannot compile its own HEFs. The standard workflow is to
+compile on a workstation (Hailo Developer Zone licence required) and
+copy the resulting `.hef` to the Pi — see the prebuilt HEF source layer
+below.
+
+## Prebuilt HEF source layer
+
+To make the verify suite work on a Pi without a separate workstation
+round-trip, the Hailo backend looks for prebuilt HEFs in two
+project-controlled locations before trying to compile:
+
+1. **`resources/hefs/`** — drop HEFs here using the convention
+   `<yolo_version>_<task>_<model_size>_<arch>.hef`
+   (e.g. `v8_detection_n_hailo8.hef`, `v11_pose_s_hailo10h.hef`).
+   This is the canonical landing spot for HEFs compiled on a
+   workstation. See `resources/hefs/NAMING.txt` for the full naming
+   convention.
+2. **`/usr/share/hailo-models/`** — the
+   `rpicam-apps-hailo-postprocess` Debian package ships a curated
+   subset of Hailo Model Zoo HEFs vetted by Raspberry Pi. The mapping
+   from our `(yolo_version, task, size, arch)` tuple to its filename
+   convention lives in `benchmark/workloads/yolo/conversion/hef_source.py:SYSTEM_PACKAGE_MAP`.
+   On Pi OS Bookworm 2026-04 this covers `yolov8s` detection and
+   `yolov8s` pose (both Hailo-8 and Hailo-8L variants); other tasks
+   and sizes need a workstation compile.
+
+If neither location has a match, the backend falls through to the
+in-tree compile path, which fails fast on aarch64 with a clear error
+message pointing at `resources/hefs/`. See Issue 11 in
+`resources/session_issues_2026-04-27.md`.
+
 ## Cache Management
 
 Compiled models are cached in `~/.cache/benchy/hailo/`:

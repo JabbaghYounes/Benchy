@@ -1,0 +1,27 @@
+Drop prebuilt HEF files in this directory using the convention:
+
+    <yolo_version>_<task>_<model_size>_<arch>.hef
+
+Examples:
+    v8_detection_n_hailo8.hef
+    v8_segmentation_n_hailo8.hef
+    v11_pose_s_hailo8l.hef
+    v11_obb_n_hailo8.hef
+
+Where:
+    yolo_version  one of: v8, v11, v26
+    task          one of: detection, classification, segmentation, pose, obb
+    model_size    one of: n, s, m, l, x
+    arch          one of: hailo8 (Pi 5 + AI HAT+ 26 TOPS),
+                          hailo8l (Pi 5 + AI HAT+ 13 TOPS),
+                          hailo10h (Pi 5 + AI HAT+ 2)
+
+The benchmark runner (benchmark/workloads/yolo/conversion/hef_source.py)
+also looks in /usr/share/hailo-models/ which the
+rpicam-apps-hailo-postprocess Debian package populates with a curated
+subset of Hailo Model Zoo HEFs — those don't need to be re-staged here.
+
+HEFs must be compiled on x86_64 Linux with the Hailo Dataflow Compiler
+(licensed via Hailo Developer Zone) and copied across; aarch64 / Pi
+cannot compile them. See docs/hailo.md "Prebuilt HEF source layer" and
+Issue 11 in resources/session_issues_2026-04-27.md.

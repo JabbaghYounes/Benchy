@@ -1003,3 +1003,147 @@ set()
   during this fix; both currently match. If a future change touches
   `YOLOAggregatedMetrics.to_dict()` or `PlatformSummary.to_dict()`, do
   the same alignment check.
+
+---
+
+## Issue 11 — Hailo Dataflow Compiler is x86_64-only; Pi cannot compile HEFs
+
+**Surfaced:** 2026-04-28, second `./scripts/verify_ai_hat_plus.sh` run on the Pi 5 + AI HAT+ (26 TOPS) after Issues 8/9/10 had been fixed. With `onnx`/`onnxruntime` self-heal in place, ONNX export now succeeds — but the next pipeline stage requests the Hailo SDK and finds nothing.
+
+### Symptom
+
+All 10 YOLO Hailo steps fail at the same place. Per-step log
+(`results/hw_verify_20260428_091256/logs/yolo-v8-detection.log`):
+
+```
+WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+INFO - Stage 1/3: ONNX Export
+INFO - ONNX exported successfully: models/hailo/v8/detection/yolov8n/model.onnx
+ERROR - Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v8/detection/yolov8n/model.onnx. Please complete conversion using Hailo SDK.
+Validation FAILED for ...: yolo_results is empty — the runner produced no rows
+```
+
+`pip install hailo-dataflow-compiler` does not work on the Pi:
+
+```
+$ python -c "import hailo_sdk_client"
+ModuleNotFoundError: No module named 'hailo_sdk_client'
+```
+
+### Root cause
+
+The Hailo Dataflow Compiler (and its `hailo_sdk_client` Python module) is **x86_64 Linux only**. There is no aarch64 build, official or community. This is documented in `benchmark/workloads/yolo/conversion/hef_compiler.py:73-78`:
+
+> *"This requires the Hailo Dataflow Compiler which is part of the Hailo SDK and requires a license from Hailo Developer Zone. Note: Compilation is typically performed on an x86_64 development machine. The resulting HEF file is then deployed to the target Raspberry Pi with Hailo HAT."*
+
+In other words, the standard Hailo workflow assumes a two-machine setup: workstation compiles HEFs, Pi runs them. The benchmark suite's in-tree `.pt → .onnx → .har → .hef` pipeline was written for the workstation case but called from `prepare_model()` on the Pi without a guard. ONNX export works on aarch64 (Ultralytics handles that natively), so the failure surfaces only at HAR generation time.
+
+### Fix (this session)
+
+Added a **prebuilt HEF source layer** at `benchmark/workloads/yolo/conversion/hef_source.py`. Before falling through to the compile path, `HailoBackend.prepare_model()` now consults two locations in order:
+
+1. **`resources/hefs/`** in the repo. Users drop HEFs here using the convention `<yolo_version>_<task>_<model_size>_<arch>.hef` (e.g. `v8_detection_n_hailo8.hef`, `v11_pose_s_hailo10h.hef`). This is the canonical landing spot for HEFs compiled on a workstation. `resources/hefs/NAMING.txt` documents the convention.
+2. **`/usr/share/hailo-models/`**. The `rpicam-apps-hailo-postprocess` Debian package ships with a curated subset of Hailo Model Zoo HEFs vetted by Raspberry Pi. The mapping from our `(yolo_version, task, size, arch)` tuple to its filenames lives in `hef_source.py:SYSTEM_PACKAGE_MAP`. As of Pi OS Bookworm 2026-04, the system package covers `yolov8s` detection and `yolov8s` pose only (both `_h8` and `_h8l` variants).
+
+If neither source matches, the backend falls through to the compile pipeline, which then fails on aarch64 with its existing clear error. The new `find_prebuilt_hef()` log message also tells the user the exact filename to drop into `resources/hefs/`.
+
+Files changed:
+
+- **`benchmark/workloads/yolo/conversion/hef_source.py`** (new) — `find_prebuilt_hef()` + `SYSTEM_PACKAGE_MAP` + naming-convention helpers.
+- **`benchmark/workloads/yolo/backends/hailo.py`** — `prepare_model()` consults the source layer between the cache check and the compile-pipeline fallback. If a prebuilt HEF is found, it's `shutil.copy2`'d into the runtime cache so the existing validation/load path picks it up unchanged.
+- **`resources/hefs/.gitkeep`** + **`resources/hefs/NAMING.txt`** — directory scaffolding and naming convention.
+- **`tests/test_hef_source.py`** (new) — covers naming-convention parsing, repo-vs-system precedence, the unhappy-no-match path, and locks the `SYSTEM_PACKAGE_MAP` to filenames actually shipped by the system package (so future edits can't silently invent paths that don't exist).
+- **`docs/hailo.md`** — added "Prebuilt HEF source layer" section under Compilation Requirements with the lookup order, naming convention, and the workstation-compile note.
+- **`docs/troubleshooting.md`** — new row in the HW-verify table for the "ONNX file generated but Hailo SDK not available" failure mode.
+
+### Verification
+
+```
+$ pytest tests/test_hef_source.py -q
+13 passed in 0.27s
+$ pytest tests/ -q
+209 passed in 1.39s
+$ python -c "
+from benchmark.workloads.yolo.conversion.hef_source import find_prebuilt_hef
+from benchmark.schemas import YOLOTask
+print(find_prebuilt_hef('yolov8s.pt', 'v8', YOLOTask.DETECTION, 'hailo8'))
+print(find_prebuilt_hef('yolov8s-pose.pt', 'v8', YOLOTask.POSE, 'hailo8'))
+print(find_prebuilt_hef('yolov8n.pt', 'v8', YOLOTask.DETECTION, 'hailo8'))
+"
+/usr/share/hailo-models/yolov8s_h8.hef
+/usr/share/hailo-models/yolov8s_pose_h8.hef
+None
+```
+
+### Don't reintroduce this
+
+- **Don't try to install `hailo-dataflow-compiler` on the Pi.** It will not work, and the error path is more confusing than the prebuilt-HEF flow.
+- **Extend `SYSTEM_PACKAGE_MAP` only with files that physically exist in `/usr/share/hailo-models/`.** The locking test in `tests/test_hef_source.py` asserts the value set, but the *list* of observed filenames in that test should be kept honest. If a new system package version adds HEFs, run `ls /usr/share/hailo-models/` and update both the map and the test fixture in the same commit.
+- The verify suite still requests `yolov8n` (and its `-seg`/`-pose`/`-obb` variants) plus all v11/v26 variants. Most are not in the system package, so a clean verify run on the Pi requires the user to either (a) compile those HEFs on an x86_64 workstation and stage them in `resources/hefs/`, or (b) accept that those steps will fail until they do. The verify script's continue-on-failure semantics means the rest of the sweep still runs.
+- For boards we want to ship "Just Works", consider committing a curated set of HEFs to `resources/hefs/` (with appropriate licence checks). Out of scope for this session.
+
+---
+
+## Issue 12 — LLM cold-load exceeds 600s timeout; pre-warm step + configurable timeout
+
+**Surfaced:** 2026-04-28, same verify run as Issue 11. The LLM-on-CPU comparison row (llama2:7b on the drone prompt set) timed out *again* even after Issue 9's bump from 300s → 600s.
+
+### Symptom
+
+`results/hw_verify_20260428_091256/logs/llm-cpu-llama2_7b_drone_prompts.log`:
+
+```
+2026-04-28 09:14:37 - Benchmarking llama2:7b
+2026-04-28 09:14:37 - Benchmarking prompt: scene_description
+2026-04-28 09:14:37 -   Warmup runs: 3, Measured runs: 10
+2026-04-28 09:24:37 - Generation failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=600)
+Validation FAILED: llm_results is empty — the runner produced no rows
+```
+
+Exactly 600s elapsed. The first warmup iteration's `/api/generate` call sat blocked on the Ollama cold-load and never returned within the window. Disk-side, llama2:7b is 3.8 GB of weights on SD storage. On a Pi 5 under typical ambient with no thermal preconditioning, that load can exceed 10 minutes.
+
+### Root cause
+
+Issue 9 raised the per-request timeout to 600s, which covers all the *measurement-time* cases (warmup + measured runs against a model that's already resident). It did not cover the **cold-load case** where the model has to be paged in from disk before the first response token is produced. That latency is one-time per benchmark invocation (subsequent calls hit the loaded model) but its variance is huge — 60s to 1200s+ depending on storage health, thermal headroom, and what else the Pi is doing.
+
+Bumping the timeout further (e.g. to 1800s) covers the cold case but contaminates the timed loop: a hung request would now wait up to 30 min before failing. The right fix is to **separate cold-load cost from measurement** and not gate them on the same timeout.
+
+### Fix (this session)
+
+Added a `_prewarm_model()` step to `LLMBenchmarkRunner` that runs before the warmup-iterations loop:
+
+- Issues a single `/api/generate` with `prompt=" "`, `max_tokens=1`, and `keep_alive="-1"` (Ollama keeps the model resident for the rest of the run).
+- Uses the new `prewarm_timeout_seconds` config (default **1800s**), independent of the per-request timeout used in the timed loop.
+- Logs the elapsed time but does not raise on `RequestException` — if the prewarm fails, the first measurement attempt will surface a more useful error.
+
+Made both timeouts YAML-configurable so future bring-ups on slower / faster hardware don't need source edits:
+
+- New `LLMBenchmarkConfig` fields: `http_timeout_seconds: int = 600` and `prewarm_timeout_seconds: int = 1800`.
+- `OllamaClient.__init__` now takes `request_timeout` and uses it as the default for `generate` / `generate_stream`. Both methods accept per-call `timeout` and `keep_alive` overrides.
+- `cli.py:run_llm_benchmark()` reads `benchmark.http_timeout_seconds` and `benchmark.prewarm_timeout_seconds` from the YAML.
+- `configs/llm_benchmark.yaml` documents both fields under `benchmark:` with the default values and rationale.
+
+Files changed:
+
+- **`benchmark/workloads/llm/runner.py`** — added timeout fields to `LLMBenchmarkConfig`; reworked `OllamaClient` to honour a configurable timeout and accept per-call overrides; new `LLMBenchmarkRunner._prewarm_model()` plus a call site in `run()` between `_ensure_model_available()` and the prompts loop.
+- **`benchmark/cli.py`** — plumbed both new YAML fields into the config constructor.
+- **`configs/llm_benchmark.yaml`** — documented the new fields under `benchmark:`.
+- **`tests/test_llm_prewarm.py`** (new) — covers the field defaults, the OllamaClient timeout wiring, the prewarm call's contract (one-shot, `keep_alive=-1`, long timeout), the no-raise-on-failure invariant, and the config-to-client plumbing.
+- **`docs/troubleshooting.md`** — new row for the "still times out at 600s" failure mode.
+- **`CLAUDE.md`** — added a Hardware-Specific Notes bullet describing the prewarm + timeout split and pointing at the YAML fields.
+
+### Verification
+
+```
+$ pytest tests/test_llm_prewarm.py -q
+6 passed in 0.04s
+$ pytest tests/ -q
+215 passed in 1.39s
+```
+
+### Don't reintroduce this
+
+- **Don't hardcode timeouts in `runner.py` again.** Both the per-request timeout and the prewarm timeout are now YAML fields; if a hardware bring-up needs a longer (or shorter) timeout, change `configs/llm_benchmark.yaml`, not the source. The fact that we hit Issue 9's 300s, then Issue 12's 600s, on the same model in successive runs is the smoking gun for "magic timeout constants get stale".
+- **Keep the prewarm separate from the warmup runs.** The N warmup runs in the config (default 3) measure first-pass-after-load behaviour for repeatability; they're not for absorbing the cold-load. If you fold the prewarm into the warmup loop you lose that distinction *and* you re-introduce the timeout-on-cold-load failure mode.
+- **`keep_alive: -1` is load-bearing.** Without it the prewarm's effect expires with Ollama's default keep-alive (5 min), and a long prompt set could see the model paged out mid-run. If you ever need to relax this, make it a config field rather than re-hardcoding.

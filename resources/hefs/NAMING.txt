@@ -25,3 +25,40 @@ HEFs must be compiled on x86_64 Linux with the Hailo Dataflow Compiler
 (licensed via Hailo Developer Zone) and copied across; aarch64 / Pi
 cannot compile them. See docs/hailo.md "Prebuilt HEF source layer" and
 Issue 11 in resources/session_issues_2026-04-27.md.
+
+----
+
+Source: Hailo Model Zoo public S3 catalogue. URL pattern:
+
+    https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<model_zoo_version>/<arch>/<filename>.hef
+
+Where <model_zoo_version> is e.g. v2.16.0 (paired with HailoRT 4.20.x)
+or v2.18.0 (paired with HailoRT 4.22+); <arch> is `hailo8` or
+`hailo8l`; <filename> follows the Model Zoo's own convention which
+tends to be `<family><size>` for detection (e.g. yolov8n.hef) and
+`<family><size>_<task>` for everything else (e.g. yolov8n_seg.hef,
+yolov8s_pose.hef). Browse the available HEFs at:
+
+    https://github.com/hailo-ai/hailo_model_zoo
+    docs/public_models/HAILO8/HAILO8_object_detection.rst
+    docs/public_models/HAILO8/HAILO8_instance_segmentation.rst
+    docs/public_models/HAILO8/HAILO8_pose_estimation.rst
+
+Currently staged in this directory (Hailo-8, v2.16.0):
+
+    v8_detection_n_hailo8.hef       <- yolov8n.hef
+    v8_segmentation_n_hailo8.hef    <- yolov8n_seg.hef
+    v8_pose_s_hailo8.hef            <- yolov8s_pose.hef
+    v11_detection_n_hailo8.hef      <- yolov11n.hef
+
+Notes / coverage gaps as of 2026-04-28:
+- The Model Zoo does NOT publish OBB HEFs for any YOLO version. To run
+  the verify suite's OBB steps you'll need to compile from .pt on a
+  workstation and drop the resulting .hef here.
+- The Model Zoo does NOT publish pose at the 'n' size — only 's' and
+  'm'. The verify suite asks for v8-pose at size 'n', so the pose step
+  fails to resolve until either the verify script switches to
+  yolov8s-pose.pt or a workstation-compiled v8_pose_n_hailo8.hef is
+  staged.
+- The Model Zoo does not publish v11 segmentation / pose / OBB or
+  any v26 task variants for Hailo-8.

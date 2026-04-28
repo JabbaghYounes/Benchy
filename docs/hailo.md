@@ -145,6 +145,37 @@ in-tree compile path, which fails fast on aarch64 with a clear error
 message pointing at `resources/hefs/`. See Issue 11 in
 `resources/session_issues_2026-04-27.md`.
 
+### Sourcing HEFs from the Hailo Model Zoo
+
+The Hailo Model Zoo's public S3 catalogue serves prebuilt HEFs over
+plain HTTPS — no auth, no SDK install required. URL pattern:
+
+```
+https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<version>/<arch>/<name>.hef
+```
+
+`<version>` is the Model Zoo release the HEF was compiled against
+(`v2.16.0` pairs with HailoRT 4.20.x, `v2.18.0` with HailoRT 4.22+).
+`<arch>` is `hailo8` or `hailo8l`. `<name>` is the Zoo's own filename
+convention (`yolov8n` for YOLOv8 nano detection, `yolov8n_seg` for
+the segmentation variant, `yolov8s_pose` for the pose variant — note
+`s` not `n`). Browse the available list at
+[hailo-ai/hailo_model_zoo](https://github.com/hailo-ai/hailo_model_zoo)
+under `docs/public_models/HAILO8/HAILO8_*.rst`.
+
+After download, rename to our `<version>_<task>_<size>_<arch>.hef`
+convention and drop into `resources/hefs/`. Example:
+
+```
+curl -sSL -o resources/hefs/v8_detection_n_hailo8.hef \
+  https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.16.0/hailo8/yolov8n.hef
+```
+
+**Coverage gaps in the Model Zoo (as of 2026-04-28):** no OBB HEFs
+exist for any YOLO version; pose is published at sizes s and m only
+(not n); segmentation / pose / OBB are not published for v11 or v26.
+Those tasks require workstation compilation from `.pt`.
+
 ## Cache Management
 
 Compiled models are cached in `~/.cache/benchy/hailo/`:

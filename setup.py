@@ -14,6 +14,10 @@ setup(
         "pyyaml>=6.0",
         "numpy>=1.21.0",
         "ultralytics>=8.0.0",
+        # Required by the Hailo conversion pipeline (.pt → .onnx → .har → .hef).
+        # Without these, every Hailo YOLO step fails at the ONNX-export stage.
+        "onnx>=1.14.0",
+        "onnxruntime>=1.15.0",
     ],
     extras_require={
         "dev": [

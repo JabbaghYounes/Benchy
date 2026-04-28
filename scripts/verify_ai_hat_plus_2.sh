@@ -14,7 +14,7 @@
 #   3. hailo-ollama &      # GenAI REST server bound to :8000
 #   4. curl -sS http://localhost:8000/api/pull \
 #        -H 'Content-Type: application/json' \
-#        -d '{"model":"qwen2:1.5b","stream":true}'
+#        -d '{"model":"llama3.2:3b","stream":true}'
 #   5. source venv/bin/activate
 #
 # Then:
@@ -35,6 +35,7 @@ source "$SCRIPT_DIR/hw_verify_common.sh"
 HW_TOTAL_STEPS=13
 
 hw_init
+hw_ensure_python_deps
 hw_preflight_rpi_ai_hat_plus_2
 
 # Mock-only smoke suite first.
@@ -84,11 +85,11 @@ hw_run_step "yolo-v26-pose [experimental]" \
 # the runner's platform precondition would error-but-exit-0 anyway, but
 # a friendly skip is more helpful.
 if curl -sS --max-time 3 http://localhost:8000/api/tags >/dev/null 2>&1; then
-    hw_run_step "llm-npu-qwen2:1.5b" \
+    hw_run_step "llm-npu-llama3.2:3b" \
         "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
         --workload llm --backend hailo-10h --require-npu-metrics
 else
-    hw_skip "llm-npu-qwen2:1.5b" "hailo-ollama not reachable on :8000"
+    hw_skip "llm-npu-llama3.2:3b" "hailo-ollama not reachable on :8000"
 fi
 
 # CPU-side comparison row so the dashboard has something to split on.

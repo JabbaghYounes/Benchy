@@ -8,3 +8,7 @@ numpy>=1.21.0
 
 # YOLO benchmarks (Ultralytics)
 ultralytics>=8.0.0
+
+# Hailo conversion pipeline (.pt → .onnx → .har → .hef)
+onnx>=1.14.0
+onnxruntime>=1.15.0

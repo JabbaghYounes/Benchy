@@ -8,6 +8,9 @@
 # Public surface
 # ----------------
 #   hw_init                       Set up results directory, counters, log dir.
+#   hw_ensure_python_deps         Self-heal: pip-install easily-missed
+#                                 Python deps into the active venv (onnx,
+#                                 onnxruntime). No-op if already present.
 #   hw_preflight_rpi_ai_hat_plus  Assert platform == AI HAT+ (Hailo-8/8L).
 #   hw_preflight_rpi_ai_hat_plus_2  Assert platform == AI HAT+ 2 (Hailo-10H).
 #   hw_run_step NAME CMD [validator-args…]
@@ -60,6 +63,51 @@ hw_init() {
     info "Results bundle: $HW_RESULTS_DIR"
     info "Per-step logs : $HW_LOGS_DIR"
     echo
+}
+
+# Self-heal -------------------------------------------------------------------
+
+# Ensure Python deps that are easy to miss on existing venvs are present
+# before the sweep starts. A fresh setup_rpi_ai_hat_plus*.sh install
+# pins these in setup.py install_requires AND pip-installs them
+# explicitly, but a venv created before they were added needs a top-up.
+# Without onnx, every Hailo conversion step in the YOLO sweep fails
+# immediately at the .pt → .onnx export — see Issue 8 in
+# resources/session_issues_2026-04-27.md.
+hw_ensure_python_deps() {
+    local py
+    py="$(command -v python || command -v python3)"
+    if [[ -z "$py" ]]; then
+        error "No python on PATH; activate the venv before running this script."
+        exit 2
+    fi
+
+    # module:pip-package pairs. Modules are tried via `python -c "import M"`.
+    local pairs=(
+        "onnx:onnx"
+        "onnxruntime:onnxruntime"
+    )
+    local pair module pkg
+    local missing=()
+    for pair in "${pairs[@]}"; do
+        module="${pair%%:*}"
+        pkg="${pair##*:}"
+        if ! "$py" -c "import ${module}" >/dev/null 2>&1; then
+            missing+=("$pkg")
+        fi
+    done
+
+    if (( ${#missing[@]} == 0 )); then
+        return 0
+    fi
+
+    info "Self-heal: pip-installing missing deps (${missing[*]}) into the active venv..."
+    if ! "$py" -m pip install --quiet "${missing[@]}"; then
+        error "Failed to install ${missing[*]}."
+        error "Re-run scripts/setup_rpi_ai_hat_plus*.sh, or manually: pip install ${missing[*]}"
+        exit 2
+    fi
+    success "Installed missing deps: ${missing[*]}"
 }
 
 # Preflight gates -------------------------------------------------------------

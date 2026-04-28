@@ -310,28 +310,48 @@ install_python_deps() {
     # Try installing from system packages
     if [[ -d /usr/lib/python3/dist-packages/hailo_platform ]]; then
         info "Linking system Hailo packages to venv..."
-        ln -sf /usr/lib/python3/dist-packages/hailo_platform "$VENV_DIR/lib/python3.*/site-packages/" 2>/dev/null || true
+        local venv_site
+        venv_site=$("$VENV_DIR/bin/python" -c "import site; print(site.getsitepackages()[0])")
+        ln -sfn /usr/lib/python3/dist-packages/hailo_platform "$venv_site/hailo_platform"
     fi
 
-    # Install benchmark suite dependencies
+    # Install benchmark suite dependencies. onnx + onnxruntime are
+    # required by the Hailo conversion pipeline (.pt → .onnx → .har →
+    # .hef); without them every YOLO step in verify_ai_hat_plus.sh fails
+    # at ONNX export. They are also pinned in setup.py install_requires
+    # so `pip install -e .` below pulls them, but listing them here too
+    # keeps fresh installs explicit.
     info "Installing benchmark dependencies..."
     pip install \
         psutil \
         requests \
         pyyaml \
         numpy \
-        opencv-python-headless
+        opencv-python-headless \
+        onnx \
+        onnxruntime
 
-    # Install the benchmark package itself
+    # Install the benchmark package itself, including dev extras (pytest,
+    # pytest-cov, black, mypy). Dev extras are required because step 1 of
+    # scripts/verify_ai_hat_plus.sh runs `pytest tests/ -q` — without
+    # them the verify sweep fails immediately. See Issue 4 in
+    # resources/session_issues_2026-04-27.md.
     if [[ -f "$PROJECT_ROOT/setup.py" ]] || [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
-        info "Installing benchmark package..."
-        pip install -e "$PROJECT_ROOT"
+        info "Installing benchmark package (with dev extras)..."
+        pip install -e "$PROJECT_ROOT[dev]"
     fi
 
-    # Fix ownership
+    # Fix ownership of artefacts produced by the sudo-driven install:
+    # the venv and the editable install's egg-info directory in the
+    # project root. Without the egg-info chown, subsequent unprivileged
+    # pip operations fail with "Cannot update time stamp of directory" —
+    # see Issue 5 in resources/session_issues_2026-04-27.md.
     local actual_user
     actual_user=${SUDO_USER:-$USER}
     chown -R "$actual_user:$actual_user" "$VENV_DIR"
+    if [[ -d "$PROJECT_ROOT/edge_ai_benchmark.egg-info" ]]; then
+        chown -R "$actual_user:$actual_user" "$PROJECT_ROOT/edge_ai_benchmark.egg-info"
+    fi
 
     success "Python dependencies installed"
 }
@@ -410,10 +430,11 @@ pull_models() {
     # Pull LLM models for Ollama
     info "Pulling LLM models (this may take a while)..."
 
-    # Start with smaller models suitable for Pi
+    # Llama-only canonical sweep — one model per group (1B, 3B, 7B).
     local models=(
+        "llama3.2:1b"
+        "llama3.2:3b"
         "llama2:7b"
-        "mistral:7b"
     )
 
     for model in "${models[@]}"; do

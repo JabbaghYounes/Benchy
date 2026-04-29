@@ -252,23 +252,37 @@ class HEFCompiler:
         # Get network info
         logger.debug(f"Network loaded for {config.target_device}")
 
-        # Prepare calibration dataset
+        # Prepare calibration dataset. Hailo's runner.optimize() expects
+        # a single numpy array of shape (N, H, W, C) — passing a Python
+        # list of (H, W, C) arrays trips its type-detection with
+        # "Couldn't detect CalibrationDataType" because the list looks
+        # like a per-input-layer array list, not a per-sample list.
+        # See CalibrationDataset.to_numpy_batch.
         if calibration_dataset is not None:
-            # Use Phase 3 calibration dataset directly
-            calib_data = calibration_dataset.images
-            logger.info(f"Using Phase 3 calibration dataset: {len(calib_data)} images")
+            calib_data = calibration_dataset.to_numpy_batch()
+            logger.info(
+                f"Using Phase 3 calibration dataset: shape={calib_data.shape}, "
+                f"dtype={calib_data.dtype}"
+            )
             logger.info(f"  Hash: {calibration_dataset.dataset_hash}")
         else:
-            # Load from path
-            calib_data = self._load_calibration_data(
+            # Legacy path: load from a path on disk. Stack to the same
+            # (N, H, W, C) layout for the same reason.
+            import numpy as np
+            calib_list = self._load_calibration_data(
                 calibration_path,
                 config.calibration_set_size,
                 runner,
             )
+            calib_data = np.stack(calib_list, axis=0)
+            logger.info(
+                f"Loaded calibration data from path: shape={calib_data.shape}, "
+                f"dtype={calib_data.dtype}"
+            )
 
         # Run optimization (quantization + optimization)
         logger.info("Running model optimization...")
-        logger.info(f"  Using {len(calib_data)} calibration samples")
+        logger.info(f"  Using {calib_data.shape[0]} calibration samples")
 
         try:
             # Optimize the model (includes quantization)

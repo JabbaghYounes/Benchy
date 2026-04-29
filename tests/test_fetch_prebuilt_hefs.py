@@ -30,6 +30,40 @@ _spec.loader.exec_module(fetch_mod)
 HEFManifestEntry = fetch_mod.HEFManifestEntry
 
 
+# --------------------------------------------------- per-arch defaults
+
+
+def test_default_zoo_versions_contains_known_arches():
+    """Drift guard — DEFAULT_ZOO_VERSIONS must keep hailo8/hailo8l/hailo10h
+    entries so unmodified `fetch_prebuilt_hefs.py --arch <X>` always
+    resolves a sensible version."""
+    assert {"hailo8", "hailo8l", "hailo10h"} <= set(fetch_mod.DEFAULT_ZOO_VERSIONS)
+
+
+def test_resolve_zoo_versions_uses_per_arch_default_when_no_override():
+    """Default resolution: hailo10h -> v2.18.0, hailo8 -> v2.16.0.
+    The two arches need different defaults because the public S3 bucket
+    has nothing under Compiled/v2.16.0/hailo10h/ — verified live
+    2026-04-29 with the real fetcher returning 403 on every URL."""
+    versions = fetch_mod.resolve_zoo_versions(("hailo8", "hailo10h"))
+    assert versions["hailo8"] == "v2.16.0"
+    assert versions["hailo10h"] == "v2.18.0"
+
+
+def test_resolve_zoo_versions_override_applies_to_all_arches():
+    """The --zoo-version CLI flag is intended as a single override for
+    all arches in one run, so resolve_zoo_versions should mirror that."""
+    versions = fetch_mod.resolve_zoo_versions(
+        ("hailo8", "hailo10h"), override="v2.20.0"
+    )
+    assert versions == {"hailo8": "v2.20.0", "hailo10h": "v2.20.0"}
+
+
+def test_resolve_zoo_versions_rejects_unknown_arch():
+    with pytest.raises(ValueError, match="No DEFAULT_ZOO_VERSIONS entry"):
+        fetch_mod.resolve_zoo_versions(("hailo-bogus",))
+
+
 # ---------------------------------------------------------------- URLs
 
 
@@ -104,23 +138,104 @@ def test_manifest_canonical_names_round_trip_with_hef_source():
 # ------------------------------------------------------------ dry-run
 
 
+def _mk_head_ok():
+    """Mock urlopen for HEAD requests that always succeed."""
+
+    class _CtxResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _open(req_or_url, timeout=None):  # noqa: ARG001
+        return _CtxResp()
+
+    return _open
+
+
 def test_dry_run_does_not_create_files(tmp_path):
-    rc = fetch_mod.main(
-        ["--arch", "hailo10h", "--dry-run", "--output-dir", str(tmp_path)]
-    )
+    """Dry-run never writes the destination file even when HEAD says 200."""
+    with patch.object(fetch_mod.urllib.request, "urlopen", _mk_head_ok()):
+        rc = fetch_mod.main(
+            ["--arch", "hailo10h", "--dry-run", "--output-dir", str(tmp_path)]
+        )
     assert rc == 0
-    # Output dir should be created but stay empty
     assert tmp_path.is_dir()
     assert list(tmp_path.iterdir()) == []
 
 
-def test_dry_run_marks_results_as_downloaded(tmp_path):
-    results = fetch_mod.fetch_all(
-        ("hailo10h",),
-        zoo_version="v2.16.0",
-        output_dir=tmp_path,
-        dry_run=True,
-    )
+def test_dry_run_uses_HEAD_not_GET(tmp_path):
+    """Dry-run must HEAD-probe the URL — using GET would defeat the point
+    (large transfer for a planning operation). Verifies we pass a
+    urllib.request.Request with method='HEAD' rather than a bare URL."""
+    captured_methods: list[str] = []
+
+    class _CtxResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def _spy(req_or_url, timeout=None):  # noqa: ARG001
+        if isinstance(req_or_url, fetch_mod.urllib.request.Request):
+            captured_methods.append(req_or_url.get_method())
+        else:
+            captured_methods.append("GET")
+        return _CtxResp()
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _spy):
+        fetch_mod.fetch_all(
+            ("hailo10h",),
+            zoo_versions={"hailo10h": "v2.18.0", "hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
+            dry_run=True,
+        )
+    assert captured_methods == ["HEAD"]
+
+
+def test_dry_run_reports_actual_status_when_url_missing(tmp_path):
+    """The whole reason this fix exists. Before the change, dry-run
+    reported 'downloaded' for every URL regardless of whether S3 had
+    the object. Now it reflects the real catalogue status — verified
+    2026-04-29 against hailo10h@v2.18.0 which 403s on every URL."""
+    import urllib.error
+
+    def head_403(req_or_url, timeout=None):  # noqa: ARG001
+        url = (
+            req_or_url
+            if isinstance(req_or_url, str)
+            else req_or_url.full_url
+        )
+        raise urllib.error.HTTPError(url, 403, "Forbidden", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", head_403):
+        results = fetch_mod.fetch_all(
+            ("hailo10h",),
+            zoo_versions={"hailo10h": "v2.18.0", "hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
+            dry_run=True,
+        )
+    assert results[0].status == "missing-403"
+
+
+def test_dry_run_marks_results_as_downloaded_when_HEAD_ok(tmp_path):
+    """When the URL resolves, dry-run reports 'downloaded' (i.e. would
+    download). Mock HEAD to always 200 so the test doesn't need network."""
+    with patch.object(fetch_mod.urllib.request, "urlopen", _mk_head_ok()):
+        results = fetch_mod.fetch_all(
+            ("hailo10h",),
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            dry_run=True,
+        )
     assert results
     assert all(r.status == "downloaded" for r in results)
     assert list(tmp_path.iterdir()) == []  # never wrote anything
@@ -166,7 +281,7 @@ def test_404_results_in_missing_status_not_exception(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", _mk_urlopen_404()):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
         )
@@ -187,7 +302,7 @@ def test_403_treated_as_missing_not_error(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", raise_403):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
         )
@@ -231,7 +346,7 @@ def test_5xx_remains_a_real_error(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", raise_503):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
         )
@@ -244,7 +359,7 @@ def test_successful_download_writes_canonical_file(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", _mk_urlopen_ok(payload)):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
         )
@@ -265,7 +380,7 @@ def test_existing_file_skipped_unless_overwrite(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", spy):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
         )
@@ -281,7 +396,7 @@ def test_overwrite_redownloads(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", _mk_urlopen_ok(b"new")):
         results = fetch_mod.fetch_all(
             ("hailo10h",),
-            zoo_version="v2.16.0",
+            zoo_versions={"hailo10h": "v2.16.0", "hailo8": "v2.16.0"},
             output_dir=tmp_path,
             manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
             overwrite=True,

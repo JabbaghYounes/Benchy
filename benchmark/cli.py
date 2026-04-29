@@ -941,6 +941,23 @@ def cmd_compile(args) -> int:
             results.append((model_name, False, "size not inferable"))
             continue
 
+        canonical = repo_filename(version, task, size, args.hw_arch)
+        dest = output_dir / canonical
+
+        # Skip when a canonical HEF is already staged for this
+        # (version, task, size, arch). The Pi-side runtime resolves
+        # against resources/hefs/ regardless of whether the file came
+        # from fetch_prebuilt_hefs.py or a prior compile run, so
+        # re-invoking the pipeline would just burn ~5-30 minutes per
+        # model for no gain. --force-recompile overrides.
+        if dest.exists() and not args.force_recompile:
+            logger.info(
+                f"  Already staged: {dest} "
+                "(pass --force-recompile to override)"
+            )
+            results.append((model_name, True, f"already staged: {dest}"))
+            continue
+
         config = ConversionConfig(
             target_device=args.hw_arch,
             input_resolution=args.input_resolution,
@@ -969,8 +986,6 @@ def cmd_compile(args) -> int:
             )
             continue
 
-        canonical = repo_filename(version, task, size, args.hw_arch)
-        dest = output_dir / canonical
         try:
             shutil.copy2(result.hef_path, dest)
         except OSError as e:

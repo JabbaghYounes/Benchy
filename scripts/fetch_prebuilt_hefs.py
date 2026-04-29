@@ -46,9 +46,21 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "resources" / "hefs"
 ZOO_BASE_URL = (
     "https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled"
 )
-DEFAULT_ZOO_VERSION = "v2.16.0"
 
-ARCHES = ("hailo8", "hailo8l", "hailo10h")
+# Per-arch default zoo version. The hailo10h path was not populated
+# in v2.16.0 (every URL returned 403 — verified 2026-04-29 against the
+# real S3 bucket); v2.18.0 is the earliest version where Hailo started
+# publishing hailo10h prebuilts on the public bucket. The hailo8/8l
+# defaults stay on v2.16.0 to match the four HEFs originally staged in
+# resources/hefs/. Override with --zoo-version on the CLI to force a
+# single version across all arches.
+DEFAULT_ZOO_VERSIONS: dict[str, str] = {
+    "hailo8": "v2.16.0",
+    "hailo8l": "v2.16.0",
+    "hailo10h": "v2.18.0",
+}
+
+ARCHES = tuple(DEFAULT_ZOO_VERSIONS.keys())
 
 
 @dataclass(frozen=True)
@@ -115,6 +127,21 @@ class FetchResult:
     error: str | None = None
 
 
+def _classify_http_error(
+    e: urllib.error.HTTPError,
+) -> tuple[str, str | None]:
+    """Map an HTTPError to (status, error_msg).
+
+    S3 returns 403 instead of 404 for objects that don't exist in a
+    bucket that forbids ListObjects, so treat both as "not in the
+    public catalogue" — non-fatal, just reported. 5xx are real server
+    errors and surfaced as such.
+    """
+    if e.code in (403, 404):
+        return f"missing-{e.code}", None
+    return "error", f"HTTP {e.code}"
+
+
 def fetch_one(
     entry: HEFManifestEntry,
     arch: str,
@@ -132,7 +159,21 @@ def fetch_one(
         return FetchResult(entry, arch, url, dest, "skipped-exists")
 
     if dry_run:
-        return FetchResult(entry, arch, url, dest, "downloaded")
+        # HEAD-probe so the user sees the real catalogue status before
+        # committing to a (potentially long) download. Without this,
+        # dry-run was just URL templating and silently lied when the
+        # resolved path didn't exist (verified 2026-04-29 against the
+        # real S3 bucket: dry-run claimed all 13 hailo10h@v2.18.0 URLs
+        # would download; the GET returned 403 on every one).
+        req = urllib.request.Request(url, method="HEAD")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout):
+                return FetchResult(entry, arch, url, dest, "downloaded")
+        except urllib.error.HTTPError as e:
+            status, err = _classify_http_error(e)
+            return FetchResult(entry, arch, url, dest, status, err)
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            return FetchResult(entry, arch, url, dest, "error", str(e))
 
     try:
         with urllib.request.urlopen(url, timeout=timeout) as resp, open(
@@ -141,13 +182,8 @@ def fetch_one(
             while chunk := resp.read(64 * 1024):
                 out.write(chunk)
     except urllib.error.HTTPError as e:
-        # S3 returns 403 instead of 404 for objects that don't exist
-        # in a bucket without ListObjects permission, so treat both
-        # as "not in the public catalogue" — non-fatal, just reported.
-        # 5xx are real server errors; surface them.
-        if e.code in (403, 404):
-            return FetchResult(entry, arch, url, dest, f"missing-{e.code}")
-        return FetchResult(entry, arch, url, dest, "error", f"HTTP {e.code}")
+        status, err = _classify_http_error(e)
+        return FetchResult(entry, arch, url, dest, status, err)
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         # Partial download cleanup
         if dest.exists():
@@ -160,24 +196,50 @@ def fetch_one(
     return FetchResult(entry, arch, url, dest, "downloaded")
 
 
+def resolve_zoo_versions(
+    arches: Iterable[str],
+    override: str | None = None,
+) -> dict[str, str]:
+    """Pick a zoo_version per arch.
+
+    If ``override`` is given, every arch uses it (matches the
+    ``--zoo-version`` CLI flag). Otherwise each arch falls back to its
+    entry in :data:`DEFAULT_ZOO_VERSIONS`.
+    """
+    arches_t = tuple(arches)
+    if override:
+        return {a: override for a in arches_t}
+    out: dict[str, str] = {}
+    for a in arches_t:
+        if a not in DEFAULT_ZOO_VERSIONS:
+            raise ValueError(
+                f"No DEFAULT_ZOO_VERSIONS entry for arch '{a}'. "
+                f"Known: {sorted(DEFAULT_ZOO_VERSIONS)}."
+            )
+        out[a] = DEFAULT_ZOO_VERSIONS[a]
+    return out
+
+
 def fetch_all(
     arches: Iterable[str],
     *,
-    zoo_version: str = DEFAULT_ZOO_VERSION,
+    zoo_versions: dict[str, str] | None = None,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
     manifest: Iterable[HEFManifestEntry] = ZOO_MANIFEST,
     dry_run: bool = False,
     overwrite: bool = False,
 ) -> list[FetchResult]:
+    arches_t = tuple(arches)
+    versions = zoo_versions if zoo_versions is not None else resolve_zoo_versions(arches_t)
     output_dir.mkdir(parents=True, exist_ok=True)
     results: list[FetchResult] = []
-    for arch in arches:
+    for arch in arches_t:
         for entry in manifest:
             results.append(
                 fetch_one(
                     entry,
                     arch,
-                    zoo_version,
+                    versions[arch],
                     output_dir,
                     dry_run=dry_run,
                     overwrite=overwrite,
@@ -233,8 +295,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument(
         "--zoo-version",
-        default=DEFAULT_ZOO_VERSION,
-        help=f"Hailo Model Zoo release tag (default: {DEFAULT_ZOO_VERSION}).",
+        default=None,
+        help=(
+            "Hailo Model Zoo release tag override (forces a single version "
+            "across all arches). When omitted, each arch falls back to its "
+            "entry in DEFAULT_ZOO_VERSIONS: "
+            + ", ".join(f"{a}={v}" for a, v in DEFAULT_ZOO_VERSIONS.items())
+            + "."
+        ),
     )
     p.add_argument(
         "--output-dir",
@@ -271,17 +339,18 @@ def main(argv: list[str] | None = None) -> int:
     else:
         arches = (args.arch,)
 
+    versions = resolve_zoo_versions(arches, override=args.zoo_version)
+
     log.info(
-        "Fetching from Hailo Model Zoo %s for arches %s -> %s%s",
-        args.zoo_version,
-        ",".join(arches),
+        "Fetching from Hailo Model Zoo for arches %s -> %s%s",
+        ", ".join(f"{a}@{versions[a]}" for a in arches),
         args.output_dir,
         " (dry-run)" if args.dry_run else "",
     )
 
     results = fetch_all(
         arches,
-        zoo_version=args.zoo_version,
+        zoo_versions=versions,
         output_dir=args.output_dir,
         dry_run=args.dry_run,
         overwrite=args.overwrite,

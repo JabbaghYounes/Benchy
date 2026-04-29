@@ -270,3 +270,112 @@ def test_compile_skips_models_with_unparseable_size(
     rc = cli_mod.cmd_compile(args)
     assert rc == 1  # one entry failed
     assert (tmp_path / "v8_detection_n_hailo10h.hef").exists()
+
+
+# ----------------------------------------- skip-if-already-staged (Issue 3)
+
+
+def test_compile_skips_when_canonical_hef_already_staged(tmp_path, monkeypatch):
+    """A HEF already in resources/hefs/ (e.g. from fetch_prebuilt_hefs.py)
+    must not trigger another full pipeline run. The pipeline is the
+    expensive bit (5-30 min per model); re-staging the same file
+    accomplishes nothing."""
+    pre_staged = tmp_path / "v8_detection_n_hailo10h.hef"
+    pre_staged.write_bytes(b"fetched-from-zoo")
+
+    convert_calls: list = []
+
+    class _SpyPipeline:
+        def __init__(self):
+            pass
+
+        def check_requirements(self):
+            return {"hef_compilation": True}
+
+        def convert(self, *args, **kwargs):
+            convert_calls.append((args, kwargs))
+            raise AssertionError("pipeline.convert must not run for already-staged HEFs")
+
+    monkeypatch.setattr(
+        "benchmark.workloads.yolo.conversion.pipeline.ModelConversionPipeline",
+        _SpyPipeline,
+    )
+
+    args = _make_args(
+        model="yolov8n.pt",
+        hw_arch="hailo10h",
+        output_dir=tmp_path,
+        force_recompile=False,
+    )
+    rc = cli_mod.cmd_compile(args)
+    assert rc == 0
+    assert convert_calls == []  # pipeline never invoked
+    # Pre-existing file untouched
+    assert pre_staged.read_bytes() == b"fetched-from-zoo"
+
+
+def test_compile_force_recompile_overrides_skip(tmp_path, mock_pipeline_factory):
+    """--force-recompile must re-run the pipeline and overwrite the
+    pre-staged HEF. This is the escape hatch when the staged file is
+    suspect (wrong DFC version, corrupted, etc.)."""
+    pre_staged = tmp_path / "v8_detection_n_hailo10h.hef"
+    pre_staged.write_bytes(b"old-hef-suspected-bad")
+
+    mock_pipeline_factory({"yolov8n.pt": "success"}, hef_payload=b"freshly-compiled")
+
+    args = _make_args(
+        model="yolov8n.pt",
+        hw_arch="hailo10h",
+        output_dir=tmp_path,
+        force_recompile=True,
+    )
+    rc = cli_mod.cmd_compile(args)
+    assert rc == 0
+    assert pre_staged.read_bytes() == b"freshly-compiled"
+
+
+def test_compile_skip_check_uses_per_arch_filename(tmp_path, monkeypatch):
+    """A pre-staged hailo8 HEF must NOT cause a hailo10h compile to skip
+    — the canonical filename includes the arch, so v8_detection_n_hailo8.hef
+    is not the same artefact as v8_detection_n_hailo10h.hef. Mixing them
+    on the Pi would crash at HEF load (HEFs are not cross-arch portable)."""
+    # Pre-stage a hailo8 file
+    (tmp_path / "v8_detection_n_hailo8.hef").write_bytes(b"hailo8-bytes")
+
+    convert_calls: list = []
+
+    class _SpyPipeline:
+        def __init__(self):
+            pass
+
+        def check_requirements(self):
+            return {"hef_compilation": True}
+
+        def convert(self, model_name, version, task, config):
+            convert_calls.append(config.target_device)
+            r = MagicMock()
+            r.success = True
+            hef = tmp_path / "fresh_h10h.hef"
+            hef.write_bytes(b"hailo10h-bytes")
+            r.hef_path = hef
+            r.error = None
+            r.error_stage = None
+            return r
+
+    monkeypatch.setattr(
+        "benchmark.workloads.yolo.conversion.pipeline.ModelConversionPipeline",
+        _SpyPipeline,
+    )
+
+    # Compile for hailo10h — should NOT be skipped despite hailo8 file present
+    args = _make_args(
+        model="yolov8n.pt",
+        hw_arch="hailo10h",
+        output_dir=tmp_path,
+    )
+    rc = cli_mod.cmd_compile(args)
+    assert rc == 0
+    assert convert_calls == ["hailo10h"]
+    # hailo10h artefact now exists alongside the hailo8 one
+    assert (tmp_path / "v8_detection_n_hailo10h.hef").exists()
+    assert (tmp_path / "v8_detection_n_hailo8.hef").read_bytes() == b"hailo8-bytes"

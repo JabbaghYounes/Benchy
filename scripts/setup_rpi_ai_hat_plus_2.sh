@@ -546,19 +546,20 @@ install_hailort_genai() {
         warn "and run: sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_arm64.deb"
     fi
 
-    # The npu profile in configs/llm_benchmark.yaml uses llama3.2:3b
-    # (llama-only canonical sweep, see Issue 7 in
-    # resources/session_issues_2026-04-27.md). We do not pre-pull it from
-    # this script — the hailo-ollama server has to be running for
-    # /api/pull, and starting the server here would complicate teardown.
-    # Instead, document the manual step.
+    # The npu profile in configs/llm_benchmark.yaml uses llama3.2:1b —
+    # the only llama-family prebuilt HEF in the HailoRT 5.3.0 GenAI Model
+    # Zoo (5.1.1 had llama3.2:3b but Hailo dropped it). See Issue 7 in
+    # resources/session_issues_2026-04-27.md for the llama-only policy.
+    # We do not pre-pull it from this script — the hailo-ollama server
+    # has to be running for /api/pull, and starting the server here
+    # would complicate teardown. Instead, document the manual step.
     success "hailo-apps + hailo-ollama install attempted"
     info "Next steps to enable --profile npu (per docs/hailo.md):"
     info "  1. source $HAILO_APPS_DIR/setup_env.sh"
     info "  2. hailo-ollama   # starts the GenAI REST server on :$HAILO_OLLAMA_PORT"
     info "  3. curl --silent http://localhost:$HAILO_OLLAMA_PORT/api/pull \\"
     info "       -H 'Content-Type: application/json' \\"
-    info "       -d '{\"model\": \"llama3.2:3b\", \"stream\": true}'"
+    info "       -d '{\"model\": \"llama3.2:1b\", \"stream\": true}'"
     info "  4. python -m benchmark run llm --profile npu"
 }
 

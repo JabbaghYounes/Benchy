@@ -14,7 +14,7 @@
 #   3. hailo-ollama &      # GenAI REST server bound to :8000
 #   4. curl -sS http://localhost:8000/api/pull \
 #        -H 'Content-Type: application/json' \
-#        -d '{"model":"llama3.2:3b","stream":true}'
+#        -d '{"model":"llama3.2:1b","stream":true}'
 #   5. source venv/bin/activate
 #
 # Then:

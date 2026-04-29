@@ -87,7 +87,7 @@ hw_run_step "yolo-v26-pose [experimental]" \
 # explicit zero bar for cross-platform comparison rather than a missing
 # row. We deliberately don't gate on a curl preflight to :8000 here —
 # we want the stub written regardless of hailo-ollama's reachability.
-hw_run_step "llm-npu-llama3.2:3b [unsupported-on-this-hw]" \
+hw_run_step "llm-npu-llama3.2:1b [unsupported-on-this-hw]" \
     "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
     --workload llm --backend hailo-10h --require-npu-metrics
 

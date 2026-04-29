@@ -161,6 +161,9 @@ per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 | [CLI Reference](docs/cli.md) | Full command reference with examples |
 | [Workloads](docs/workloads.md) | YOLO and LLM benchmark details, metrics, and model groups |
 | [Hailo NPU](docs/hailo.md) | Hailo-8 / 8L / 10H integration, model conversion, and limitations |
+| [HEF Compilation](docs/hef_compilation.md) | Workstation-side `.pt → .hef` workflow, CLI flags, calibration options |
+| [NVIDIA Workstation Bring-up](docs/compilation/nvidia_workstation_setup.md) | Step-by-step setup for a CUDA-equipped compile box (required for gap-model HEFs) |
+| [Compilation Pitfalls](docs/compilation/pitfalls.md) | Known compilation failure modes and fixes |
 | [Methodology](docs/methodology.md) | Benchmark methodology and reproducibility |
 | [Output & Configuration](docs/output.md) | Result formats, dashboard, and YAML configuration |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |

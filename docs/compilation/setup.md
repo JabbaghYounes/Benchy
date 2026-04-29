@@ -3,6 +3,15 @@
 What's already in place on this machine and what's still required to
 compile HEFs.
 
+> **Note (2026-04-29):** This doc captures the AMD/CPU workstation
+> setup. After hitting Hailo's CUDA requirement for seg / pose / OBB
+> compilation (see [pitfalls.md § 8](pitfalls.md)), the live compile
+> path moved to an NVIDIA-equipped box — see
+> [nvidia_workstation_setup.md](nvidia_workstation_setup.md) for the
+> full bring-up checklist. The steps below still apply to detection
+> compiles and to the wheel-installation parts; they just don't
+> unblock the gap models on AMD hardware.
+
 ## ✅ Already done
 
 - **Benchy cloned** at `/home/jt/Documents/benchy-hef/Benchy/`

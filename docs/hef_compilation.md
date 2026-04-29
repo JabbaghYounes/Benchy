@@ -17,7 +17,7 @@ This document covers the workflow end-to-end. Read [docs/hailo.md](hailo.md)
 | **Hailo AI Software Suite** | Or the standalone `hailo_dataflow_compiler-*.whl` + `hailo_model_zoo-*.whl`. Both EULA-gated downloads from [Hailo Developer Zone](https://hailo.ai/developer-zone/). |
 | **Python 3.10 or 3.11** | DFC wheels are version-specific. Match the venv to the wheel filename (`cp310` / `cp311`). |
 | **~50 GB free disk** | Calibration datasets for OBB (DOTAv1, ~10 GB) and pose (coco-pose, ~20 GB) are large. Cached at `~/.cache/benchy/hailo/`. |
-| **GPU (optional)** | Calibration / quantisation runs ~10× faster with CUDA. CPU-only works but adds ~minutes per model. |
+| **NVIDIA GPU + CUDA** | **Required** for seg / pose / OBB. Without CUDA the DFC drops to optimization level 0, biases stay 16-bit, and chip mapping fails on Hailo-8 (`DW resources calculation failed: more than 1 subclusters needed for 16bit L2 biases at activation2`). Plain detection compiles work CPU-only. AMD GPUs do not work — Hailo doesn't support ROCm. See [docs/compilation/nvidia_workstation_setup.md](compilation/nvidia_workstation_setup.md) for the full bring-up. |
 | **Network** | First compile per task family pulls calibration data from Ultralytics. |
 
 ## What we need to compile
@@ -85,6 +85,12 @@ expects:
 # Single model
 python -m benchmark compile --hw-arch hailo8 --model yolov8n-obb.pt
 
+# Single model with a pre-staged val2017 directory (recommended) —
+# avoids triggering Ultralytics' full coco auto-download (~27 GB) when
+# only val2017 (~1 GB, ~5000 images) is consumed for calibration.
+python -m benchmark compile --hw-arch hailo8 --model yolo11n-seg.pt \
+    --calibration-data-path ~/Documents/datasets/coco-val/images/val2017
+
 # Batch (continues on failure; per-model summary at the end)
 python -m benchmark compile --hw-arch hailo8 \
   --models yolov8n-obb.pt,yolo11n-obb.pt,yolo11n-seg.pt,yolo11n-pose.pt,\
@@ -92,14 +98,27 @@ yolo26n-obb.pt,yolo26n-seg.pt,yolo26n-pose.pt
 
 # Or use the driver script that batches both archs in one sweep
 scripts/compile_workstation_hefs.sh --arch both
-scripts/compile_workstation_hefs.sh --arch hailo10h --include-detection
+scripts/compile_workstation_hefs.sh --arch hailo10h --include-detection \
+    --calibration-data-path ~/Documents/datasets/coco-val/images/val2017
 ```
 
 Per-model time: 5–30 minutes. Total: roughly 1–3.5 hours.
 
-**First-time only:** the OBB compiles trigger a DOTAv1 download (~10
-GB), and the pose compiles trigger coco-pose (~20 GB). Subsequent
-compiles reuse the cached datasets.
+The compile CLI's `--calibration-set-size` defaults to **1024** so
+Hailo's bias-correction passes (Bias Correction / Adaround / Finetune
+encoding) actually run. Below 1024 the optimizer drops to level 0 and
+biases stay at 16-bit — which then fails chip mapping on Hailo-8 for
+seg / pose / OBB heads. Override to a smaller value only when
+iterating fast on a known-good model.
+
+**First-time only:** without `--calibration-data-path`, Ultralytics'
+auto-download pulls `coco.yaml` (~27 GB: train2017 19 GB + val2017
+1 GB + test2017 7 GB) for SEG, plus DOTAv1 (~10 GB) for OBB and
+coco-pose (~27 GB) for POSE. The `--calibration-data-path` escape
+hatch points the loader at any directory of images on disk and skips
+the auto-download entirely. The cache key embeds the dataset
+identity, so different paths get different `.npz` caches (no stale
+hits). See `benchmark/workloads/yolo/conversion/calibration.py`.
 
 > **Legacy fallback.** Older docs recommended
 > `python -m benchmark run yolo --backend hailo --skip-validation || true`

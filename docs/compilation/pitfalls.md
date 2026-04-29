@@ -104,7 +104,50 @@ Even when compile succeeds, output ordering may differ from the ONNX export.
 Verify tensor shapes against `postprocessing.py` expectations before
 committing the HEF.
 
-## 8. v26 is genuinely unproven
+## 8. CPU-only / AMD compile box can't produce gap-model HEFs
+
+Hailo's DFC (3.33.x and 5.3.x both) needs **CUDA** to run optimization
+level ≥ 1 — that's where the Bias Correction / Adaround / Finetune
+encoding passes compress weights and biases to 8-bit. Without a
+working CUDA GPU, the DFC drops to optimization level 0, those passes
+are skipped, and biases stay at 16-bit. On Hailo-8 the chip allocator
+then can't fit the seg / pose / OBB head's depthwise conv with 16-bit
+biases, and you see:
+
+```
+[warning] Reducing optimization level to 0 ... because there's no
+          available GPU
+[info]    Bias Correction skipped
+[info]    Adaround skipped
+[info]    Finetune encoding skipped
+...
+[error]   Mapping Failed (allocation time: Xs)
+No successful assignments: concat18 / concat20 / activation2 errors:
+    Agent infeasible
+    DW resources calculation failed: more than 1 subclusters are
+    needed for 16bit L2 biases and contexts at activation2
+    activation2 failed on kernel validation: 16x4 is not supported in
+    activation2
+```
+
+This is a hardware requirement, not a calibration / model-script /
+end-node-truncation issue. More calibration data, smaller input
+resolution, or different end-nodes won't fix it. AMD GPUs with ROCm
+also do not work — Hailo's DFC binds to the CUDA runtime explicitly.
+
+**Fix:** move compilation to an NVIDIA-equipped Linux box. See
+[nvidia_workstation_setup.md](nvidia_workstation_setup.md) for the
+full bring-up. Plain detection compiles work fine CPU-only — it's
+specifically the seg / pose / OBB head that needs the bias-correction
+passes to fit Hailo-8 silicon.
+
+The fetcher (`scripts/fetch_prebuilt_hefs.py`) already covers the
+detection HEFs the Hailo Model Zoo publishes, so a CPU-only box can
+still ship the full detection coverage without a CUDA dependency —
+the gap is exactly the seg / pose / OBB models the Zoo doesn't
+prebuild.
+
+## 9. v26 is genuinely unproven
 
 YOLOv26 detection is in the Zoo, so the backbone is known to compile.
 Non-detection v26 heads (OBB, seg, pose) have no public confirmation that

@@ -556,14 +556,25 @@ class CalibrationDatasetLoader:
     def _get_cache_path(self, task: YOLOTask, config: CalibrationConfig) -> Path:
         """Get the cache file path for a dataset.
 
-        Args:
-            task: Task type
-            config: Configuration
-
-        Returns:
-            Path to cache file
+        The cache key includes the dataset identity (DEFAULT_DATASETS
+        lookup name when dataset_path is None, or a hash of the path
+        when set) so changing the dataset — globally via
+        DEFAULT_DATASETS or per-call via CalibrationConfig.dataset_path
+        — invalidates stale caches automatically. Without this, a
+        cache file produced under one dataset would silently be
+        returned even after the dataset is changed, since the cache
+        key only depended on (task, num_samples, resolution, seed).
         """
-        cache_key = f"{task.value}_{config.num_samples}_{config.input_resolution}_{config.seed}"
+        if config.dataset_path is not None:
+            dataset_id = "path-" + hashlib.sha1(
+                str(config.dataset_path).encode()
+            ).hexdigest()[:8]
+        else:
+            dataset_id = self.DEFAULT_DATASETS.get(task, "unknown")
+        cache_key = (
+            f"{task.value}_{dataset_id}_{config.num_samples}"
+            f"_{config.input_resolution}_{config.seed}"
+        )
         return self.cache_dir / f"{cache_key}.npz"
 
     def _load_from_cache(

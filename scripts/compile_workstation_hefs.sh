@@ -59,7 +59,13 @@ ARCH="hailo8"
 INCLUDE_DETECTION=0
 MODELS_OVERRIDE=""
 INPUT_RESOLUTION=640
-CALIBRATION_SET_SIZE=100
+# Hailo's INT8 bias-correction passes (Bias Correction / Adaround /
+# Finetune encoding) require >= 1024 calibration samples; below that
+# the optimizer drops to level 0 and biases stay 16-bit, which fails
+# chip mapping on Hailo-8 for some seg/pose models with
+# "DW resources calculation failed for 16bit L2 biases / 16x4 not
+# supported in activation2". Mirror the CLI default added in cli.py.
+CALIBRATION_SET_SIZE=1024
 OUTPUT_DIR="$REPO_ROOT/resources/hefs"
 FORCE_RECOMPILE=0
 VENV_DIR="${BENCHY_VENV:-$REPO_ROOT/venv}"

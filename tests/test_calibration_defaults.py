@@ -95,3 +95,68 @@ def test_calibration_dataset_path_override_is_optional():
     custom = Path("/tmp/my_calibration_subset")
     cfg_override = CalibrationConfig(dataset_path=custom)
     assert cfg_override.dataset_path == custom
+
+
+def test_calibration_cache_key_includes_dataset_identity():
+    """Changing DEFAULT_DATASETS or CalibrationConfig.dataset_path must
+    produce a different cache filename, so changing the dataset on a
+    machine with a stale cache invalidates the old entry automatically
+    instead of silently returning yesterday's data. This was the bug
+    that masked the SEG dataset bump on 2026-04-29 — the cache key
+    was (task, num_samples, resolution, seed), so a cached
+    coco128-seg run kept being returned even after we switched
+    DEFAULT_DATASETS to coco.
+    """
+    from pathlib import Path
+    loader = CalibrationDatasetLoader()
+    cfg = CalibrationConfig(num_samples=100, input_resolution=640, seed=42)
+
+    # Default-path key embeds the DEFAULT_DATASETS name.
+    default_key = loader._get_cache_path(YOLOTask.SEGMENTATION, cfg).name
+    assert "segmentation" in default_key
+    assert (
+        CalibrationDatasetLoader.DEFAULT_DATASETS[YOLOTask.SEGMENTATION]
+        in default_key
+    ), (
+        f"Cache key {default_key!r} should embed the dataset name "
+        f"{CalibrationDatasetLoader.DEFAULT_DATASETS[YOLOTask.SEGMENTATION]!r}"
+    )
+
+    # Custom path produces a different key.
+    cfg_custom = CalibrationConfig(
+        num_samples=100, input_resolution=640, seed=42,
+        dataset_path=Path("/tmp/my_subset"),
+    )
+    custom_key = loader._get_cache_path(YOLOTask.SEGMENTATION, cfg_custom).name
+    assert custom_key != default_key
+
+    # Two custom paths produce two distinct keys.
+    cfg_other = CalibrationConfig(
+        num_samples=100, input_resolution=640, seed=42,
+        dataset_path=Path("/tmp/another_subset"),
+    )
+    other_key = loader._get_cache_path(YOLOTask.SEGMENTATION, cfg_other).name
+    assert other_key != custom_key
+
+    # Same custom path produces a deterministic key (cache rehit works).
+    cfg_repeat = CalibrationConfig(
+        num_samples=100, input_resolution=640, seed=42,
+        dataset_path=Path("/tmp/my_subset"),
+    )
+    assert loader._get_cache_path(YOLOTask.SEGMENTATION, cfg_repeat).name == custom_key
+
+
+def test_calibration_cache_key_excludes_legacy_format():
+    """The pre-2026-04-29 cache key was
+    `<task>_<n>_<resolution>_<seed>.npz` with no dataset identity.
+    Pin that we don't regress to that format — otherwise tomorrow's
+    bump of DEFAULT_DATASETS to coco-stuff or whatever would silently
+    serve coco data."""
+    loader = CalibrationDatasetLoader()
+    cfg = CalibrationConfig(num_samples=100, input_resolution=640, seed=42)
+    key = loader._get_cache_path(YOLOTask.SEGMENTATION, cfg).name
+    # legacy format would be exactly "segmentation_100_640_42.npz"
+    assert key != "segmentation_100_640_42.npz", (
+        f"Cache key regressed to the legacy (task, num, res, seed) "
+        f"format: {key}. The dataset name must be part of the key."
+    )

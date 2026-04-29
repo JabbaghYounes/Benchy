@@ -29,10 +29,19 @@ Each folder contains:
 - **[pitfalls.md](pitfalls.md)** — gotchas common to both pipelines
 
 > Benchy automates the full `.pt → .onnx → .har → .hef` chain via
-> `python -m benchmark run yolo --backend hailo --force-recompile`.
-> The arch-specific workflow docs are still useful when you need to
-> drop to raw `hailo parser` / `hailomz` calls (e.g. to debug a failed
-> compile or set custom end-nodes).
+> the `compile` subcommand, which bypasses the runtime backend so
+> a workstation without HailoRT or a Hailo device can still produce
+> HEFs:
+>
+> ```bash
+> python -m benchmark compile --hw-arch hailo10h --model yolov8n-seg.pt
+> scripts/compile_workstation_hefs.sh --arch both
+> scripts/fetch_prebuilt_hefs.py --arch both --dry-run
+> ```
+>
+> The arch-specific workflow docs below are still useful when you need
+> to drop to raw `hailo parser` / `hailomz` calls (e.g. to debug a
+> failed compile or set custom end-nodes).
 
 ## TL;DR pipeline
 

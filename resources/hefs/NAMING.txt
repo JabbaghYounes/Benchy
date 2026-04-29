@@ -26,6 +26,20 @@ HEFs must be compiled on x86_64 Linux with the Hailo Dataflow Compiler
 cannot compile them. See docs/hailo.md "Prebuilt HEF source layer" and
 Issue 11 in resources/session_issues_2026-04-27.md.
 
+Two workstation entry points stage HEFs here automatically with the
+canonical naming above:
+
+  python -m benchmark compile --hw-arch hailo10h --model yolov8n-seg.pt
+    -> stages resources/hefs/v8_segmentation_n_hailo10h.hef
+
+  scripts/fetch_prebuilt_hefs.py --arch both
+    -> downloads from the Hailo Model Zoo S3 catalogue below and
+       stages everything the Zoo publishes for hailo8 + hailo10h
+
+Both write directly into this directory; commit + push and the Pi
+runtime will pick the HEFs up via hef_source.find_prebuilt_hef on next
+verify.
+
 ----
 
 Source: Hailo Model Zoo public S3 catalogue. URL pattern:

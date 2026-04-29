@@ -73,8 +73,9 @@ unregistered models — see [../tools.md](../tools.md).
 
 ## Benchy wrapper pipeline
 
-The Benchy CLI wraps the same DFC calls and writes to
-`~/.cache/benchy/hailo/`:
+The Benchy `compile` subcommand wraps the same DFC calls, runs the
+full `.pt → .onnx → .har → .hef` pipeline, and stages the result
+into `resources/hefs/` with canonical naming in one step:
 
 ```bash
 git clone <your Benchy fork>
@@ -84,19 +85,14 @@ pip install -e ".[dev]"
 pip install /path/to/hailo_dataflow_compiler-3.33.1-py3-none-linux_x86_64.whl
 pip install /path/to/hailo_model_zoo-2.18.0-py3-none-any.whl
 
-# Compile each model — pipeline runs .pt → .onnx → .har → .hef.
-# Not benchmark runs (no Hailo device on workstation); pipeline stops
-# after HEF generation.
-for model in yolov8n-obb yolo11n-obb yolo11n-seg yolo11n-pose \
-             yolo26n-obb yolo26n-seg yolo26n-pose; do
-  python -m benchmark run yolo --backend hailo \
-    --hw-arch hailo8 \
-    --yolo-model "${model}.pt" --force-recompile --skip-validation || true
-done
+# Single model
+python -m benchmark compile --hw-arch hailo8 --model yolov8n-obb.pt
+
+# Batch (continues on failure; staged into resources/hefs/)
+scripts/compile_workstation_hefs.sh --arch hailo8
 ```
 
-Then copy HEFs into the repo with the destination paths from
-[models.md](models.md), commit, push, pull on the Pi, run verify.
+Commit `resources/hefs/*.hef`, push, pull on the Pi, run verify.
 
 ## Deploy to the Pi
 

@@ -72,14 +72,27 @@ and fine. The HEF lands in `~/.cache/benchy/hailo/` either way.
 
 ### 3. Compile each missing HEF
 
+The recommended workstation entry point is the dedicated
+`compile` subcommand (added on the `hef` branch). Unlike the
+benchmark `run` flow, it bypasses the runtime Hailo backend, so it
+works on a workstation that has the Dataflow Compiler but no HailoRT
+or Hailo device. After each compile it stages the HEF directly into
+`resources/hefs/` with the canonical
+`<version>_<task>_<size>_<arch>.hef` filename the Pi-side runtime
+expects:
+
 ```bash
-for model in yolov8n-obb yolo11n-obb yolo11n-seg yolo11n-pose \
-             yolo26n-obb yolo26n-seg yolo26n-pose; do
-  echo "=== Compiling ${model} ==="
-  python -m benchmark run yolo --backend hailo \
-    --yolo-model "${model}.pt" --force-recompile --skip-validation \
-    || true   # ignore the post-compile inference failure
-done
+# Single model
+python -m benchmark compile --hw-arch hailo8 --model yolov8n-obb.pt
+
+# Batch (continues on failure; per-model summary at the end)
+python -m benchmark compile --hw-arch hailo8 \
+  --models yolov8n-obb.pt,yolo11n-obb.pt,yolo11n-seg.pt,yolo11n-pose.pt,\
+yolo26n-obb.pt,yolo26n-seg.pt,yolo26n-pose.pt
+
+# Or use the driver script that batches both archs in one sweep
+scripts/compile_workstation_hefs.sh --arch both
+scripts/compile_workstation_hefs.sh --arch hailo10h --include-detection
 ```
 
 Per-model time: 5–30 minutes. Total: roughly 1–3.5 hours.
@@ -88,22 +101,19 @@ Per-model time: 5–30 minutes. Total: roughly 1–3.5 hours.
 GB), and the pose compiles trigger coco-pose (~20 GB). Subsequent
 compiles reuse the cached datasets.
 
+> **Legacy fallback.** Older docs recommended
+> `python -m benchmark run yolo --backend hailo --skip-validation || true`
+> as a workaround. That path is gated by the runtime backend's
+> `is_available()` check (which fails without HailoRT / a Hailo device)
+> and never actually worked on a typical compile box. Use `compile`
+> instead.
+
 ### 4. Stage HEFs to the repo
 
-```bash
-mkdir -p resources/hefs
-
-# v8 / v11 — straight rename
-cp ~/.cache/benchy/hailo/hailo8/v8/obb/yolov8n-obb/model.hef         resources/hefs/v8_obb_n_hailo8.hef
-cp ~/.cache/benchy/hailo/hailo8/v11/obb/yolo11n-obb/model.hef        resources/hefs/v11_obb_n_hailo8.hef
-cp ~/.cache/benchy/hailo/hailo8/v11/segmentation/yolo11n-seg/model.hef  resources/hefs/v11_segmentation_n_hailo8.hef
-cp ~/.cache/benchy/hailo/hailo8/v11/pose/yolo11n-pose/model.hef      resources/hefs/v11_pose_n_hailo8.hef
-
-# v26 — same pattern, only stage the ones that compiled cleanly
-cp ~/.cache/benchy/hailo/hailo8/v26/obb/yolo26n-obb/model.hef        resources/hefs/v26_obb_n_hailo8.hef
-cp ~/.cache/benchy/hailo/hailo8/v26/segmentation/yolo26n-seg/model.hef  resources/hefs/v26_segmentation_n_hailo8.hef
-cp ~/.cache/benchy/hailo/hailo8/v26/pose/yolo26n-pose/model.hef      resources/hefs/v26_pose_n_hailo8.hef
-```
+`compile` already stages the HEF — there's no separate copy step.
+The default `--output-dir` is `resources/hefs/`. Override only if
+you need to stash builds elsewhere (e.g. `--output-dir ~/staging` for
+manual review before committing).
 
 Naming convention reference: `resources/hefs/NAMING.txt`. The
 filename pattern is `<yolo_version>_<task>_<size>_<arch>.hef` —
@@ -166,6 +176,13 @@ sudo systemctl restart hailort.service  # if applicable
 
 ## Alternatives if you don't have a workstation
 
+- **Fetch what the Hailo Model Zoo publishes.**
+  `scripts/fetch_prebuilt_hefs.py --arch both` downloads detection /
+  segmentation / pose HEFs the Zoo publishes for hailo8 and hailo10h
+  and stages them with canonical naming directly into
+  `resources/hefs/`. No license, no SDK, no x86 box needed —
+  network only. Doesn't help with OBB or v26 non-detection (Zoo
+  doesn't publish those), but covers the common cases for free.
 - **Borrow / rent x86_64 Linux.** AWS / GCP / Lambda Labs all rent
   Ubuntu boxes by the hour. The compile session takes 1–4 hours. No
   GPU needed for the SDK.

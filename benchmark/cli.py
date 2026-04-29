@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+import shutil
 import sys
 import uuid
 from datetime import datetime
@@ -867,6 +868,132 @@ def cmd_verify(args) -> int:
     return 0 if valid_count == total_count else 1
 
 
+def cmd_compile(args) -> int:
+    """Workstation HEF compilation (Hailo-8 / 8L / 10H).
+
+    Runs the .pt -> .onnx -> .har -> .hef conversion pipeline directly
+    via the Hailo SDK, bypassing the runtime Hailo backend so it works
+    on x86_64 workstations that have ``hailo_sdk_client`` installed but
+    no HailoRT / Hailo device. Designed for the workstation half of the
+    pre-built HEF source layer (``benchmark/workloads/yolo/conversion/hef_source.py``):
+    after a successful compile, the HEF is staged into
+    ``resources/hefs/`` using the canonical
+    ``<version>_<task>_<size>_<arch>.hef`` filename so the Pi-side
+    runtime picks it up automatically.
+    """
+    from benchmark.workloads.yolo.conversion.pipeline import (
+        ModelConversionPipeline,
+        ConversionConfig,
+    )
+    from benchmark.workloads.yolo.conversion.hef_source import (
+        repo_filename,
+        model_size_from_name,
+    )
+
+    logger = logging.getLogger(__name__)
+
+    if args.model and args.models:
+        logger.error("Pass --model or --models, not both.")
+        return 2
+    if not args.model and not args.models:
+        logger.error("Must specify --model <file.pt> or --models a.pt,b.pt,...")
+        return 2
+
+    models: list[str] = (
+        [args.model]
+        if args.model
+        else [m.strip() for m in args.models.split(",") if m.strip()]
+    )
+    if not models:
+        logger.error("--models was empty after parsing")
+        return 2
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    pipeline = ModelConversionPipeline()
+    reqs = pipeline.check_requirements()
+    if not reqs.get("hef_compilation"):
+        logger.error(
+            "Hailo Dataflow Compiler (hailo_sdk_client) is not available. "
+            "Install on x86_64 Linux from the Hailo Developer Zone "
+            "(https://hailo.ai/developer-zone/). See docs/hef_compilation.md."
+        )
+        return 3
+
+    results: list[tuple[str, bool, str]] = []
+
+    for model_name in models:
+        logger.info(f"=== Compiling {model_name} for {args.hw_arch} ===")
+        try:
+            version, task = _infer_yolo_model_info(model_name)
+        except Exception as e:
+            logger.error(f"Could not infer version/task from '{model_name}': {e}")
+            results.append((model_name, False, f"name parse: {e}"))
+            continue
+
+        size = model_size_from_name(model_name)
+        if size is None:
+            logger.error(
+                f"Could not infer size from '{model_name}'. "
+                "Use a standard Ultralytics name (e.g. yolov8n.pt, yolo11s-seg.pt)."
+            )
+            results.append((model_name, False, "size not inferable"))
+            continue
+
+        config = ConversionConfig(
+            target_device=args.hw_arch,
+            input_resolution=args.input_resolution,
+            calibration_set_size=args.calibration_set_size,
+            force_recompile=args.force_recompile,
+            # Workstation has no Hailo device — runtime sanity check
+            # would fail. The HEF is verified again on the Pi at first
+            # use via HailoBackend._validate_model.
+            validate_after_compile=False,
+            skip_inference_validation=True,
+        )
+
+        try:
+            result = pipeline.convert(model_name, version, task, config)
+        except Exception as e:
+            logger.error(f"Pipeline raised: {e}")
+            results.append((model_name, False, f"pipeline raised: {e}"))
+            continue
+
+        if not result.success or result.hef_path is None:
+            logger.error(
+                f"Compile failed at stage '{result.error_stage}': {result.error}"
+            )
+            results.append(
+                (model_name, False, f"{result.error_stage}: {result.error}")
+            )
+            continue
+
+        canonical = repo_filename(version, task, size, args.hw_arch)
+        dest = output_dir / canonical
+        try:
+            shutil.copy2(result.hef_path, dest)
+        except OSError as e:
+            logger.error(f"Failed to stage {result.hef_path} -> {dest}: {e}")
+            results.append((model_name, False, f"copy: {e}"))
+            continue
+
+        logger.info(f"  HEF cached: {result.hef_path}")
+        logger.info(f"  Staged:     {dest}")
+        results.append((model_name, True, str(dest)))
+
+    print()
+    print("=== Compile Summary ===")
+    n_pass = sum(1 for _, ok, _ in results if ok)
+    n_fail = len(results) - n_pass
+    for name, ok, info in results:
+        marker = "PASS" if ok else "FAIL"
+        print(f"  {marker}  {name}  ({info})")
+    print(f"\nTotal: {n_pass} passed, {n_fail} failed (target: {args.hw_arch})")
+
+    return 0 if n_fail == 0 else 1
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1082,6 +1209,61 @@ def main():
         help="Output format (default: text)",
     )
 
+    # Workstation HEF compilation. Bypasses the Hailo runtime backend so
+    # it can run on x86_64 dev boxes with the SDK but no HailoRT/device.
+    compile_parser = subparsers.add_parser(
+        "compile",
+        help="Compile YOLO models to Hailo HEF (workstation only, x86_64)",
+        description=(
+            "Workstation HEF compilation. Drives the .pt -> .onnx -> .har "
+            "-> .hef pipeline directly via the Hailo SDK, then stages the "
+            "result into resources/hefs/ with the canonical naming "
+            "(<version>_<task>_<size>_<arch>.hef) the Pi-side runtime "
+            "expects. Bypasses the runtime Hailo backend, so HailoRT and a "
+            "Hailo device are not required. Requires hailo_sdk_client "
+            "(x86_64 Linux only). See docs/hef_compilation.md."
+        ),
+    )
+    compile_parser.add_argument(
+        "--hw-arch",
+        choices=["hailo8", "hailo8l", "hailo10h"],
+        required=True,
+        help="Target Hailo architecture (hailo8 / hailo8l = AI HAT+, hailo10h = AI HAT+ 2)",
+    )
+    compile_parser.add_argument(
+        "--model",
+        type=str,
+        help="Single model to compile (e.g. yolov8n-seg.pt)",
+    )
+    compile_parser.add_argument(
+        "--models",
+        type=str,
+        help="Comma-separated list of models (e.g. yolov8n.pt,yolo11n-seg.pt)",
+    )
+    compile_parser.add_argument(
+        "--input-resolution",
+        type=int,
+        default=640,
+        help="Input resolution (square, default 640)",
+    )
+    compile_parser.add_argument(
+        "--calibration-set-size",
+        type=int,
+        default=100,
+        help="Number of calibration images for INT8 quantisation (default 100)",
+    )
+    compile_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).parent.parent / "resources" / "hefs",
+        help="Where to stage the resulting HEFs (default: resources/hefs/)",
+    )
+    compile_parser.add_argument(
+        "--force-recompile",
+        action="store_true",
+        help="Force recompilation even if a cached HEF already exists",
+    )
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -1102,6 +1284,8 @@ def main():
         return cmd_backends(args)
     elif args.command == "verify":
         return cmd_verify(args)
+    elif args.command == "compile":
+        return cmd_compile(args)
     else:
         parser.print_help()
         return 0

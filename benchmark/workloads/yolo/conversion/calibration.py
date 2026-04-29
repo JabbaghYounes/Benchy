@@ -97,13 +97,25 @@ class CalibrationDatasetLoader:
     # calibration — quantised accuracy can drop dramatically when the
     # calibration sample doesn't cover the input distribution. The full
     # DOTAv1 / coco-pose datasets are now the default; CalibrationConfig
-    # caps actual sample use at `num_samples=100` so we don't burn
-    # disk space at calibration time, but the first-run download is
-    # heavier (DOTAv1 ~10 GB, coco-pose ~20 GB). Override via
+    # caps actual sample use at `num_samples=N` so we don't burn disk
+    # space at calibration time, but the first-run download is heavier
+    # (DOTAv1 ~10 GB, coco-pose ~27 GB). Override via
     # `CalibrationConfig.dataset_path` if you need a lighter setup.
+    #
+    # 2026-04-29 extension: SEGMENTATION moved from coco128-seg (128
+    # images) to coco (val2017, ~5000 images) for the same reason —
+    # but with a sharper symptom. Hailo's INT8 bias-correction passes
+    # (Bias Correction / Adaround / Finetune encoding) require ≥1024
+    # calibration samples; below that the optimizer drops to level 0
+    # and biases stay at 16-bit, which then fails chip mapping on
+    # Hailo-8 with "DW resources calculation failed: more than 1
+    # subclusters needed for 16bit L2 biases / 16x4 not supported in
+    # activation2". `coco` triggers the same ~27 GB download as
+    # coco-pose. The compile CLI's `--calibration-set-size` default
+    # was bumped to 1024 in lockstep — see `cmd_compile` in cli.py.
     DEFAULT_DATASETS = {
         YOLOTask.DETECTION: "coco128",
-        YOLOTask.SEGMENTATION: "coco128-seg",
+        YOLOTask.SEGMENTATION: "coco",
         YOLOTask.POSE: "coco-pose",
         YOLOTask.OBB: "DOTAv1",
         YOLOTask.CLASSIFICATION: "imagenet10",

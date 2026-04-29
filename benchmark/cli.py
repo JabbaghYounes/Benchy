@@ -1264,8 +1264,15 @@ def main():
     compile_parser.add_argument(
         "--calibration-set-size",
         type=int,
-        default=100,
-        help="Number of calibration images for INT8 quantisation (default 100)",
+        default=1024,
+        help=(
+            "Number of calibration images for INT8 quantisation "
+            "(default 1024). Hailo's bias-correction passes require "
+            "≥1024 samples; below that the optimizer drops to level 0 "
+            "and biases stay 16-bit, which fails chip mapping on "
+            "Hailo-8 for some seg/pose models. Override to a smaller "
+            "value only when iterating fast on a known-good model."
+        ),
     )
     compile_parser.add_argument(
         "--output-dir",

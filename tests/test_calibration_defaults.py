@@ -52,13 +52,25 @@ def test_detection_calibration_dataset_unchanged():
     assert CalibrationDatasetLoader.DEFAULT_DATASETS[YOLOTask.DETECTION] == "coco128"
 
 
-def test_segmentation_calibration_dataset_unchanged():
-    """coco128-seg (128 images) is already large enough for seg
-    calibration; same pinning logic as detection.
+def test_segmentation_calibration_dataset_is_full_coco():
+    """Segmentation calibration must come from a corpus large enough
+    to enable Hailo's bias-correction passes (≥1024 samples).
+    coco128-seg (128 images) was insufficient — the optimizer dropped
+    to level 0 and left biases at 16-bit, which then failed chip
+    mapping on Hailo-8 with DW-resources / kernel-validation errors
+    on the seg head's activation2 (mask coefficient Sigmoid). The
+    full coco dataset (~5000 val images) provides enough headroom.
+    See the rationale comment on DEFAULT_DATASETS in calibration.py.
     """
-    assert (
-        CalibrationDatasetLoader.DEFAULT_DATASETS[YOLOTask.SEGMENTATION]
-        == "coco128-seg"
+    name = CalibrationDatasetLoader.DEFAULT_DATASETS[YOLOTask.SEGMENTATION]
+    assert name != "coco128-seg", (
+        "Segmentation calibration must not regress to coco128-seg — "
+        "it has only 128 images, below Hailo's 1024 threshold for "
+        "INT8 bias correction"
+    )
+    assert "coco" in name.lower(), (
+        f"Segmentation calibration should reference a coco-derived "
+        f"dataset; got {name!r}"
     )
 
 

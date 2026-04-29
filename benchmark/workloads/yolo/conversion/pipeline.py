@@ -23,6 +23,7 @@ from benchmark.workloads.yolo.conversion.onnx_export import (
 from benchmark.workloads.yolo.conversion.har_generator import (
     HARGenerator,
     HARGeneratorConfig,
+    get_end_nodes,
 )
 from benchmark.workloads.yolo.conversion.hef_compiler import (
     HEFCompiler,
@@ -453,11 +454,30 @@ class ModelConversionPipeline:
         for warning in compat.get("warnings", []):
             logger.warning(f"HAR compatibility warning: {warning}")
 
-        # Configure generator
+        # Configure generator. End-node truncation is the only way to
+        # parse a YOLO head — the tail contains DFL/Reshape/Cos ops the
+        # Hailo parser rejects. Look up the canonical end-nodes for
+        # this (version, task) and pass them through. A miss here is
+        # not fatal: the SDK will retry via the diagnostic-hint
+        # fallback in har_generator._generate_with_sdk on parse
+        # failure.
+        end_nodes = get_end_nodes(yolo_version, task)
+        if end_nodes is None:
+            logger.warning(
+                f"No END_NODE_TABLE entry for ({yolo_version}, {task.value}); "
+                "relying on hailomz / diagnostic-hint fallback during parse."
+            )
+        else:
+            logger.info(
+                f"  End-node truncation: {len(end_nodes)} node(s) "
+                f"for ({yolo_version}, {task.value})"
+            )
+
         har_config = HARGeneratorConfig(
             target_device=config.target_device,
             input_resolution=config.input_resolution,
             batch_size=config.batch_size,
+            end_nodes=end_nodes,
         )
 
         # Generate

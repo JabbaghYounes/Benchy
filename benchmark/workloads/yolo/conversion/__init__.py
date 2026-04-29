@@ -28,6 +28,9 @@ from benchmark.workloads.yolo.conversion.onnx_export import (
 from benchmark.workloads.yolo.conversion.har_generator import (
     HARGenerator,
     HARGeneratorConfig,
+    END_NODE_TABLE,
+    get_end_nodes,
+    parse_end_node_hint,
 )
 from benchmark.workloads.yolo.conversion.hef_compiler import (
     HEFCompiler,
@@ -66,6 +69,9 @@ __all__ = [
     # HAR Generation
     "HARGenerator",
     "HARGeneratorConfig",
+    "END_NODE_TABLE",
+    "get_end_nodes",
+    "parse_end_node_hint",
     # HEF Compilation
     "HEFCompiler",
     "HEFCompilerConfig",

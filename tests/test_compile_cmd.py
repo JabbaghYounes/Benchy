@@ -334,6 +334,42 @@ def test_compile_force_recompile_overrides_skip(tmp_path, mock_pipeline_factory)
     assert pre_staged.read_bytes() == b"freshly-compiled"
 
 
+def test_python_m_benchmark_propagates_exit_code(tmp_path):
+    """Regression for the __main__.py bug that silently turned every
+    failing `python -m benchmark <cmd>` into exit 0. cmd_compile
+    returns 3 when the Hailo SDK isn't installed (which is true for
+    the dev venv that runs this test) — that has to make it back to
+    the shell, otherwise script wrappers like
+    scripts/compile_workstation_hefs.sh log spurious PASSes."""
+    import subprocess
+    import sys as _sys
+
+    r = subprocess.run(
+        [
+            _sys.executable,
+            "-m",
+            "benchmark",
+            "compile",
+            "--hw-arch",
+            "hailo8",
+            "--model",
+            "yolov8n.pt",
+            "--output-dir",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    # The dev venv has no hailo_sdk_client → cmd_compile returns 3
+    # for "SDK not available" rather than 0 or 1. Either way, the
+    # exit code must NOT be 0.
+    assert r.returncode != 0, (
+        f"Expected non-zero exit, got {r.returncode}. "
+        f"stderr: {r.stderr[:500]}"
+    )
+
+
 def test_compile_skip_check_uses_per_arch_filename(tmp_path, monkeypatch):
     """A pre-staged hailo8 HEF must NOT cause a hailo10h compile to skip
     — the canonical filename includes the arch, so v8_detection_n_hailo8.hef

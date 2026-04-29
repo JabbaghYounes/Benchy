@@ -179,8 +179,11 @@ fi
 # --- Compile loop ---------------------------------------------------------
 mkdir -p "$OUTPUT_DIR"
 
-declare -a PASS_LIST
-declare -a FAIL_LIST
+# Initialize as empty arrays (not just declared) so `${#PASS_LIST[@]}`
+# and `${#FAIL_LIST[@]}` work cleanly under `set -u`. On bash without
+# this, accessing an empty array element trips "unbound variable".
+declare -a PASS_LIST=()
+declare -a FAIL_LIST=()
 
 run_compile() {
     local target="$1"

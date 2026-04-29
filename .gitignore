@@ -64,3 +64,6 @@ results/hw_verify_*/
 # the product for setup scripts.
 documents/
 /Edge*.pdf
+
+# Local editor / agent state — not part of the project.
+.claude/

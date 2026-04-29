@@ -70,22 +70,36 @@ OUTPUT_DIR="$REPO_ROOT/resources/hefs"
 FORCE_RECOMPILE=0
 VENV_DIR="${BENCHY_VENV:-$REPO_ROOT/venv}"
 
+# Helper: assert a value-taking flag actually has a following value.
+# Without this, `set -u` turns "--output-dir" with nothing after it
+# into an opaque "$2: unbound variable" — easy to hit when a fish-shell
+# line-continuation backslash is missing.
+require_value() {
+    local flag="$1"
+    local count="$2"
+    if [[ "$count" -lt 2 ]]; then
+        error "Missing value for $flag"
+        error "Use --help to see options."
+        exit 2
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --arch)
-            ARCH="$2"; shift 2 ;;
+            require_value "$1" "$#"; ARCH="$2"; shift 2 ;;
         --include-detection)
             INCLUDE_DETECTION=1; shift ;;
         --models)
-            MODELS_OVERRIDE="$2"; shift 2 ;;
+            require_value "$1" "$#"; MODELS_OVERRIDE="$2"; shift 2 ;;
         --input-resolution)
-            INPUT_RESOLUTION="$2"; shift 2 ;;
+            require_value "$1" "$#"; INPUT_RESOLUTION="$2"; shift 2 ;;
         --calibration-set-size)
-            CALIBRATION_SET_SIZE="$2"; shift 2 ;;
+            require_value "$1" "$#"; CALIBRATION_SET_SIZE="$2"; shift 2 ;;
         --output-dir)
-            OUTPUT_DIR="$2"; shift 2 ;;
+            require_value "$1" "$#"; OUTPUT_DIR="$2"; shift 2 ;;
         --venv)
-            VENV_DIR="$2"; shift 2 ;;
+            require_value "$1" "$#"; VENV_DIR="$2"; shift 2 ;;
         --force-recompile)
             FORCE_RECOMPILE=1; shift ;;
         -h|--help)

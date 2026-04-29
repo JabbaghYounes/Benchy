@@ -141,8 +141,12 @@ def fetch_one(
             while chunk := resp.read(64 * 1024):
                 out.write(chunk)
     except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return FetchResult(entry, arch, url, dest, "missing-404")
+        # S3 returns 403 instead of 404 for objects that don't exist
+        # in a bucket without ListObjects permission, so treat both
+        # as "not in the public catalogue" — non-fatal, just reported.
+        # 5xx are real server errors; surface them.
+        if e.code in (403, 404):
+            return FetchResult(entry, arch, url, dest, f"missing-{e.code}")
         return FetchResult(entry, arch, url, dest, "error", f"HTTP {e.code}")
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         # Partial download cleanup
@@ -187,13 +191,15 @@ def _format_summary(results: list[FetchResult], dry_run: bool) -> str:
     for r in results:
         counts[r.status] = counts.get(r.status, 0) + 1
 
+    missing = counts.get("missing-403", 0) + counts.get("missing-404", 0)
+
     verb = "Would download" if dry_run else "Downloaded"
     lines = [
         "",
         "=== Fetch Summary ===",
         f"  {verb}:        {counts.get('downloaded', 0)}",
         f"  Already on disk: {counts.get('skipped-exists', 0)}",
-        f"  Not in catalogue (404): {counts.get('missing-404', 0)}",
+        f"  Not in catalogue (403/404): {missing}",
         f"  Errors:           {counts.get('error', 0)}",
         "",
     ]
@@ -201,10 +207,13 @@ def _format_summary(results: list[FetchResult], dry_run: bool) -> str:
         marker = {
             "downloaded": "  GOT ",
             "skipped-exists": "  SKIP",
+            "missing-403": "  MISS",
             "missing-404": "  MISS",
             "error": "  ERR ",
         }.get(r.status, "  ?   ")
         suffix = f" ({r.error})" if r.error else ""
+        if r.status.startswith("missing-"):
+            suffix = f" ({r.status.split('-', 1)[1]})"
         lines.append(f"{marker} {r.arch:8s} {r.dest.name:48s} <- {r.url}{suffix}")
     return "\n".join(lines)
 

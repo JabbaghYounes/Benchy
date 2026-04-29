@@ -175,12 +175,68 @@ def test_404_results_in_missing_status_not_exception(tmp_path):
     assert not results[0].dest.exists()
 
 
+def test_403_treated_as_missing_not_error(tmp_path):
+    """S3 returns 403 instead of 404 for missing objects in buckets that
+    forbid ListObjects. We treat 403 the same as 404 — non-fatal, just
+    'not in the catalogue at this URL'."""
+    import urllib.error
+
+    def raise_403(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(url, 403, "Forbidden", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", raise_403):
+        results = fetch_mod.fetch_all(
+            ("hailo10h",),
+            zoo_version="v2.16.0",
+            output_dir=tmp_path,
+            manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
+        )
+    assert results[0].status == "missing-403"
+
+
 def test_404_does_not_set_main_exit_code(tmp_path):
     with patch.object(fetch_mod.urllib.request, "urlopen", _mk_urlopen_404()):
         rc = fetch_mod.main(
             ["--arch", "hailo10h", "--output-dir", str(tmp_path)]
         )
     assert rc == 0  # missing != error
+
+
+def test_403_does_not_set_main_exit_code(tmp_path):
+    """Hailo's public S3 bucket returns 403 for the
+    Compiled/v2.16.0/hailo10h/ path because no objects are published
+    there. The fetcher must exit 0 in that case so it can be chained
+    with --arch both and ignore archs the Zoo doesn't cover."""
+    import urllib.error
+
+    def raise_403(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(url, 403, "Forbidden", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", raise_403):
+        rc = fetch_mod.main(
+            ["--arch", "hailo10h", "--output-dir", str(tmp_path)]
+        )
+    assert rc == 0
+
+
+def test_5xx_remains_a_real_error(tmp_path):
+    """Server errors (502/503) shouldn't be silently swallowed."""
+    import urllib.error
+
+    def raise_503(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(
+            url, 503, "Service Unavailable", hdrs=None, fp=None
+        )
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", raise_503):
+        results = fetch_mod.fetch_all(
+            ("hailo10h",),
+            zoo_version="v2.16.0",
+            output_dir=tmp_path,
+            manifest=(HEFManifestEntry("v8", "detection", "n", "yolov8n.hef"),),
+        )
+    assert results[0].status == "error"
+    assert "503" in (results[0].error or "")
 
 
 def test_successful_download_writes_canonical_file(tmp_path):

@@ -68,17 +68,17 @@ v11/v26 equivalents), trained on COCO-Pose with a single
 
 ### Model Groups
 
-| Group | Model | Architecture | Specialization | Backend |
-|-------|-------|--------------|----------------|---------|
-| **1B** | llama3.2:1b | Dense | General | Ollama (CPU) |
-| **3B** | llama3.2:3b | Dense | General | Ollama (CPU); also has a Hailo HEF — reused by the `npu` profile on Hailo-10H |
-| **7B** | llama2:7b | Dense | General | Ollama (CPU); community-supported Hailo HEF |
+| Group | Model | Architecture | Backend |
+|-------|-------|--------------|---------|
+| **1B** | `llama3.2:1b` | Dense | Ollama (CPU); also the `npu` profile target (HEF in HailoRT 5.3.0 GenAI Model Zoo — only llama HEF that ships) |
+| **3B** | `llama3.2:3b` | Dense | Ollama (CPU only — had a HEF in HailoRT 5.1.1 zoo, dropped in 5.3.0) |
+| **7B** | `llama2:7b` | Dense | Ollama (CPU only — no 7B HEF ships in any HailoRT GenAI release) |
+
+The project follows a **llama-only policy**: one model per size group, all from the llama family. Other families (qwen, mistral, gemma, dolphin, olmo, granite, starcoder, sailor) and other size groups (1.5B, 8B, 9B) were dropped on 2026-04-27 to fit an SD-card-backed Pi 5; see `resources/session_notes_2026-04-27.md` for the rationale.
 
 **Important Constraints:**
-- Models are **only compared within the same parameter group**
-- The benchmark surface is **llama-family only** (one model per group). The
-  consolidation rationale is in Issue 7 of
-  `resources/session_issues_2026-04-27.md`.
+- Models are **only compared within the same parameter group**.
+- The `1B` group is the only one with both a CPU (Ollama) and NPU (Hailo-10H HEF) backend, so it is the natural axis for cross-backend comparisons in the dashboard. The 3B and 7B groups are CPU-only because Hailo doesn't ship HEFs at those sizes (verified against the HailoRT 5.3.0 GenAI Model Zoo on 2026-04-28).
 
 ### Prompt Sets
 
@@ -103,9 +103,13 @@ Selected via `prompt_set: drone` on a profile (the shipped `drone` profile in
 ### Quantization Sweep
 
 Profiles can declare `quants:` and a `quant_tag_template` to expand
-`models × quants` into Ollama tags at run time:
+`models × quants` into Ollama tags at run time. The shipped `default`
+profile no longer enables a quant sweep (it pulls a single chat-quant set
+totalling ~16 GB, which doesn't fit on an SD-card-backed Pi); to opt in,
+add the fields back to a profile:
 
 ```yaml
+# Example — re-enable a quant sweep on the default profile
 default:
   model_groups: ["7B"]
   models: ["llama2:7b"]
@@ -113,12 +117,12 @@ default:
   quant_tag_template: "{base}-chat-{quant}"  # llama2 chat tags
 ```
 
-The default template is `{base}-{quant}` (works for llama3.x tags where the
-variant infix is already in `models`, e.g. `llama3.2:3b-instruct`). Use
-`{base}-chat-{quant}` for llama2-style tags where the chat infix is
-implicit. The runner records the actual quantization
-level reported by Ollama's `/api/show` into `LLMResult.quantization`, so the
-column in the CSV reflects what was loaded — not just the requested label.
+The default template is `{base}-{quant}` (works for most modern Ollama tags
+where the variant infix is already in `models`). Use `{base}-chat-{quant}`
+for llama2-style tags where the chat infix is implicit. The runner records
+the actual quantization level reported by Ollama's `/api/show` into
+`LLMResult.quantization`, so the column in the CSV reflects what was
+loaded — not just the requested label.
 
 ### Benchmark Parameters (1B/3B)
 

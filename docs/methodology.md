@@ -29,20 +29,19 @@ This ensures reproducible results across runs.
 
 ## Group-Safe Aggregation
 
-Results are aggregated only within the same parameter group:
-- 1B models are compared only with other 1B models
-- 3B models likewise; the `npu` profile reuses the 3B group
-  (`llama3.2:3b` has a published Hailo HEF), so its NPU rows aggregate
-  alongside the CPU-side 3B rows after the backend axis split below
-- 7B models likewise
+Results are aggregated only within the same parameter group. Under the
+project's llama-only policy the active groups are 1B (`llama3.2:1b`),
+3B (`llama3.2:3b`), and 7B (`llama2:7b`):
+- **1B is the cross-backend group**: `llama3.2:1b` runs on both Ollama-CPU
+  and the Hailo-10H NPU (HEF in the HailoRT 5.3.0 GenAI Model Zoo), giving
+  a like-for-like CPU-vs-NPU comparison row
+- 3B and 7B run on Ollama-CPU only — Hailo doesn't ship HEFs at those
+  sizes (5.1.1 had `llama3.2:3b` but it was dropped in 5.3.0; no 7B HEF
+  has ever shipped)
 - Cross-group comparisons are visualized separately in the dashboard
 
-The benchmark surface is llama-family only (one model per group). See
-Issue 7 of `resources/session_issues_2026-04-27.md` for the
-consolidation rationale.
-
 **Backend axis (Phase 7).** `aggregate_llm_results` additionally groups by
-`backend` so that an Ollama-CPU run of `llama3.2:3b` and a Hailo-10H run of
+`backend` so that an Ollama-CPU run of `llama3.2:1b` and a Hailo-10H run of
 the same model on the same prompt do not collapse into one aggregated row.
 The dashboard exposes a `Backend` filter chip + table column so you can
 view "all backends", "Ollama CPU only", "Hailo-10H only", or "legacy

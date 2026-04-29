@@ -110,7 +110,7 @@ detect_platform() {
     info "Checking for Hailo accelerator..."
     if lspci 2>/dev/null | grep -qi "hailo"; then
         success "Hailo device detected via PCIe"
-    elif ls /dev/hailo* 2>/dev/null; then
+    elif ls /dev/hailo* /dev/h1x-* 2>/dev/null; then
         success "Hailo device node found"
     else
         warn "Hailo device not detected. Ensure AI HAT+ is properly connected."

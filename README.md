@@ -9,10 +9,12 @@ This benchmark suite provides comprehensive performance evaluation for:
 - **Computer Vision**: YOLO inference (v8, v11, v26) across all five tasks —
   detection, classification, OBB, segmentation, and pose — on Hailo NPU,
   Jetson GPU, or PyTorch CPU.
-- **Local LLM Inference**: Llama-family only — three CPU groups
-  (`llama3.2:1b`, `llama3.2:3b`, `llama2:7b`) via Ollama on Cortex-A76 /
-  Jetson CPU. The `npu` profile reuses `llama3.2:3b` on the Hailo-10H
-  NPU via HailoRT GenAI's Ollama-compatible REST endpoint.
+- **Local LLM Inference**: Llama-only policy. CPU side (1B / 3B / 7B):
+  `llama3.2:1b`, `llama3.2:3b`, `llama2:7b` via Ollama. NPU side (1B
+  only): `llama3.2:1b` — the only llama-family prebuilt HEF in the
+  HailoRT 5.3.0 GenAI Model Zoo — via HailoRT GenAI's Ollama-compatible
+  REST endpoint. Cross-backend comparison is only at the 1B level (no
+  3B or 7B HEFs ship in the zoo).
 - **Backend axis**: Every `LLMResult` is tagged with a backend label
   (`ollama-cpu` / `ollama-cuda` / `hailo-10h`) and the dashboard splits
   CPU and NPU runs into separate filterable rows.
@@ -70,6 +72,8 @@ sudo ./scripts/setup_rpi_ai_hat_plus.sh --pull-models
 # Raspberry Pi with AI HAT+ 2
 sudo ./scripts/setup_rpi_ai_hat_plus_2.sh --pull-models
 ```
+
+> **AI HAT+ 2 caveat (verified 2026-04-28).** On Pi OS Bookworm the setup script cannot complete the HailoRT 5.x install — Raspberry Pi's apt repo has no `hailo-h10-all` package and caps at HailoRT 4.20.0, which doesn't recognise the Hailo-10H. The script reports SUCCESS but leaves you on 4.x with the chip invisible (`/dev/hailo0` missing, `hailortcli scan` empty). The HailoRT 5.x driver/userspace/firmware/Python-wheel and the GenAI model-zoo `.deb` must currently be downloaded manually from the [Hailo Developer Zone](https://hailo.ai/developer-zone/) (free account). See `docs/hailo.md` § "LLM on Hailo-10H → Setup (high level)" for the full step-by-step procedure.
 
 Drop `--pull-models` if you only need YOLO benchmarks or want a leaner
 install (~7 GB smaller). The setup script also installs the project's
@@ -129,11 +133,12 @@ regression.
 
 | Profile | YOLO | LLM | Use Case |
 |---------|------|-----|----------|
-| **default** | v8 detection, nano size | llama2:7b across q4_K_M / q5_K_M / q8_0 (quant sweep) | Quick validation + INT-quant baseline |
-| **full** | All versions, all tasks, all sizes | All three CPU model groups (1B / 3B / 7B) | Thorough evaluation |
+| **default** | v8 detection, nano size | llama2:7b (bare tag, no quant sweep) | Quick CPU smoke test |
+| **full** | All versions, all tasks, all sizes | llama3.2:1b + llama3.2:3b + llama2:7b (1B / 3B / 7B llama groups) | Thorough evaluation |
 | **drone** | v8/v11/v26 detection at 1280, sizes n/s/m, VisDrone dataset | llama2:7b on the curated drone prompt set (scene / target / mission / telemetry / hazard) | Realistic small-object aerial detection |
 | **drone_full** | Detection + OBB + seg + pose at 1280, sizes n/s — broadest drone-relevant Hailo sweep | _(YOLO-only)_ | Exercises every Phase 3 task at altitude-realistic resolution |
-| **npu** | _(LLM-only)_ | llama3.2:3b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+| **npu** | _(LLM-only)_ | llama3.2:1b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set (only llama HEF in HailoRT 5.3.0 zoo; no 3B/7B HEFs ship) | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+| **compare** | _(LLM-only)_ | llama3.2:1b on Ollama CPU + drone prompt set — RAM-safe CPU mirror of the `npu` profile | True 1B-vs-1B cross-backend (NPU vs CPU) comparison row; used by `verify_ai_hat_plus_2.sh`. Fits any Pi 5 (4 GB or 8 GB), unlike `drone` which needs 8 GB for llama2:7b |
 
 Profiles are configured in `configs/yolo_benchmark.yaml` and
 `configs/llm_benchmark.yaml`. They can declare `input_resolution`,

@@ -38,17 +38,15 @@ The HTML dashboard includes:
 | Platform | All, Jetson Orin Nano, RPi AI HAT+, etc. | Filter by hardware platform |
 | YOLO Version | All, v8, v11, v26 | Filter YOLO results by version |
 | Task | All, Detection, Classification, etc. | Filter by YOLO task type |
-| LLM Size | All, 1B, 3B, 7B | Filter by model size |
+| LLM Size | All, 1B, 3B, 7B | Filter by model size (filter is dynamically populated from the data; under the llama-only policy only these three groups appear) |
 | Parameter Group | All, 1B, 3B, 7B | Filter by parameter group (same as size) |
+| Architecture | All, Dense, MoE | Filter by model architecture (only `Dense` appears under the llama-only policy; the `MoE` option is reserved for non-llama profiles like granite3.1-moe) |
+| Specialization | All, General, Code | Filter by model specialization (only `General` appears under the llama-only policy; the `Code` option is reserved for code-specialised models like starcoder2) |
 
 **Visual Indicators:**
-- **Parameter Group Badge**: Color-coded by size (green=1B, blue=3B, red=7B)
-
-The Architecture and Specialization filter chips are no longer rendered:
-the llama-only consolidation (Issue 7) means every shipped model is
-`dense` / `general`, so those filters would always select the entire
-data set. The schema fields remain on `LLMResult` for forward
-compatibility if a future PR widens the surface.
+- **MoE Badge** (purple): Indicates Mixture of Experts models. Not shown under the current llama-only policy; preserved in the dashboard code so non-llama models can be re-introduced without re-deriving the badge logic.
+- **Code Badge** (orange): Indicates code-specialized models. Same caveat as MoE — preserved but not used by the shipped profiles.
+- **Parameter Group Badge**: Color-coded by size (green=1B, blue=3B/7B).
 
 Open in browser:
 ```bash
@@ -114,12 +112,13 @@ drone_full:
 
 ```yaml
 benchmark:
-  warmup_runs: 3        # 2 for lightweight models (1B/3B)
+  warmup_runs: 3        # The runner auto-overrides to 2 for 1B/3B models
+                        # via LLMBenchmarkConfig.for_lightweight_model
   measured_runs: 10
 
 generation:
-  temperature: 0.0      # 0.2 for lightweight models
-  top_p: 1.0            # 0.95 for lightweight models
+  temperature: 0.0      # Auto-overridden to 0.2 for 1B/3B models
+  top_p: 1.0            # Auto-overridden to 0.95 for 1B/3B models
   top_k: 1
   seed: 42
   max_tokens: 256
@@ -130,11 +129,13 @@ default:
   # Quantization sweep: each base model × each quant becomes one Ollama tag.
   # Default template is `{base}-{quant}`; use `{base}-chat-{quant}` for
   # llama2 tags or `{base}-instruct-{quant}` for instruct variants.
-  quants: ["q4_K_M", "q5_K_M", "q8_0"]
-  quant_tag_template: "{base}-chat-{quant}"
+  # The shipped default omits these to keep the SD-card-backed Pi run lean;
+  # add them back to opt back in to a quant sweep.
+  # quants: ["q4_K_M", "q5_K_M", "q8_0"]
+  # quant_tag_template: "{base}-chat-{quant}"
 
 full:
-  model_groups: ["1B", "3B", "7B"]   # one llama model per group; see configs/llm_benchmark.yaml
+  model_groups: ["1B", "3B", "7B"]
 
 # Drone profile: drone-use-case prompts (scene description, target ID,
 # mission preflight, telemetry, hazard reasoning). `prompt_set: drone`
@@ -145,13 +146,24 @@ drone:
   models: ["llama2:7b"]
   prompt_set: drone
 
-lightweight:            # Profile for 1B/3B models
-  model_groups: ["1B", "3B"]
-  warmup_runs: 2
-  temperature: 0.2
-  top_p: 0.95
-  prompt_batch_size: 3  # Batch prompts for timer accuracy
+# NPU profile (Hailo-10H only): runs the LLM workload through HailoRT
+# GenAI's REST endpoint instead of Ollama. Uses the only llama with a
+# prebuilt HEF in the HailoRT 5.3.0 GenAI Model Zoo.
+npu:
+  api_base: "http://localhost:8000"
+  backend: "hailo-10h"
+  npu_metrics: true
+  model_groups: ["1B"]
+  models: ["llama3.2:1b"]
+  prompt_set: drone
 ```
+
+There is no `lightweight:` profile in the shipped configs — the CLI only
+accepts `default / full / drone / drone_full / npu / compare`. The 1B/3B-friendly
+generation settings (warmup=2, temperature=0.2, top_p=0.95, prompt
+batching) are applied automatically by
+`LLMBenchmarkConfig.for_lightweight_model` whenever the runner sees a 1B
+or 3B model in any profile.
 
 The `quantization` column on `*_llm.csv` carries the actual level reported
 by Ollama's `/api/show` (e.g. `Q4_K_M`, `Q5_K_M`, `Q8_0`), making quant

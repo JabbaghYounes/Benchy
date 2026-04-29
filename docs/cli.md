@@ -34,8 +34,10 @@ python -m benchmark run yolo --profile drone_full
 # HailoRT GenAI's Ollama-compatible REST endpoint on the Hailo-10H NPU.
 # Each LLMResult is tagged with backend="hailo-10h" and gets NPU-side
 # metrics (power, HailoRT version) alongside the host-side ResourceMonitor
-# readings. Starts on llama3.2:1b — see docs/hailo.md for the full
-# prebuilt HEF list and how to scale up.
+# readings. Uses llama3.2:1b — the only llama-family model with a
+# prebuilt HEF in the HailoRT 5.3.0 GenAI Model Zoo (5.1.1 had llama3.2:3b
+# but Hailo dropped it; no 7B HEFs ship in any release). See docs/hailo.md
+# for the full prebuilt HEF list.
 python -m benchmark run llm --profile npu
 
 # Smart hardware-verification runners (Hailo boards). Each sweeps every
@@ -69,28 +71,37 @@ python -m benchmark run yolo --yolo-model yolov8s-seg.pt
 python -m benchmark run yolo --yolo-version v11 --backend hailo
 ```
 
-### Lightweight LLM Benchmarks (1B/3B Models)
+### Llama-only LLM groups (1B / 3B / 7B)
+
+The CLI's `--profile` choices are `default`, `full`, `drone`, `drone_full`,
+`npu`, `compare`. There is no per-model or per-group flag — model
+selection is profile-driven via `configs/llm_benchmark.yaml`. Under the
+project's llama-only policy:
 
 ```bash
-# Run benchmarks for all lightweight models (1B and 3B)
-python -m benchmark run llm --profile lightweight
+# 7B llama (llama2:7b) on five legacy prompts — quick CPU smoke test
+# (requires 8 GB Pi 5; llama2:7b needs ~5.5 GB RAM at runtime)
+python -m benchmark run llm
 
-# Run benchmarks for specific parameter group
-python -m benchmark run llm --model-group 1B
-python -m benchmark run llm --model-group 3B
+# All three llama sizes (llama3.2:1b + llama3.2:3b + llama2:7b)
+# (requires 8 GB Pi 5 for the 7B step)
+python -m benchmark run llm --profile full
 
-# Run a specific lightweight model
-python -m benchmark run llm --model llama3.2:1b
+# 7B llama on the curated drone prompt set (8 GB Pi 5 only)
+python -m benchmark run llm --profile drone
 
-# Run with custom output directory
-python -m benchmark run llm --profile lightweight --output ./lightweight_results
+# 1B llama on the Hailo-10H NPU (AI HAT+ 2 only)
+python -m benchmark run llm --profile npu
+
+# 1B llama on Ollama CPU + drone prompts — RAM-safe mirror of the npu
+# profile; gives a true 1B-vs-1B cross-backend comparison row when
+# combined with --profile npu. Used by verify_ai_hat_plus_2.sh.
+python -m benchmark run llm --profile compare
 ```
 
-**Note:** Lightweight models (1B/3B) use different benchmark parameters than standard models:
-- 2 warmup runs (vs 3 for 7B+)
-- Non-streaming inference
-- Temperature 0.2, top_p 0.95
-- Prompt batching (3 prompts per batch)
+To swap or add models, edit the `models:` block in
+`configs/llm_benchmark.yaml`. Adding non-llama tags is outside the
+project's current policy (see `resources/session_notes_2026-04-27.md`).
 
 ## Show System Information
 

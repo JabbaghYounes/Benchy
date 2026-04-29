@@ -894,7 +894,7 @@ def main():
     )
     bench_parser.add_argument(
         "--profile",
-        choices=["default", "full", "drone", "drone_full", "npu"],
+        choices=["default", "full", "drone", "drone_full", "npu", "compare"],
         default="default",
         help="Benchmark profile (default: default)",
     )

@@ -95,6 +95,7 @@ def _make_args(**overrides):
         models=None,
         input_resolution=640,
         calibration_set_size=100,
+        calibration_data_path=None,
         output_dir=Path("/tmp/benchy_test_out"),
         force_recompile=False,
     )
@@ -368,6 +369,82 @@ def test_python_m_benchmark_propagates_exit_code(tmp_path):
         f"Expected non-zero exit, got {r.returncode}. "
         f"stderr: {r.stderr[:500]}"
     )
+
+
+def test_compile_threads_calibration_data_path_to_pipeline(tmp_path, monkeypatch):
+    """--calibration-data-path must reach ConversionConfig so the
+    HEFCompiler can hand it to CalibrationConfig.dataset_path. This is
+    the escape hatch for users who want to avoid Ultralytics' ~27 GB
+    coco auto-download and stage just val2017 (~1 GB) themselves."""
+    captured: dict = {}
+
+    class _SpyPipeline:
+        def __init__(self):
+            pass
+
+        def check_requirements(self):
+            return {"hef_compilation": True}
+
+        def convert(self, model_name, version, task, config):
+            captured["calibration_data_path"] = config.calibration_data_path
+            hef = tmp_path / f"{Path(model_name).stem}.hef"
+            hef.write_bytes(b"x")
+            r = MagicMock()
+            r.success = True
+            r.hef_path = hef
+            r.error = None
+            r.error_stage = None
+            return r
+
+    monkeypatch.setattr(
+        "benchmark.workloads.yolo.conversion.pipeline.ModelConversionPipeline",
+        _SpyPipeline,
+    )
+
+    custom = Path("/tmp/my_val2017_subset")
+    args = _make_args(
+        model="yolov8n.pt",
+        hw_arch="hailo8",
+        calibration_data_path=custom,
+        output_dir=tmp_path,
+    )
+    assert cli_mod.cmd_compile(args) == 0
+    assert captured["calibration_data_path"] == custom
+
+
+def test_compile_calibration_data_path_defaults_to_none(tmp_path, monkeypatch):
+    """When --calibration-data-path is omitted, ConversionConfig must
+    receive None so the loader falls back to its DEFAULT_DATASETS
+    auto-download path. Catches the regression where _make_args
+    forgot the field and AttributeError leaked through."""
+    captured: dict = {}
+
+    class _SpyPipeline:
+        def __init__(self):
+            pass
+
+        def check_requirements(self):
+            return {"hef_compilation": True}
+
+        def convert(self, model_name, version, task, config):
+            captured["calibration_data_path"] = config.calibration_data_path
+            hef = tmp_path / "x.hef"
+            hef.write_bytes(b"x")
+            r = MagicMock()
+            r.success = True
+            r.hef_path = hef
+            r.error = None
+            r.error_stage = None
+            return r
+
+    monkeypatch.setattr(
+        "benchmark.workloads.yolo.conversion.pipeline.ModelConversionPipeline",
+        _SpyPipeline,
+    )
+
+    args = _make_args(model="yolov8n.pt", output_dir=tmp_path)
+    assert cli_mod.cmd_compile(args) == 0
+    assert captured["calibration_data_path"] is None
 
 
 def test_compile_skip_check_uses_per_arch_filename(tmp_path, monkeypatch):

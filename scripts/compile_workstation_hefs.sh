@@ -66,6 +66,7 @@ INPUT_RESOLUTION=640
 # "DW resources calculation failed for 16bit L2 biases / 16x4 not
 # supported in activation2". Mirror the CLI default added in cli.py.
 CALIBRATION_SET_SIZE=1024
+CALIBRATION_DATA_PATH=""  # empty = let Python CLI default kick in (auto-download)
 OUTPUT_DIR="$REPO_ROOT/resources/hefs"
 FORCE_RECOMPILE=0
 VENV_DIR="${BENCHY_VENV:-$REPO_ROOT/venv}"
@@ -96,6 +97,8 @@ while [[ $# -gt 0 ]]; do
             require_value "$1" "$#"; INPUT_RESOLUTION="$2"; shift 2 ;;
         --calibration-set-size)
             require_value "$1" "$#"; CALIBRATION_SET_SIZE="$2"; shift 2 ;;
+        --calibration-data-path)
+            require_value "$1" "$#"; CALIBRATION_DATA_PATH="$2"; shift 2 ;;
         --output-dir)
             require_value "$1" "$#"; OUTPUT_DIR="$2"; shift 2 ;;
         --venv)
@@ -212,6 +215,13 @@ run_compile() {
     if [[ "$FORCE_RECOMPILE" -eq 1 ]]; then
         extra_flags="--force-recompile"
     fi
+    # Optional calibration-data-path passthrough. When empty we omit
+    # the flag so the Python CLI's default (None -> auto-download) kicks
+    # in. Quoting matters here because the path might contain spaces.
+    local calib_path_flag=""
+    if [[ -n "$CALIBRATION_DATA_PATH" ]]; then
+        calib_path_flag="--calibration-data-path"
+    fi
 
     info "Compiling $model -> $target"
     if "$VENV_PY" -m benchmark compile \
@@ -219,6 +229,7 @@ run_compile() {
         --model "$model" \
         --input-resolution "$INPUT_RESOLUTION" \
         --calibration-set-size "$CALIBRATION_SET_SIZE" \
+        ${calib_path_flag:+"$calib_path_flag" "$CALIBRATION_DATA_PATH"} \
         --output-dir "$OUTPUT_DIR" \
         $extra_flags; then
         success "  PASS  $target / $model"

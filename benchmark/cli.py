@@ -962,6 +962,7 @@ def cmd_compile(args) -> int:
             target_device=args.hw_arch,
             input_resolution=args.input_resolution,
             calibration_set_size=args.calibration_set_size,
+            calibration_data_path=getattr(args, "calibration_data_path", None),
             force_recompile=args.force_recompile,
             # Workstation has no Hailo device — runtime sanity check
             # would fail. The HEF is verified again on the Pi at first
@@ -1272,6 +1273,20 @@ def main():
             "and biases stay 16-bit, which fails chip mapping on "
             "Hailo-8 for some seg/pose models. Override to a smaller "
             "value only when iterating fast on a known-good model."
+        ),
+    )
+    compile_parser.add_argument(
+        "--calibration-data-path",
+        type=Path,
+        default=None,
+        help=(
+            "Directory of calibration images. When set, skips the "
+            "Ultralytics dataset auto-download and walks this "
+            "directory for .jpg/.png/etc. instead. Useful when you "
+            "want to use only val2017 (~1 GB) instead of the full "
+            "coco download (~27 GB), or when running on a host with "
+            "no internet access. The cache key includes the path "
+            "identity, so different paths don't share a stale cache."
         ),
     )
     compile_parser.add_argument(

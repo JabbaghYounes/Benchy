@@ -146,6 +146,34 @@ def test_calibration_cache_key_includes_dataset_identity():
     assert loader._get_cache_path(YOLOTask.SEGMENTATION, cfg_repeat).name == custom_key
 
 
+def test_calibration_dataset_path_overrides_default(tmp_path):
+    """When CalibrationConfig.dataset_path is set, the loader must
+    walk that directory instead of consulting DEFAULT_DATASETS. This
+    is the path the compile CLI's --calibration-data-path flag ends
+    up using, and the escape hatch from the ~27 GB auto-download.
+    """
+    # Stage a tiny image dir so the loader has something real to find.
+    img_dir = tmp_path / "my_calib"
+    img_dir.mkdir()
+    # Real-enough JPEG bytes — cv2 / PIL will reject junk, but the
+    # path-walking step doesn't care about content. We're testing the
+    # selection logic, not the decode logic.
+    for i in range(3):
+        (img_dir / f"img_{i}.jpg").write_bytes(b"\xff\xd8\xff\xe0fake")
+
+    loader = CalibrationDatasetLoader()
+    cfg = CalibrationConfig(
+        num_samples=2, input_resolution=640, seed=42,
+        dataset_path=img_dir,
+    )
+
+    # _get_dataset_images should walk our directory, not consult
+    # DEFAULT_DATASETS or trigger an Ultralytics download.
+    paths = loader._get_dataset_images(YOLOTask.SEGMENTATION, cfg)
+    assert len(paths) == 3
+    assert all(p.parent == img_dir for p in paths)
+
+
 def test_calibration_cache_key_excludes_legacy_format():
     """The pre-2026-04-29 cache key was
     `<task>_<n>_<resolution>_<seed>.npz` with no dataset identity.

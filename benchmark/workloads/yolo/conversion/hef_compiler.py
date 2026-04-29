@@ -202,11 +202,24 @@ class HEFCompiler:
         Returns:
             CalibrationDataset with preprocessed images
         """
+        # Thread the optional dataset_path override through. When set,
+        # the CalibrationDatasetLoader skips the Ultralytics
+        # auto-download (avoiding the ~27 GB COCO pull when only
+        # val2017 is needed) and walks the provided directory for
+        # images instead. The cache key includes the path identity so
+        # different overrides don't share a stale cache.
         calib_config = CalibrationConfig(
             num_samples=config.calibration_set_size,
             input_resolution=640,  # Standard YOLO input
             seed=config.calibration_seed,
+            dataset_path=config.calibration_data_path,
         )
+
+        if config.calibration_data_path is not None:
+            logger.info(
+                f"  Using user-provided calibration directory: "
+                f"{config.calibration_data_path}"
+            )
 
         dataset = self._calibration_loader.load(task, calib_config)
 

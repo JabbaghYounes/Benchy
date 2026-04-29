@@ -18,7 +18,14 @@
 #                                       [--input-resolution N]
 #                                       [--calibration-set-size N]
 #                                       [--output-dir resources/hefs]
+#                                       [--venv PATH | $BENCHY_VENV]
 #                                       [--force-recompile]
+#
+# The Hailo Dataflow Compiler wheels target Python 3.10 / 3.11 only, so
+# the compile venv often needs to be separate from the project's main
+# venv (which may be a newer Python). Pass --venv venv-compile (or set
+# BENCHY_VENV=venv-compile in the environment) to point the script at
+# whichever venv has hailo_sdk_client installed.
 #
 # Examples:
 #   # Default: compile the seven gap models for hailo8 (AI HAT / AI HAT+ 26 TOPS)
@@ -34,6 +41,11 @@
 #   # Override the model list entirely
 #   scripts/compile_workstation_hefs.sh --arch hailo10h \
 #       --models yolov8n-seg.pt,yolo11n-pose.pt
+#
+#   # Use a separate compile venv (Python 3.11 with the Hailo SDK)
+#   scripts/compile_workstation_hefs.sh --venv venv-compile --arch both
+#   # Or via env var
+#   BENCHY_VENV=venv-compile scripts/compile_workstation_hefs.sh --arch both
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,6 +62,7 @@ INPUT_RESOLUTION=640
 CALIBRATION_SET_SIZE=100
 OUTPUT_DIR="$REPO_ROOT/resources/hefs"
 FORCE_RECOMPILE=0
+VENV_DIR="${BENCHY_VENV:-$REPO_ROOT/venv}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,10 +78,12 @@ while [[ $# -gt 0 ]]; do
             CALIBRATION_SET_SIZE="$2"; shift 2 ;;
         --output-dir)
             OUTPUT_DIR="$2"; shift 2 ;;
+        --venv)
+            VENV_DIR="$2"; shift 2 ;;
         --force-recompile)
             FORCE_RECOMPILE=1; shift ;;
         -h|--help)
-            sed -n '2,32p' "$0" | sed 's/^# \?//'
+            sed -n '2,40p' "$0" | sed 's/^# \?//'
             exit 0 ;;
         *)
             error "Unknown argument: $1"
@@ -76,6 +91,13 @@ while [[ $# -gt 0 ]]; do
             exit 2 ;;
     esac
 done
+
+# If VENV_DIR is relative, resolve it against the repo root so the
+# script doesn't depend on the caller's CWD.
+case "$VENV_DIR" in
+    /*) ;;
+    *)  VENV_DIR="$REPO_ROOT/$VENV_DIR" ;;
+esac
 
 case "$ARCH" in
     hailo8|hailo8l|hailo10h|both) ;;
@@ -91,19 +113,26 @@ if ! is_x86_64; then
     exit 3
 fi
 
-VENV_PY="$REPO_ROOT/venv/bin/python"
+VENV_PY="$VENV_DIR/bin/python"
 if [[ ! -x "$VENV_PY" ]]; then
-    error "Project venv not found at $REPO_ROOT/venv/."
-    error "Run 'python3 -m venv venv && source venv/bin/activate && pip install -e .[dev]' first."
+    error "Compile venv not found at $VENV_DIR/."
+    error "Create it with one of:"
+    error "  python3 -m venv venv && source venv/bin/activate && pip install -e .[dev]"
+    error "  python3.11 -m venv venv-compile && --venv venv-compile (Python 3.10/3.11 needed for Hailo SDK)"
+    error "Or set BENCHY_VENV=<path> to point at an existing venv."
     exit 4
 fi
 
+info "Using compile venv: $VENV_DIR"
+info "  Python: $("$VENV_PY" --version 2>&1)"
 info "Probing for hailo_sdk_client..."
 if ! "$VENV_PY" -c "import hailo_sdk_client" 2>/dev/null; then
-    error "hailo_sdk_client is not installed in the venv."
+    error "hailo_sdk_client is not installed in $VENV_DIR/."
     error "Install the Hailo Dataflow Compiler wheel (.whl) from the"
-    error "Hailo Developer Zone (https://hailo.ai/developer-zone/) into"
-    error "$REPO_ROOT/venv/. See docs/hef_compilation.md."
+    error "Hailo Developer Zone (https://hailo.ai/developer-zone/):"
+    error "  $VENV_PY -m pip install /path/to/hailo_dataflow_compiler-*.whl"
+    error "  $VENV_PY -m pip install /path/to/hailo_model_zoo-*.whl"
+    error "See docs/hef_compilation.md."
     exit 5
 fi
 success "hailo_sdk_client is importable."

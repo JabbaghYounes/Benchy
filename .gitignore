@@ -12,8 +12,15 @@ htmlcov/
 
 # Virtual environments
 venv/
+venv-compile*/
 .venv/
 env/
+
+# Hailo Dataflow Compiler / Model Zoo wheels — EULA-gated downloads
+# from the Hailo Developer Zone, large (~500 MB each), and per-user
+# entitlement. Each developer pulls their own copy into resources/hailo-sdk/
+# and points the per-arch compile venv at it; never commit the wheels.
+resources/hailo-sdk/*.whl
 
 # Build artifacts
 build/

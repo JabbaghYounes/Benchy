@@ -75,6 +75,13 @@ class ConversionConfig:
 
     # Compilation settings
     optimization_level: int = 2
+    # Compression level passed to the Hailo SDK (0 = none / 16-bit biases,
+    # 1 = standard 8-bit biases via Bias Correction, 2 = aggressive with
+    # Adaround + Finetune). Default 1: the SDK default of 0 leaves biases
+    # at 16-bit which fails chip mapping on Hailo-8 for seg/pose/OBB heads
+    # ("DW resources calculation failed for 16bit L2 biases / 16x4 not
+    # supported in activation2"), so the gap models can't compile at all.
+    compression_level: int = 1
 
     # Cache settings
     cache_dir: Optional[Path] = None
@@ -532,6 +539,7 @@ class ModelConversionPipeline:
         hef_config = HEFCompilerConfig(
             target_device=config.target_device,
             optimization_level=config.optimization_level,
+            compression_level=config.compression_level,
             calibration_data_path=config.calibration_data_path,
             calibration_set_size=config.calibration_set_size,
             use_ultralytics_dataset=config.use_ultralytics_calibration,

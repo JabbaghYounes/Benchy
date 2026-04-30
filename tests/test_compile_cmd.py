@@ -96,6 +96,7 @@ def _make_args(**overrides):
         input_resolution=640,
         calibration_set_size=100,
         calibration_data_path=None,
+        compression_level=1,
         output_dir=Path("/tmp/benchy_test_out"),
         force_recompile=False,
     )

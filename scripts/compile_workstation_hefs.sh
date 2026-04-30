@@ -17,6 +17,7 @@
 #                                       [--models a.pt,b.pt,...]
 #                                       [--input-resolution N]
 #                                       [--calibration-set-size N]
+#                                       [--compression-level 0|1|2]
 #                                       [--output-dir resources/hefs]
 #                                       [--venv PATH | $BENCHY_VENV]
 #                                       [--force-recompile]
@@ -67,6 +68,9 @@ INPUT_RESOLUTION=640
 # supported in activation2". Mirror the CLI default added in cli.py.
 CALIBRATION_SET_SIZE=1024
 CALIBRATION_DATA_PATH=""  # empty = let Python CLI default kick in (auto-download)
+# Hailo SDK compression level (0=none/16-bit biases, 1=8-bit, 2=aggressive).
+# Default 1 — level 0 fails chip mapping on Hailo-8 for seg/pose/OBB heads.
+COMPRESSION_LEVEL=1
 OUTPUT_DIR="$REPO_ROOT/resources/hefs"
 FORCE_RECOMPILE=0
 VENV_DIR="${BENCHY_VENV:-$REPO_ROOT/venv}"
@@ -99,6 +103,8 @@ while [[ $# -gt 0 ]]; do
             require_value "$1" "$#"; CALIBRATION_SET_SIZE="$2"; shift 2 ;;
         --calibration-data-path)
             require_value "$1" "$#"; CALIBRATION_DATA_PATH="$2"; shift 2 ;;
+        --compression-level)
+            require_value "$1" "$#"; COMPRESSION_LEVEL="$2"; shift 2 ;;
         --output-dir)
             require_value "$1" "$#"; OUTPUT_DIR="$2"; shift 2 ;;
         --venv)
@@ -229,6 +235,7 @@ run_compile() {
         --model "$model" \
         --input-resolution "$INPUT_RESOLUTION" \
         --calibration-set-size "$CALIBRATION_SET_SIZE" \
+        --compression-level "$COMPRESSION_LEVEL" \
         ${calib_path_flag:+"$calib_path_flag" "$CALIBRATION_DATA_PATH"} \
         --output-dir "$OUTPUT_DIR" \
         $extra_flags; then

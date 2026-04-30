@@ -963,6 +963,7 @@ def cmd_compile(args) -> int:
             input_resolution=args.input_resolution,
             calibration_set_size=args.calibration_set_size,
             calibration_data_path=getattr(args, "calibration_data_path", None),
+            compression_level=args.compression_level,
             force_recompile=args.force_recompile,
             # Workstation has no Hailo device — runtime sanity check
             # would fail. The HEF is verified again on the Pi at first
@@ -1287,6 +1288,19 @@ def main():
             "coco download (~27 GB), or when running on a host with "
             "no internet access. The cache key includes the path "
             "identity, so different paths don't share a stale cache."
+        ),
+    )
+    compile_parser.add_argument(
+        "--compression-level",
+        type=int,
+        default=1,
+        choices=[0, 1, 2],
+        help=(
+            "Hailo SDK compression level (0 = none / 16-bit biases, "
+            "1 = 8-bit biases via Bias Correction, 2 = aggressive with "
+            "Adaround + Finetune). Default 1; the SDK default is 0 but "
+            "that fails chip mapping on Hailo-8 for seg/pose/OBB heads "
+            "with '16x4 not supported in activation2'."
         ),
     )
     compile_parser.add_argument(

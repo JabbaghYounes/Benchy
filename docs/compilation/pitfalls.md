@@ -222,36 +222,50 @@ honest answer is "use v8 segmentation instead, or upgrade to AI HAT+
 `model_optimization_config(...)` is theoretically possible but
 unlikely to recover enough budget — left as a speculative experiment.
 
-## 12. `yolo26n-seg / hailo8` needs per-layer precision overrides
+## 12. `yolo26n-seg / hailo8` is hardware-unfittable (confirmed)
 
-Verified 2026-04-30 retry sweep: with `END_NODE_TABLE` entries in
-place (v26 head naming uses `one2one_cv*` prefixes), v26 OBB and
-v26 pose compile cleanly on Hailo-8, but v26 segmentation fails at
-mapping after ~60 min:
+**Status:** unfixable on Hailo-8 silicon. Use Hailo-10H instead.
 
-```
-concat23 errors: ... format_conversion13_sd48 has 2 APUs but max
-allowed is 1
-```
+Initial 2026-04-30 retry sweep showed v26-seg failing on h8 with
+`concat23 errors: format_conversion13_sd48 has 2 APUs but max
+allowed is 1`. Looked like the same per-layer-precision case that
+yolo26n.alls solves for v26 detection. Step (b) of the session
+notes investigated and built the override infrastructure
+(`MODEL_SCRIPT_OVERRIDES` in `hef_compiler.py`) that successfully
+unblocked v26 detection. Six variants were attempted for v26-seg:
 
-This is a chip-resource-allocation conflict — exactly the failure
-mode that Hailo's official `yolo26n.alls` solves with per-layer
-`quantization_param([...], precision_mode=a16_w16)` overrides on
-the few specific layers that don't fit at 8-bit (`dw1, dw6, dw7,
-dw8`, `conv61, conv77, conv91, conv64, conv80, conv94`,
-`output_layer1..6`). Without an authoritative reference for the
-v26-seg layer set, the fix requires generalising the model-script
-emission in `hef_compiler.py` to accept per-(version, task)
-`quantization_param` overrides, then iteratively compiling +
-reading the mapper's "X has 2 APUs but max allowed is 1" line +
-adding X to a `quantization_param` override.
+| Attempt | Override | Outcome |
+|---|---|---|
+| 1 | `pre_quantization_optimization(matmul_decomposition, [matmul1, matmul2], precision_mode=a16_w8)` | SDK `KeyError: 'meta'` after 33 s |
+| 2 | `pre_quantization_optimization(matmul_decomposition, [matmul1..4])` (no precision_mode) | same `KeyError: 'meta'` |
+| 3 | `quantization_param([matmul1..4], precision_mode=a16_w16)` | `Unsupported value [<PrecisionMode.a16_w16>]` at script load |
+| 4 | `quantization_param([matmul1..4], precision_mode=a16_w8)` | same `Unsupported value` |
+| 5 | `quantization_param([matmul1..4], precision_mode=a8_w8_a16)` | optimizer ran 16 min; mapper rejected with `precision mode is not accurate` |
+| 6 | `quantization_param([matmul1..4], precision_mode=a8_w8_a8)` | optimizer ran 19.7 min; mapper rejected with the original `More than one output is not supported for layer matmul1` after 3m 39s |
 
-The v26-detection layer set is a useful starting point (many
-overlapping layers). Estimate: 1–3 h of compile-iterate cycles
-yields one HEF (`v26_segmentation_n_hailo8.hef`). Compiles fine
-on Hailo-10H without overrides — the more capable chip has the
-headroom v26-seg needs. Documented as Step (b) in the 2026-04-29
-NVIDIA session notes' "Outstanding" section.
+Per `hailo_model_optimization/acceleras/hailo_layers/hailo_matmul.py`,
+`HailoMatmul.SUPPORTED_PRECISION_MODE = {a8_w8, a8_w8_a8, a8_w8_a16}`.
+All three were exercised; none accept v26-seg's matmul1 multi-output
+structure on Hailo-8. `matmul_decomposition` (the official Hailo
+workaround for multi-output matmuls) has its own SDK bug on this
+specific network (`KeyError: 'meta'`).
+
+**Conclusion:** v26-seg's head attention block produces a multi-
+output matmul1 that Hailo-8 cannot ingest in any supported
+precision mode. This is a hardware capability gap, not a tooling
+gap. Consistent with Hailo not publishing a
+`v26_segmentation_*_hailo8.hef` in their Model Zoo either.
+
+If you need v26 segmentation, use the Hailo-10H Pi (AI HAT+ 2);
+the more capable chip handles the multi-output matmul natively
+and v26-seg compiles cleanly there (~30 min, 4.7 MB HEF). On
+Hailo-8/8L, fall back to v8 or v11 segmentation.
+
+The `MODEL_SCRIPT_OVERRIDES` infrastructure is committed in
+`hef_compiler.py` regardless — it's load-bearing for v26 detection
+on Hailo-8 (per Hailo's official yolo26n.alls) and serves as
+scaffolding for any future per-(version, task) ALLS workarounds
+that *do* turn out to be tractable.
 
 ## 13. `yolo26n` detection on Hailo-10H is unsupported by Hailo's own YAML
 

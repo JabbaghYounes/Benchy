@@ -32,19 +32,25 @@ Hailo Model Zoo backing; hardware verification (the HW-verify runners
 below) is what moves them from experimental to verified.
 
 **HEF availability** (separate from postprocessor coverage above) lives
-in `resources/hefs/`. As of 2026-04-30 (post-retry-sweep), 28 HEFs are
+in `resources/hefs/`. As of 2026-04-30 (post-step-b), 29 HEFs are
 staged across the two arches:
 
-- **Hailo-8** (18): v8 det n/s/m/l/x, v11 det n/s/m, v8 seg n/s/m,
-  v8 pose s/m, v11 pose n, v8 obb n, v11 obb n, v26 obb n, v26 pose n.
+- **Hailo-8** (19): v8 det n/s/m/l/x, v11 det n/s/m, v8 seg n/s/m,
+  v8 pose s/m, v11 pose n, v8 obb n, v11 obb n, v26 det n, v26 obb n,
+  v26 pose n.
 - **Hailo-10H** (10): v8 det n/s, v11 det n, v11 seg n, v11 pose n,
   v8 obb n, v11 obb n, v26 obb n, v26 seg n, v26 pose n.
 
-Remaining gaps: v8 pose at size n; v11 seg on Hailo-8 (chip-side
-capacity miss — h10h-only); v26 seg on Hailo-8 (needs per-layer
-precision overrides — deferred); v26 detection on Hailo-10H (not
-supported by Hailo's own YAML); classification across v8/v11/v26.
-See `resources/hefs/NAMING.txt` for the full inventory and
+Remaining gaps, all explained: v8 pose at size n (Hailo Model Zoo
+publishes only s/m); v11 seg on Hailo-8 (chip-side capacity miss —
+h10h-only, `pitfalls.md` § 11); v26 seg on Hailo-8 (confirmed
+hardware-unfittable — head attention's multi-output matmul1 cannot
+be ingested by Hailo-8 in any supported precision mode after six
+override variants attempted; h10h-only, `pitfalls.md` § 12); v26
+detection on Hailo-10H (not supported by Hailo's own
+`yolo26n.yaml`, `pitfalls.md` § 13); classification across all
+three YOLO versions (no postprocessor priority). See
+`resources/hefs/NAMING.txt` for the full inventory and
 `docs/compilation/pitfalls.md` § 10-13 for the gating issues.
 
 ### Supported Platforms

@@ -38,6 +38,9 @@ Setup validated, full sweep run, and a follow-up retry sweep with corrected `END
 | `v26_obb_n_hailo10h.hef` | yolo26n-obb | 4.2 MB |
 | `v26_segmentation_n_hailo10h.hef` | yolo26n-seg | 4.7 MB |
 | `v26_pose_n_hailo10h.hef` | yolo26n-pose | 4.8 MB |
+| `v26_detection_n_hailo8.hef` | yolo26n | 7.1 MB |
+
+(The v26 detection HEF was a final-shot retry after step b. Original step-9 sweep failed it for missing END_NODE_TABLE entry; this session never re-ran it after adding both the entry and the `quantization_param([dw1..8/conv*/output*], precision_mode=a16_w16)` overrides from `yolo26n.alls`. Once both were in place, the compile took ~25 min on a 3-context partition with `+14.3% → +22.9% → +1.6%` partition-search jumps.)
 
 The setup doc + repo code had several gaps that blocked compilation. Code changes spanning five files and several setup-procedure additions were required. Details below. **Step 9 done. Step 10 (commit + push) is the AMD-workstation follow-up.**
 
@@ -369,9 +372,33 @@ H10h retry — same 5 models. **First attempt stopped early** because of the cac
 
 **Retry totals: h8 4/5, h10h 5/5. Combined: 9/10.**
 
-### Working theory on remaining v26-seg / hailo8 failure
+### Working theory on remaining v26-seg / hailo8 failure (resolved by step b investigation)
 
-The h8 mapping log showed `concat23 errors: ... format_conversion13_sd48 has 2 APUs but max allowed is 1`. This is a chip-resource-allocation conflict, the kind that the v26-detection ALLS solves with per-layer `precision_mode=a16_w16` (forcing 16-bit on a few specific layers so that the rest fit at 8-bit). Without an authoritative reference for the v26-seg layer set, fixing this requires the iterative pattern: compile, read which layer the allocator complains about, add it to a `quantization_param` override, recompile. Documented for the next session as step (b).
+The original step-9 log showed `concat23 errors: ... format_conversion13_sd48 has 2 APUs but max allowed is 1`, which looked like a per-layer precision-tweak case. The step-(b) investigation below revealed it's a deeper hardware-capability gap, **not** a tunable issue.
+
+## Step (b): per-(version, task) ALLS override infrastructure
+
+Added `MODEL_SCRIPT_OVERRIDES: dict[tuple[str, YOLOTask], list[str]]` to `hef_compiler.py`. The `_compile_with_sdk` model-script emission now looks up `(yolo_version, task)` and appends the listed ALLS commands after the standard `model_optimization_flavor(...)` and `post_quantization_optimization(bias_correction, policy=enabled)` lines.
+
+Two entries committed:
+
+- **`(v26, DETECTION)`** — reproduces the 3-line override set from `hailo_model_zoo/cfg/alls/generic/yolo26n.alls`: `quantization_param([dw1..8], precision_mode=a16_w16)`, the `[conv61, ..., conv94]` set, and `[output_layer1..6]`. Recommended by Hailo's own reference setup; v26 detection still compiled in the step-9 sweep without it (the failure mode was the missing `END_NODE_TABLE` entry, fixed in step a).
+- **`(v26, SEGMENTATION)`** — *attempted* but **no working override found**. Documented as a comment-only entry. Six iterations:
+
+| Attempt | Override | Outcome |
+|---|---|---|
+| v1 | `pre_quantization_optimization(matmul_decomposition, layers=[matmul1, matmul2], policy=enabled, precision_mode=a16_w8)` | 33 s — `Optimization failed: 'meta'` (SDK KeyError, no traceback) |
+| v2 | `pre_quantization_optimization(matmul_decomposition, layers=[matmul1..4], policy=enabled)` (no precision_mode) | 33 s — same `'meta'` KeyError |
+| v3 | `quantization_param([matmul1..4], precision_mode=a16_w16)` | 32 s — `Unsupported value [<PrecisionMode.a16_w16>]` at script load |
+| v4 | `quantization_param([matmul1..4], precision_mode=a16_w8)` | 32 s — same Unsupported value |
+| v5 | `quantization_param([matmul1..4], precision_mode=a8_w8_a16)` | 16 min — optimizer ran fine, **mapper rejected**: `precision mode is not accurate` (allocation time 0 s) |
+| v6 | `quantization_param([matmul1..4], precision_mode=a8_w8_a8)` | 19.7 min — optimizer ran fine, partition iterations reached `+13.1%`, **mapper rejected** with the original `More than one output is not supported for layer matmul1` after 3m 39s |
+
+`HailoMatmul.SUPPORTED_PRECISION_MODE = {a8_w8, a8_w8_a8, a8_w8_a16}` (verified in `hailo_model_optimization/acceleras/hailo_layers/hailo_matmul.py`). All three were exercised; v26-seg's matmul1 multi-output rejection is independent of precision mode.
+
+**Conclusion:** v26-seg / hailo8 is a hardware-capability gap. The v26 head's attention block produces a multi-output matmul that Hailo-8 hardware cannot ingest in any supported precision mode, and `matmul_decomposition` has its own SDK bug on this network (`KeyError: 'meta'`). v26-seg compiles cleanly on hailo10h (verified in step-a retry). Hailo's own Model Zoo doesn't publish a `v26_segmentation_*_hailo8.hef` either.
+
+The infrastructure (`MODEL_SCRIPT_OVERRIDES`) remains valuable — both for the v26 detection entry and as scaffolding for any future per-(version, task) ALLS workarounds. v26-seg/hailo8 stays on the "not supported" list.
 
 ## Recommendations for `docs/compilation/nvidia_workstation_setup.md`
 
@@ -397,11 +424,7 @@ The path forward goes back through the AMD workstation, which has the writable g
    - (e) Sweep HEFs (one commit, ~95 MB total across 15 files): all the new entries in `resources/hefs/` from this session — `v11_pose_n_hailo8.hef`, `v8_obb_n_hailo8.hef`, `v11_obb_n_hailo8.hef`, `v26_obb_n_hailo8.hef`, `v26_pose_n_hailo8.hef`, plus 10 hailo10h HEFs.
    - (f) `session_notes_2026-04-29_nvidia_workstation.md` itself, dropped into `resources/` alongside the existing 2026-04-27 notes.
 2. **Cache-key arch fix** (Issue 9). Refactor `cache.get_cache_path` and `CacheManager.get_model_cache_path` to include `target_device` in the on-disk path: `models/hailo/<arch>/<version>/<task>/<model>/`. Update the ~20 call sites across `pipeline.py`, `hef_compiler.py`, `har_generator.py`, `onnx_export.py`. Add a regression test that compiles the same model twice (once per arch) and asserts the two staged HEFs differ in md5. Until this lands, **always clear `models/hailo/` between architectures** — we hit the bug twice in this session and burned ~30 min on phantom passes.
-3. **Step (b): per-layer precision_mode infrastructure for v26-seg / hailo8.** The one remaining h8 gap. Plan:
-   - Generalise the model-script emission in `hef_compiler.py` to accept per-(version, task) `quantization_param` overrides (mirrors what the v26 detection ALLS does).
-   - Iterative compile-debug: run the failing v26-seg/h8, read the mapper's `format_conversion13_sd48 has 2 APUs but max allowed is 1` line, add `quantization_param([format_conversion13], precision_mode=a16_w16)`, retry. Continue until mapping succeeds.
-   - Useful starting point: copy the v26-detection layer set (`dw1, dw6, dw7, dw8`, `conv61, conv77, conv91, conv64, conv80, conv94`, `output_layer1..6`) and adapt — many will overlap.
-   - Estimate: 1–3 h of compile-iterate cycles. Yields one HEF (`v26_segmentation_n_hailo8.hef`).
+3. **Step (b): infrastructure done; v26-seg / hailo8 confirmed unfittable.** `MODEL_SCRIPT_OVERRIDES` is committed in `hef_compiler.py` and used by the v26 detection entry. The v26-seg case is documented as a hardware-capability gap (see §"Step (b)" above and Issue 11) — six override variants tried, all hit the matmul1 multi-output rejection. No further work; document in `pitfalls.md`.
 4. **Delete or supersede `docs/compilation/end_node_truncation_plan.md`.** Its premise ("truncation is next-session work") is now done — the truncation infrastructure is wired and the table is fully populated for v8/v11/v26 across det/seg/pose/obb. The plan also speculated that the deep post-processing layers (Sigmoid/Concat) are the right cut points; we now know they're the wrong cut points. Replace with a one-page pointer to `har_generator.py:END_NODE_TABLE` and to this session's notes.
 5. **(Skip) yolo11n-seg / hailo8.** Confirmed chip-side FPS budget — six minutes of mapping then `Failed to reach required FPS on the following layers`. Compiles fine on h10h. Document in `pitfalls.md` so future attempts are short-circuited; do not try precision overrides (won't help — the issue is whole-graph compute capacity, not per-layer precision).
 6. **(Skip) yolo26n / hailo10h.** Hailo's `yolo26n.yaml` declares `supported_hw_arch: [hailo8, hailo8l]`. Failure here is intended by Hailo's own definition. Document.

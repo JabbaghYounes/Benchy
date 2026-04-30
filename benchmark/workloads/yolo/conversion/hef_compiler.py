@@ -31,6 +31,85 @@ from benchmark.workloads.yolo.conversion.calibration import (
 logger = logging.getLogger(__name__)
 
 
+# Per-(yolo_version, task) extra ALLS commands to inject before
+# runner.optimize(). Layered on top of the standard
+# `model_optimization_flavor(...)` and
+# `post_quantization_optimization(bias_correction, policy=enabled)`
+# lines that every model gets. Use this for chip-side workarounds:
+# matmul decomposition, per-layer precision_mode, layer-specific
+# quantization params — anything the SDK accepts as an ALLS command.
+#
+# Entries are sourced from:
+# - The Hailo Model Zoo `.alls` scripts when an official one exists
+#   (e.g. yolo26n.alls under
+#   `hailo_model_zoo/cfg/alls/generic/`). These typically force a
+#   handful of layers to a16_w16 so the rest fit at 8-bit.
+# - Iterative compile-debug: read the mapper's failure message,
+#   identify the failing layer (Hailo internal name like `matmul1`
+#   / `concat23` / `format_conversion13`), and add a targeted
+#   override. The Hailo names are stable across compile runs of the
+#   same network, so once you've found the right command the table
+#   entry is reusable.
+#
+# Only applied where needed; the table is keyed by (version, task)
+# rather than (version, task, hw_arch) because the overrides are
+# usually no-ops on the chip that doesn't need them (h10h tolerates
+# the un-tweaked v26 graph that h8 can't, but matmul_decomposition
+# on h10h is harmless — just adds a few seconds to compile).
+MODEL_SCRIPT_OVERRIDES: dict = {
+    # YOLOv26 segmentation — the v26 head's attention block produces
+    # a `matmul1` (and likely `matmul2`) layer with multiple outputs,
+    # which Hailo-8's compiler refuses to ingest natively:
+    #     "More than one output is not supported for layer matmul1"
+    # `pre_quantization_optimization(matmul_decomposition, ...)` splits
+    # those matmuls into smaller ops the chip handles. h10h compiled
+    # v26-seg fine without this in the 2026-04-29 retry sweep, so the
+    # override is technically only required for h8 — but it's cheap
+    # to apply on h10h too.
+    # ("v26", YOLOTask.SEGMENTATION): no working override found.
+    #
+    # v26-seg has 4 matmul layers (matmul1..matmul4 in the head's
+    # attention block, verified via ClientRunner.get_hn()). Hailo-8
+    # cannot ingest matmul1's multi-output structure ("More than one
+    # output is not supported for layer matmul1"). The 2026-04-29
+    # session attempted six different overrides:
+    #
+    #   pre_quantization_optimization(matmul_decomposition, ...,
+    #                                 precision_mode=a16_w8)  → KeyError 'meta'
+    #   pre_quantization_optimization(matmul_decomposition, ...,
+    #                                 no precision_mode)      → KeyError 'meta'
+    #   quantization_param(precision_mode=a16_w16)             → Unsupported (matmul allows {a8_w8, a8_w8_a8, a8_w8_a16})
+    #   quantization_param(precision_mode=a16_w8)              → Unsupported
+    #   quantization_param(precision_mode=a8_w8_a16)           → mapping: "precision mode is not accurate"
+    #   quantization_param(precision_mode=a8_w8_a8)            → mapping: "More than one output is not supported for layer matmul1"
+    #
+    # Conclusion: v26-seg / hailo8 is a hardware-capability gap, not a
+    # tooling gap. v26-seg compiles cleanly on hailo10h. Hailo's own
+    # Model Zoo doesn't publish v26-seg for hailo8 either.
+    # Documented in pitfalls.md (or should be); no override committed.
+    # YOLOv26 detection — the official Hailo Model Zoo `.alls`
+    # (yolo26n.alls) forces a16_w16 on a specific set of dw, conv,
+    # and output layers. Without these the v26 detection mapping
+    # fails on hailo8 with "doesn't fit" errors. v26 detection
+    # compiled in this session's sweep without these overrides
+    # (the failure mode was the missing END_NODE_TABLE entry, which
+    # the table now has) — but Hailo's reference setup includes them
+    # and they're recommended for production HEFs.
+    ("v26", YOLOTask.DETECTION): [
+        "quantization_param("
+        "[dw1, dw6, dw7, dw8], "
+        "precision_mode=a16_w16)",
+        "quantization_param("
+        "[conv61, conv77, conv91, conv64, conv80, conv94], "
+        "precision_mode=a16_w16)",
+        "quantization_param("
+        "[output_layer1, output_layer2, output_layer3, "
+        "output_layer4, output_layer5, output_layer6], "
+        "precision_mode=a16_w16)",
+    ],
+}
+
+
 @dataclass
 class HEFCompilerConfig:
     """Configuration for HEF compilation."""
@@ -325,6 +404,16 @@ class HEFCompiler:
             script_lines.append(
                 "post_quantization_optimization(bias_correction, policy=enabled)"
             )
+        # Per-(version, task) ALLS overrides for chip-side workarounds:
+        # matmul decomposition, per-layer precision_mode, layer-specific
+        # quantization params. See MODEL_SCRIPT_OVERRIDES at the top of
+        # this module. The overrides are layered on top of the standard
+        # flavor + bias_correction lines and are typically only needed
+        # for hailo8 (h10h has more headroom and tolerates the un-tweaked
+        # graph), but they're harmless on h10h so we apply them for
+        # every arch — keeps the table simple.
+        overrides = MODEL_SCRIPT_OVERRIDES.get((yolo_version, task), [])
+        script_lines.extend(overrides)
         model_script = "\n".join(script_lines) + "\n"
         logger.info("Loading model script:")
         for line in script_lines:

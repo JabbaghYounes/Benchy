@@ -155,6 +155,73 @@ the Ultralytics → Hailo pipeline produces clean weights.
 
 Keep v26 variants tagged `[experimental]`. Failure ≠ regression.
 
+## 10. End-node truncation depth — cut at raw Conv, not post-processing
+
+This is the actual blocker behind most `16x4 not supported in
+activation*` mapping failures (see also #4 and #8). The
+`END_NODE_TABLE` in
+`benchmark/workloads/yolo/conversion/har_generator.py` must list
+the raw `cv*.X.X.2/Conv` outputs of each YOLO head, not the deeper
+post-processing layers (`Sigmoid`, `Concat`, `Sigmoid_1`, `Mul`,
+`Mul_3`).
+
+The deep-layer cut compiles fine through HAR generation but pulls
+the high-precision-bias activations onto the chip subgraph; mapping
+then fails on Hailo-8 with:
+
+```
+activation1/activation2 failed on kernel validation: 16x4 is not supported
+DW resources calculation failed: more than 1 subclusters are needed for
+    16bit L2 biases
+Agent infeasible (× hundreds)
+```
+
+**Fix:** verify the `END_NODE_TABLE` entry against the corresponding
+Hailo Model Zoo YAML at
+`venv-compile-*/lib/python3.10/site-packages/hailo_model_zoo/cfg/networks/<name>.yaml`
+under `parser.nodes`. For gap models with no published YAML (v11
+seg / pose; all OBB; v26 non-detection), derive by analogy with the
+nearest published version + verify in ONNX:
+
+```python
+import onnx
+m = onnx.load("yolov8n-seg.onnx")
+print([n.name for n in m.graph.node if "/cv" in n.name])
+```
+
+**Don't trust the SDK parser's own "use these end node names"
+hint** — when it does extract one, it tends to suggest the deep
+post-processing layers, which is the wrong cut. Cross-check against
+the host-side decoder in `benchmark/workloads/yolo/postprocessing.py`
+to confirm the Conv outputs match what the decoder expects.
+
+## 11. `yolo11n-seg` does not fit Hailo-8 (chip-side capacity)
+
+Verified 2026-04-29 NVIDIA bring-up: even with the full bias-
+correction pipeline, the right end-nodes, and CUDA-enabled
+optimization, `yolo11n-seg` fails Hailo-8 mapping after ~6m 29s
+allocation:
+
+```
+Mapping Failed
+Compilation failed: Failed to reach required FPS on the following
+    layers: …
+```
+
+The model exists but doesn't fit the chip's performance budget.
+Consistent with Hailo not publishing a `v11_seg_n_hailo8` prebuilt
+in their Model Zoo (they ship `v8_seg_n_hailo8` and v11 detection,
+but not v11 seg). The same model compiles cleanly on Hailo-10H
+(~22 min, 4.8 MB HEF).
+
+This is a hardware capability mismatch, not a tooling bug. Don't
+spend more than one ~6-minute mapping attempt rediscovering it; if
+you need v11 segmentation on the AI HAT+ Pi (Hailo-8/8L), the
+honest answer is "use v8 segmentation instead, or upgrade to AI HAT+
+2 with Hailo-10H." Lowering the SDK's FPS target via
+`model_optimization_config(...)` is theoretically possible but
+unlikely to recover enough budget — left as a speculative experiment.
+
 ## Verify-before-commit checklist
 
 Before adding any `.hef` to the repo:

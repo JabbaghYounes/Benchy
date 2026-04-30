@@ -111,6 +111,19 @@ biases stay at 16-bit — which then fails chip mapping on Hailo-8 for
 seg / pose / OBB heads. Override to a smaller value only when
 iterating fast on a known-good model.
 
+The compile CLI's `--compression-level` defaults to **1** (8-bit
+biases via Bias Correction). Level 0 is the SDK default but leaves
+biases at 16-bit and fails chip mapping for seg/pose/OBB heads on
+Hailo-8 with `16x4 not supported in activation*`. Level 2 enables
+Adaround + Finetune on top, at the cost of longer compile time.
+The pipeline emits an ALLS model script
+(`model_optimization_flavor(...)` +
+`post_quantization_optimization(bias_correction, policy=enabled)`)
+to force bias_correction on regardless of the flavor's default —
+necessary because Hailo's optimization-level cases are mutually
+exclusive (level 2 picks Finetune but skips Bias Correction without
+the explicit ALLS command).
+
 **First-time only:** without `--calibration-data-path`, Ultralytics'
 auto-download pulls `coco.yaml` (~27 GB: train2017 19 GB + val2017
 1 GB + test2017 7 GB) for SEG, plus DOTAv1 (~10 GB) for OBB and
@@ -174,9 +187,10 @@ sudo systemctl restart hailort.service  # if applicable
 
 ## Caveats and gotchas
 
-- **Repo size growth.** Each HEF is ~5–15 MB. Seven new HEFs add
-  ~50–100 MB on top of the existing 29 MB in `resources/hefs/`. Still
-  manageable as plain blobs; if the staged set grows past ~15 HEFs,
+- **Repo size growth.** Each HEF is ~4–55 MB. The staged set is
+  currently 19 HEFs across hailo8 + hailo10h (sum ~290 MB). Still
+  manageable as plain blobs; if the staged set grows past ~30 HEFs
+  or any single HEF exceeds GitHub's 100 MB single-file ceiling,
   migrate to git-LFS.
 - **HailoRT version pairing.** DFC v3.33.1 → HEFs target HailoRT
   4.22+. The Pi runs 4.20.0 by default. Either upgrade the Pi runtime

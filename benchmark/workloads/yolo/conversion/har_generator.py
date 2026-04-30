@@ -124,6 +124,100 @@ END_NODE_TABLE: dict = {
         "/model.23/cv3.2/cv3.2.2/Conv",
         "/model.23/cv4.2/cv4.2.2/Conv",
     ],
+    # YOLOv8 OBB — head module is /model.22 (same as v8 det/seg).
+    # OBB adds a third (cv4.*) branch carrying the angle channel on top
+    # of det's box (cv2.*) and class (cv3.*) trio. The model.22/Cos and
+    # model.22/Sin angle decoders are unsupported on Hailo-8; truncate
+    # before them and let _process_obb / _rotated_nms in
+    # postprocessing.py decode angle host-side from cv4 outputs.
+    ("v8", YOLOTask.OBB): [
+        "/model.22/cv2.0/cv2.0.2/Conv",
+        "/model.22/cv3.0/cv3.0.2/Conv",
+        "/model.22/cv4.0/cv4.0.2/Conv",
+        "/model.22/cv2.1/cv2.1.2/Conv",
+        "/model.22/cv3.1/cv3.1.2/Conv",
+        "/model.22/cv4.1/cv4.1.2/Conv",
+        "/model.22/cv2.2/cv2.2.2/Conv",
+        "/model.22/cv3.2/cv3.2.2/Conv",
+        "/model.22/cv4.2/cv4.2.2/Conv",
+    ],
+    # YOLOv11 OBB — same head shape as v8, head module shifted to
+    # /model.23. Verified against models/hailo/v11/obb/yolo11n-obb/
+    # model.onnx (truncates before /model.23/Cos and /model.23/Sin).
+    ("v11", YOLOTask.OBB): [
+        "/model.23/cv2.0/cv2.0.2/Conv",
+        "/model.23/cv3.0/cv3.0.2/Conv",
+        "/model.23/cv4.0/cv4.0.2/Conv",
+        "/model.23/cv2.1/cv2.1.2/Conv",
+        "/model.23/cv3.1/cv3.1.2/Conv",
+        "/model.23/cv4.1/cv4.1.2/Conv",
+        "/model.23/cv2.2/cv2.2.2/Conv",
+        "/model.23/cv3.2/cv3.2.2/Conv",
+        "/model.23/cv4.2/cv4.2.2/Conv",
+    ],
+    # YOLOv26 detection — verbatim from base/yolo26.yaml in the Hailo
+    # Model Zoo. v26 uses one-to-one matching, so every head conv is
+    # prefixed `one2one_cv*` instead of bare `cv*`. The cv4 branch is
+    # absent on plain detection.
+    #
+    # Note: yolo26n.yaml flags `supported_hw_arch: [hailo8, hailo8l]`,
+    # i.e. v26 detection is NOT officially supported on hailo10h.
+    # The official v26 .alls also forces precision_mode=a16_w16 on
+    # specific layers (dw1/6/7/8, conv61/77/91/64/80/94, output_layer*)
+    # — see Issue 12 in session_notes_2026-04-29_nvidia_workstation.md.
+    # End-node truncation alone may not be sufficient to map v26 on
+    # hailo8 without those per-layer precision overrides.
+    ("v26", YOLOTask.DETECTION): [
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+    ],
+    # YOLOv26 segmentation — derived by analogy with v8 seg, with v26's
+    # one2one_cv* head naming. Verified against
+    # models/hailo/v26/segmentation/yolo26n-seg/model.onnx; proto branch
+    # ends at the same /model.23/proto/cv3/act/Mul as v8/v11 seg.
+    ("v26", YOLOTask.SEGMENTATION): [
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv",
+        "/model.23/one2one_cv4.0/one2one_cv4.0.2/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+        "/model.23/one2one_cv4.1/one2one_cv4.1.2/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+        "/model.23/one2one_cv4.2/one2one_cv4.2.2/Conv",
+        "/model.23/proto/cv3/act/Mul",
+    ],
+    # YOLOv26 pose — keypoint branch is `one2one_cv4_kpts.X/Conv` with
+    # a flatter path (no nested /one2one_cv4_kpts.X.0/.../Conv triple).
+    # Verified against models/hailo/v26/pose/yolo26n-pose/model.onnx.
+    ("v26", YOLOTask.POSE): [
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv",
+        "/model.23/one2one_cv4_kpts.0/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+        "/model.23/one2one_cv4_kpts.1/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+        "/model.23/one2one_cv4_kpts.2/Conv",
+    ],
+    # YOLOv26 OBB — head naming mirrors v26 seg (one2one_cv2/3/4 with
+    # triple-conv). Truncate before /model.23/Cos and /model.23/Sin.
+    ("v26", YOLOTask.OBB): [
+        "/model.23/one2one_cv2.0/one2one_cv2.0.2/Conv",
+        "/model.23/one2one_cv3.0/one2one_cv3.0.2/Conv",
+        "/model.23/one2one_cv4.0/one2one_cv4.0.2/Conv",
+        "/model.23/one2one_cv2.1/one2one_cv2.1.2/Conv",
+        "/model.23/one2one_cv3.1/one2one_cv3.1.2/Conv",
+        "/model.23/one2one_cv4.1/one2one_cv4.1.2/Conv",
+        "/model.23/one2one_cv2.2/one2one_cv2.2.2/Conv",
+        "/model.23/one2one_cv3.2/one2one_cv3.2.2/Conv",
+        "/model.23/one2one_cv4.2/one2one_cv4.2.2/Conv",
+    ],
 }
 
 

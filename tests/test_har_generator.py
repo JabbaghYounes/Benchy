@@ -50,14 +50,8 @@ from benchmark.workloads.yolo.conversion.har_generator import (
 # END_NODE_TABLE and remove the (version, task) tuple from this set.
 KNOWN_GAPS = {
     ("v8", YOLOTask.POSE),
-    ("v8", YOLOTask.OBB),
     ("v8", YOLOTask.CLASSIFICATION),
-    ("v11", YOLOTask.OBB),
     ("v11", YOLOTask.CLASSIFICATION),
-    ("v26", YOLOTask.DETECTION),
-    ("v26", YOLOTask.SEGMENTATION),
-    ("v26", YOLOTask.POSE),
-    ("v26", YOLOTask.OBB),
     ("v26", YOLOTask.CLASSIFICATION),
 }
 
@@ -113,7 +107,7 @@ def test_get_end_nodes_returns_list_or_none():
     assert nodes == END_NODE_TABLE[("v11", YOLOTask.SEGMENTATION)]
 
     # A combination that's intentionally not in the table.
-    assert get_end_nodes("v26", YOLOTask.OBB) is None
+    assert get_end_nodes("v8", YOLOTask.POSE) is None
 
 
 # --------------------------------------------- pipeline -> HARGeneratorConfig wiring
@@ -212,14 +206,14 @@ def test_end_nodes_none_for_table_miss(monkeypatch, tmp_path):
     pipeline = ModelConversionPipeline()
     pipeline.har_generator = _SpyGenerator()
 
-    onnx_path = tmp_path / "yolo26n-obb.onnx"
+    onnx_path = tmp_path / "yolov8n-pose.onnx"
     onnx_path.write_bytes(b"x")
 
     pipeline._run_har_generation(
         onnx_path=onnx_path,
-        model_name="yolo26n-obb.pt",
-        yolo_version="v26",
-        task=YOLOTask.OBB,
+        model_name="yolov8n-pose.pt",
+        yolo_version="v8",
+        task=YOLOTask.POSE,
         config=ConversionConfig(target_device="hailo10h"),
     )
 

@@ -224,7 +224,10 @@ class HEFCompiler:
 
         # Determine output path
         if output_path is None:
-            output_path = self.cache.get_hef_path(model_name, yolo_version, task)
+            output_path = self.cache.get_hef_path(
+                model_name, yolo_version, task,
+                target_device=config.target_device,
+            )
 
         # Check if already exists
         if output_path.exists() and not force:
@@ -643,7 +646,9 @@ class HEFCompiler:
             calibration_path: Path to calibration data (legacy)
             calibration_dataset: Phase 3 CalibrationDataset (preferred)
         """
-        metadata = self.cache.get_metadata(model_name, yolo_version, task)
+        metadata = self.cache.get_metadata(
+            model_name, yolo_version, task, target_device=config.target_device
+        )
 
         if metadata is None:
             metadata = self.cache.create_metadata(
@@ -670,7 +675,10 @@ class HEFCompiler:
         elif calibration_path is not None:
             metadata.calibration_dataset = str(calibration_path)
 
-        self.cache.save_metadata(metadata, model_name, yolo_version, task)
+        self.cache.save_metadata(
+            metadata, model_name, yolo_version, task,
+            target_device=config.target_device,
+        )
 
     def verify_hef(self, hef_path: Path) -> dict:
         """Verify a compiled HEF file.

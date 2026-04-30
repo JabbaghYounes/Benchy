@@ -401,7 +401,10 @@ class HARGenerator:
 
         # Determine output path
         if output_path is None:
-            output_path = self.cache.get_har_path(model_name, yolo_version, task)
+            output_path = self.cache.get_har_path(
+                model_name, yolo_version, task,
+                target_device=config.target_device,
+            )
 
         # Check if already exists
         if output_path.exists() and not force:
@@ -655,7 +658,9 @@ class HARGenerator:
         har_path: Path,
     ) -> None:
         """Update cache metadata after HAR generation."""
-        metadata = self.cache.get_metadata(model_name, yolo_version, task)
+        metadata = self.cache.get_metadata(
+            model_name, yolo_version, task, target_device=config.target_device
+        )
 
         if metadata is None:
             metadata = self.cache.create_metadata(
@@ -672,7 +677,10 @@ class HARGenerator:
         metadata.har_created_at = datetime.now().isoformat()
         metadata.hailo_sdk_version = get_hailo_sdk_version()
 
-        self.cache.save_metadata(metadata, model_name, yolo_version, task)
+        self.cache.save_metadata(
+            metadata, model_name, yolo_version, task,
+            target_device=config.target_device,
+        )
 
     def get_supported_ops(self) -> List[str]:
         """Get list of ONNX operations supported by Hailo parser.

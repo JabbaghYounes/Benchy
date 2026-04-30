@@ -77,6 +77,8 @@ class ONNXExporter:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
         config: Optional[ONNXExportConfig] = None,
         output_path: Optional[Path] = None,
         force: bool = False,
@@ -87,6 +89,9 @@ class ONNXExporter:
             model_name: YOLO model name (e.g., "yolov8n.pt")
             yolo_version: YOLO version (e.g., "v8")
             task: Task type
+            target_device: Target Hailo arch (required keyword-only).
+                ONNX content is arch-independent, but we cache under
+                the per-arch path for layout consistency with HAR/HEF.
             config: Export configuration
             output_path: Custom output path (default: use cache)
             force: Force re-export even if cached
@@ -108,7 +113,9 @@ class ONNXExporter:
 
         # Determine output path
         if output_path is None:
-            output_path = self.cache.get_onnx_path(model_name, yolo_version, task)
+            output_path = self.cache.get_onnx_path(
+                model_name, yolo_version, task, target_device=target_device
+            )
 
         # Check if already exported
         if output_path.exists() and not force:
@@ -158,7 +165,8 @@ class ONNXExporter:
 
             # Update cache metadata
             self._update_metadata(
-                model_name, yolo_version, task, config, output_path
+                model_name, yolo_version, task, config, output_path,
+                target_device=target_device,
             )
 
             logger.info(f"ONNX exported successfully: {output_path}")
@@ -206,9 +214,13 @@ class ONNXExporter:
         task: YOLOTask,
         config: ONNXExportConfig,
         onnx_path: Path,
+        *,
+        target_device: str,
     ) -> None:
         """Update cache metadata after export."""
-        metadata = self.cache.get_metadata(model_name, yolo_version, task)
+        metadata = self.cache.get_metadata(
+            model_name, yolo_version, task, target_device=target_device
+        )
 
         if metadata is None:
             # Create new metadata
@@ -217,7 +229,7 @@ class ONNXExporter:
                 yolo_version=yolo_version,
                 task=task,
                 input_resolution=config.input_resolution,
-                target_device="hailo8l",  # Will be updated later
+                target_device=target_device,
             )
 
         # Update ONNX-specific fields
@@ -225,7 +237,9 @@ class ONNXExporter:
         metadata.onnx_created_at = datetime.now().isoformat()
         metadata.ultralytics_version = get_ultralytics_version()
 
-        self.cache.save_metadata(metadata, model_name, yolo_version, task)
+        self.cache.save_metadata(
+            metadata, model_name, yolo_version, task, target_device=target_device
+        )
 
     def get_model_info(self, model_name: str) -> dict:
         """Get information about a YOLO model.

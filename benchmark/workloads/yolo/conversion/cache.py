@@ -91,32 +91,43 @@ def get_cache_path(
     model_name: str,
     yolo_version: str,
     task: YOLOTask,
+    *,
+    target_device: str,
     cache_dir: Optional[Path] = None,
 ) -> Path:
     """Get the cache directory path for a model.
 
     Cache structure:
-        models/hailo/{yolo_version}/{task}/{model_name}/
+        models/hailo/{target_device}/{yolo_version}/{task}/{model_name}/
             ├── model.onnx
             ├── model.har
             ├── model.hef
             └── metadata.json
 
+    The {target_device} segment is mandatory — same source model
+    compiles to different bytes per arch (hailo8 vs hailo10h), and
+    reusing one arch's HEF when the caller asked for the other was
+    Issue 9 in the 2026-04-29 NVIDIA bring-up: bogus HEFs
+    md5-identical to the wrong arch's output, masquerading as cache
+    hits. Keying on target_device prevents that.
+
     Args:
         model_name: Model name (e.g., "yolov8n.pt" or "yolov8n")
         yolo_version: YOLO version (e.g., "v8")
         task: Task type
-        cache_dir: Optional custom cache directory
+        target_device: Hailo arch tag — `hailo8`, `hailo8l`,
+            `hailo10h`, `hailo15`. Required keyword arg.
+        cache_dir: Optional custom cache directory root.
 
     Returns:
-        Path to the cache directory for this model
+        Path to the cache directory for this (model, arch).
     """
     base_dir = cache_dir or DEFAULT_CACHE_DIR
 
     # Remove file extension from model name
     base_name = Path(model_name).stem
 
-    return base_dir / yolo_version / task.value / base_name
+    return base_dir / target_device / yolo_version / task.value / base_name
 
 
 def compute_file_hash(path: Path, algorithm: str = "sha256") -> Optional[str]:
@@ -236,54 +247,82 @@ class ModelCache:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Path:
-        """Get cache directory for a specific model."""
-        return get_cache_path(model_name, yolo_version, task, self.cache_dir)
+        """Get cache directory for a specific (model, arch) combination."""
+        return get_cache_path(
+            model_name,
+            yolo_version,
+            task,
+            target_device=target_device,
+            cache_dir=self.cache_dir,
+        )
 
     def get_onnx_path(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Path:
         """Get path to cached ONNX file."""
-        return self.get_model_cache_path(model_name, yolo_version, task) / "model.onnx"
+        return self.get_model_cache_path(
+            model_name, yolo_version, task, target_device=target_device
+        ) / "model.onnx"
 
     def get_har_path(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Path:
         """Get path to cached HAR file."""
-        return self.get_model_cache_path(model_name, yolo_version, task) / "model.har"
+        return self.get_model_cache_path(
+            model_name, yolo_version, task, target_device=target_device
+        ) / "model.har"
 
     def get_hef_path(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Path:
         """Get path to cached HEF file."""
-        return self.get_model_cache_path(model_name, yolo_version, task) / "model.hef"
+        return self.get_model_cache_path(
+            model_name, yolo_version, task, target_device=target_device
+        ) / "model.hef"
 
     def get_metadata_path(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Path:
         """Get path to cache metadata file."""
-        return self.get_model_cache_path(model_name, yolo_version, task) / "metadata.json"
+        return self.get_model_cache_path(
+            model_name, yolo_version, task, target_device=target_device
+        ) / "metadata.json"
 
     def get_metadata(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> Optional[CacheMetadata]:
         """Load metadata for a cached model."""
-        metadata_path = self.get_metadata_path(model_name, yolo_version, task)
+        metadata_path = self.get_metadata_path(
+            model_name, yolo_version, task, target_device=target_device
+        )
         return CacheMetadata.load(metadata_path)
 
     def save_metadata(
@@ -292,9 +331,13 @@ class ModelCache:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> None:
         """Save metadata for a cached model."""
-        metadata_path = self.get_metadata_path(model_name, yolo_version, task)
+        metadata_path = self.get_metadata_path(
+            model_name, yolo_version, task, target_device=target_device
+        )
         metadata.save(metadata_path)
 
     def has_valid_cache(
@@ -302,7 +345,8 @@ class ModelCache:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
-        target_device: str = "hailo8l",
+        *,
+        target_device: str,
         input_resolution: int = 640,
     ) -> bool:
         """Check if valid cached artifacts exist.
@@ -322,12 +366,16 @@ class ModelCache:
         Returns:
             True if valid cache exists
         """
-        hef_path = self.get_hef_path(model_name, yolo_version, task)
+        hef_path = self.get_hef_path(
+            model_name, yolo_version, task, target_device=target_device
+        )
         if not hef_path.exists():
             logger.debug(f"Cache miss: HEF not found at {hef_path}")
             return False
 
-        metadata = self.get_metadata(model_name, yolo_version, task)
+        metadata = self.get_metadata(
+            model_name, yolo_version, task, target_device=target_device
+        )
         if metadata is None:
             logger.debug("Cache miss: No metadata found")
             return False
@@ -375,36 +423,52 @@ class ModelCache:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> bool:
         """Check if ONNX file exists in cache."""
-        return self.get_onnx_path(model_name, yolo_version, task).exists()
+        return self.get_onnx_path(
+            model_name, yolo_version, task, target_device=target_device
+        ).exists()
 
     def has_har(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> bool:
         """Check if HAR file exists in cache."""
-        return self.get_har_path(model_name, yolo_version, task).exists()
+        return self.get_har_path(
+            model_name, yolo_version, task, target_device=target_device
+        ).exists()
 
     def has_hef(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> bool:
         """Check if HEF file exists in cache."""
-        return self.get_hef_path(model_name, yolo_version, task).exists()
+        return self.get_hef_path(
+            model_name, yolo_version, task, target_device=target_device
+        ).exists()
 
     def clear_cache(
         self,
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
+        *,
+        target_device: str,
     ) -> None:
-        """Clear cached artifacts for a model."""
-        cache_path = self.get_model_cache_path(model_name, yolo_version, task)
+        """Clear cached artifacts for a (model, arch)."""
+        cache_path = self.get_model_cache_path(
+            model_name, yolo_version, task, target_device=target_device
+        )
         if cache_path.exists():
             import shutil
             shutil.rmtree(cache_path)
@@ -450,39 +514,47 @@ class ModelCache:
         )
 
     def list_cached_models(self) -> list[dict]:
-        """List all cached models.
+        """List all cached models across every arch.
+
+        Walks four directory levels:
+        models/hailo/<arch>/<version>/<task>/<model>/
 
         Returns:
-            List of dictionaries with model info
+            List of dictionaries with model info, including target_device.
         """
         models = []
 
         if not self.cache_dir.exists():
             return models
 
-        for version_dir in self.cache_dir.iterdir():
-            if not version_dir.is_dir():
+        for arch_dir in self.cache_dir.iterdir():
+            if not arch_dir.is_dir():
                 continue
 
-            for task_dir in version_dir.iterdir():
-                if not task_dir.is_dir():
+            for version_dir in arch_dir.iterdir():
+                if not version_dir.is_dir():
                     continue
 
-                for model_dir in task_dir.iterdir():
-                    if not model_dir.is_dir():
+                for task_dir in version_dir.iterdir():
+                    if not task_dir.is_dir():
                         continue
 
-                    metadata_path = model_dir / "metadata.json"
-                    metadata = CacheMetadata.load(metadata_path)
+                    for model_dir in task_dir.iterdir():
+                        if not model_dir.is_dir():
+                            continue
 
-                    models.append({
-                        "model_name": model_dir.name,
-                        "yolo_version": version_dir.name,
-                        "task": task_dir.name,
-                        "has_onnx": (model_dir / "model.onnx").exists(),
-                        "has_har": (model_dir / "model.har").exists(),
-                        "has_hef": (model_dir / "model.hef").exists(),
-                        "metadata": metadata.to_dict() if metadata else None,
-                    })
+                        metadata_path = model_dir / "metadata.json"
+                        metadata = CacheMetadata.load(metadata_path)
+
+                        models.append({
+                            "model_name": model_dir.name,
+                            "yolo_version": version_dir.name,
+                            "task": task_dir.name,
+                            "target_device": arch_dir.name,
+                            "has_onnx": (model_dir / "model.onnx").exists(),
+                            "has_har": (model_dir / "model.har").exists(),
+                            "has_hef": (model_dir / "model.hef").exists(),
+                            "metadata": metadata.to_dict() if metadata else None,
+                        })
 
         return models

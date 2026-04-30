@@ -260,14 +260,23 @@ class ModelConversionPipeline:
                 target_device=config.target_device,
                 input_resolution=config.input_resolution,
             ):
-                hef_path = self.cache.get_hef_path(model_name, yolo_version, task)
+                td = config.target_device
+                hef_path = self.cache.get_hef_path(
+                    model_name, yolo_version, task, target_device=td
+                )
                 result.success = True
                 result.hef_path = hef_path
-                result.onnx_path = self.cache.get_onnx_path(model_name, yolo_version, task)
-                result.har_path = self.cache.get_har_path(model_name, yolo_version, task)
+                result.onnx_path = self.cache.get_onnx_path(
+                    model_name, yolo_version, task, target_device=td
+                )
+                result.har_path = self.cache.get_har_path(
+                    model_name, yolo_version, task, target_device=td
+                )
                 result.completed_at = datetime.now().isoformat()
                 result.total_time_seconds = time.time() - start_time
-                result.metadata = self.cache.get_metadata(model_name, yolo_version, task)
+                result.metadata = self.cache.get_metadata(
+                    model_name, yolo_version, task, target_device=td
+                )
                 logger.info("Using cached HEF file")
                 return result
 
@@ -332,7 +341,9 @@ class ModelConversionPipeline:
             result.success = True
             result.completed_at = datetime.now().isoformat()
             result.total_time_seconds = time.time() - start_time
-            result.metadata = self.cache.get_metadata(model_name, yolo_version, task)
+            result.metadata = self.cache.get_metadata(
+                model_name, yolo_version, task, target_device=config.target_device
+            )
 
             logger.info(f"Conversion completed successfully in {result.total_time_seconds:.1f}s")
             logger.info(f"  ONNX: {result.onnx_time_seconds:.1f}s")
@@ -410,6 +421,7 @@ class ModelConversionPipeline:
                 yolo_version=yolo_version,
                 task=task,
                 config=onnx_config,
+                target_device=config.target_device,
                 force=config.force_recompile and not config.skip_onnx,
             )
             logger.info(f"  ONNX exported: {onnx_path}")
@@ -621,7 +633,8 @@ class ModelConversionPipeline:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
-        target_device: str = "hailo8l",
+        *,
+        target_device: str,
         input_resolution: int = 640,
     ) -> Optional[Path]:
         """Get cached HEF if available and valid.
@@ -630,7 +643,8 @@ class ModelConversionPipeline:
             model_name: Model name
             yolo_version: YOLO version
             task: Task type
-            target_device: Target device
+            target_device: Target Hailo arch (required keyword-only —
+                same source model produces different HEFs per arch).
             input_resolution: Input resolution
 
         Returns:
@@ -641,7 +655,9 @@ class ModelConversionPipeline:
             target_device=target_device,
             input_resolution=input_resolution,
         ):
-            return self.cache.get_hef_path(model_name, yolo_version, task)
+            return self.cache.get_hef_path(
+                model_name, yolo_version, task, target_device=target_device
+            )
         return None
 
     def clear_cache(
@@ -649,16 +665,32 @@ class ModelConversionPipeline:
         model_name: Optional[str] = None,
         yolo_version: Optional[str] = None,
         task: Optional[YOLOTask] = None,
+        *,
+        target_device: Optional[str] = None,
     ) -> None:
         """Clear cached artifacts.
+
+        Pass model_name + yolo_version + task + target_device together
+        to clear one (model, arch); pass nothing to clear everything.
+        Partial specifications (e.g. model without arch) raise.
 
         Args:
             model_name: Model name (None to clear all)
             yolo_version: YOLO version
             task: Task type
+            target_device: Target Hailo arch — required when clearing
+                a specific (model, version, task).
         """
         if model_name and yolo_version and task:
-            self.cache.clear_cache(model_name, yolo_version, task)
+            if target_device is None:
+                raise ValueError(
+                    "clear_cache requires target_device when clearing a "
+                    "specific (model, version, task) — same model has a "
+                    "separate cache entry per arch."
+                )
+            self.cache.clear_cache(
+                model_name, yolo_version, task, target_device=target_device
+            )
         else:
             self.cache.clear_all()
 

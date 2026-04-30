@@ -31,6 +31,19 @@ v26 entries clear the conversion + postprocessor pipeline but lack public
 Hailo Model Zoo backing; hardware verification (the HW-verify runners
 below) is what moves them from experimental to verified.
 
+**HEF availability** (separate from postprocessor coverage above) lives
+in `resources/hefs/`. As of 2026-04-30, 19 HEFs are staged across the
+two arches:
+
+- **Hailo-8** (14): v8 det n/s/m/l/x, v11 det n/s/m, v8 seg n/s/m,
+  v8 pose s/m, v11 pose n.
+- **Hailo-10H** (5): v8 det n/s, v11 det n, v11 seg n, v11 pose n.
+
+OBB across all versions, v8 pose at size n, v11 seg on Hailo-8 (chip-
+side capacity miss — h10h-only), and all v26 task variants are not
+yet staged. See `resources/hefs/NAMING.txt` for the full inventory and
+`docs/compilation/pitfalls.md` § 10-11 for the gating issues.
+
 ### Supported Platforms
 
 | Platform | Accelerator | NPU TOPS | Host RAM | NPU RAM |

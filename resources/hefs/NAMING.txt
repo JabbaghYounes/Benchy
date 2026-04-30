@@ -75,28 +75,43 @@ Currently staged in this directory:
     v8_pose_s_hailo8.hef            <- yolov8s_pose.hef   (Zoo)
     v8_pose_m_hailo8.hef            <- yolov8m_pose.hef   (Zoo)
     v11_pose_n_hailo8.hef           <- yolo11n-pose.pt    (workstation, 2026-04-29)
+    v8_obb_n_hailo8.hef             <- yolov8n-obb.pt     (workstation, 2026-04-30)
+    v11_obb_n_hailo8.hef            <- yolo11n-obb.pt     (workstation, 2026-04-30)
+    v26_obb_n_hailo8.hef            <- yolo26n-obb.pt     (workstation, 2026-04-30)
+    v26_pose_n_hailo8.hef           <- yolo26n-pose.pt    (workstation, 2026-04-30)
 
-  Hailo-10H (workstation-compiled, 2026-04-29):
+  Hailo-10H (workstation-compiled, 2026-04-29 / 2026-04-30):
     v8_detection_n_hailo10h.hef     <- yolov8n.pt
     v8_detection_s_hailo10h.hef     <- yolov8s.pt
     v11_detection_n_hailo10h.hef    <- yolo11n.pt
     v11_segmentation_n_hailo10h.hef <- yolo11n-seg.pt
     v11_pose_n_hailo10h.hef         <- yolo11n-pose.pt
+    v8_obb_n_hailo10h.hef           <- yolov8n-obb.pt
+    v11_obb_n_hailo10h.hef          <- yolo11n-obb.pt
+    v26_obb_n_hailo10h.hef          <- yolo26n-obb.pt
+    v26_segmentation_n_hailo10h.hef <- yolo26n-seg.pt
+    v26_pose_n_hailo10h.hef         <- yolo26n-pose.pt
 
-Notes / coverage gaps as of 2026-04-30:
-- The Model Zoo does NOT publish OBB HEFs for any YOLO version. To run
-  the verify suite's OBB steps you'll need to compile from .pt on a
-  workstation and drop the resulting .hef here. As of 2026-04-30 OBB
-  compiles still fail at HAR generation — the END_NODE_TABLE in
-  benchmark/workloads/yolo/conversion/har_generator.py needs OBB
-  entries derived from ONNX inspection. See pitfalls.md § 10.
+Notes / coverage gaps as of 2026-04-30 (post-retry sweep):
+- The Model Zoo does NOT publish OBB HEFs for any YOLO version, but
+  workstation-compiled HEFs cover v8, v11, and v26 OBB at size 'n'
+  on both arches as of the 2026-04-30 retry sweep. See
+  resources/session_notes_2026-04-29_nvidia_workstation.md
+  "Retry sweep" for the END_NODE_TABLE additions that unblocked them.
 - The Model Zoo does NOT publish pose at the 'n' size — only 's' and
-  'm'. We now stage v11_pose_n_hailo8.hef (workstation compile).
-  v8_pose_n_hailo8.hef is still missing; the verify script falls back
-  to yolov8s-pose.pt for that step.
-- v11 segmentation does not fit Hailo-8's compute budget regardless of
-  compile flags — it is hailo10h-only. See pitfalls.md § 11.
-- The Model Zoo does not publish any v26 task variants for either
-  arch. v26 detection has a Zoo YAML (parser.nodes); v26 seg/pose/obb
-  have no public reference and need ONNX-inspection-derived
-  END_NODE_TABLE entries.
+  'm'. We stage v11_pose_n_hailo8.hef and v26_pose_n_hailo8.hef from
+  workstation. v8_pose_n_hailo8.hef is still missing; the verify
+  script falls back to yolov8s-pose.pt for that step.
+- v11 segmentation does not fit Hailo-8's compute budget regardless
+  of compile flags — hailo10h-only. See pitfalls.md § 11.
+- v26 segmentation does not fit Hailo-8 without per-layer
+  precision_mode overrides (the v26-detection ALLS pattern).
+  Compiles fine on hailo10h. Step (b) candidate; see session notes.
+  See pitfalls.md § 12.
+- v26 detection on hailo10h is NOT supported by Hailo's own YAML
+  (yolo26n.yaml declares supported_hw_arch: [hailo8, hailo8l]).
+  Skip; not a tooling bug. See pitfalls.md § 13.
+- Classification is the only remaining task family with no
+  END_NODE_TABLE entry (v8/v11/v26 cls). No workstation HEFs at
+  size 'n' for cls; the runtime falls back to other backends if
+  asked.

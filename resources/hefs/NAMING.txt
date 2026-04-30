@@ -58,21 +58,45 @@ yolov8s_pose.hef). Browse the available HEFs at:
     docs/public_models/HAILO8/HAILO8_instance_segmentation.rst
     docs/public_models/HAILO8/HAILO8_pose_estimation.rst
 
-Currently staged in this directory (Hailo-8, v2.16.0):
+Currently staged in this directory:
 
-    v8_detection_n_hailo8.hef       <- yolov8n.hef
-    v8_segmentation_n_hailo8.hef    <- yolov8n_seg.hef
-    v8_pose_s_hailo8.hef            <- yolov8s_pose.hef
-    v11_detection_n_hailo8.hef      <- yolov11n.hef
+  Hailo-8 (Model Zoo v2.16.0 + workstation-compiled):
+    v8_detection_n_hailo8.hef       <- yolov8n.hef        (Zoo)
+    v8_detection_s_hailo8.hef       <- yolov8s.hef        (Zoo)
+    v8_detection_m_hailo8.hef       <- yolov8m.hef        (Zoo)
+    v8_detection_l_hailo8.hef       <- yolov8l.hef        (Zoo)
+    v8_detection_x_hailo8.hef       <- yolov8x.hef        (Zoo)
+    v11_detection_n_hailo8.hef      <- yolov11n.hef       (Zoo)
+    v11_detection_s_hailo8.hef      <- yolov11s.hef       (Zoo)
+    v11_detection_m_hailo8.hef      <- yolov11m.hef       (Zoo)
+    v8_segmentation_n_hailo8.hef    <- yolov8n_seg.hef    (Zoo)
+    v8_segmentation_s_hailo8.hef    <- yolov8s_seg.hef    (Zoo)
+    v8_segmentation_m_hailo8.hef    <- yolov8m_seg.hef    (Zoo)
+    v8_pose_s_hailo8.hef            <- yolov8s_pose.hef   (Zoo)
+    v8_pose_m_hailo8.hef            <- yolov8m_pose.hef   (Zoo)
+    v11_pose_n_hailo8.hef           <- yolo11n-pose.pt    (workstation, 2026-04-29)
 
-Notes / coverage gaps as of 2026-04-28:
+  Hailo-10H (workstation-compiled, 2026-04-29):
+    v8_detection_n_hailo10h.hef     <- yolov8n.pt
+    v8_detection_s_hailo10h.hef     <- yolov8s.pt
+    v11_detection_n_hailo10h.hef    <- yolo11n.pt
+    v11_segmentation_n_hailo10h.hef <- yolo11n-seg.pt
+    v11_pose_n_hailo10h.hef         <- yolo11n-pose.pt
+
+Notes / coverage gaps as of 2026-04-30:
 - The Model Zoo does NOT publish OBB HEFs for any YOLO version. To run
   the verify suite's OBB steps you'll need to compile from .pt on a
-  workstation and drop the resulting .hef here.
+  workstation and drop the resulting .hef here. As of 2026-04-30 OBB
+  compiles still fail at HAR generation — the END_NODE_TABLE in
+  benchmark/workloads/yolo/conversion/har_generator.py needs OBB
+  entries derived from ONNX inspection. See pitfalls.md § 10.
 - The Model Zoo does NOT publish pose at the 'n' size — only 's' and
-  'm'. The verify suite asks for v8-pose at size 'n', so the pose step
-  fails to resolve until either the verify script switches to
-  yolov8s-pose.pt or a workstation-compiled v8_pose_n_hailo8.hef is
-  staged.
-- The Model Zoo does not publish v11 segmentation / pose / OBB or
-  any v26 task variants for Hailo-8.
+  'm'. We now stage v11_pose_n_hailo8.hef (workstation compile).
+  v8_pose_n_hailo8.hef is still missing; the verify script falls back
+  to yolov8s-pose.pt for that step.
+- v11 segmentation does not fit Hailo-8's compute budget regardless of
+  compile flags — it is hailo10h-only. See pitfalls.md § 11.
+- The Model Zoo does not publish any v26 task variants for either
+  arch. v26 detection has a Zoo YAML (parser.nodes); v26 seg/pose/obb
+  have no public reference and need ONNX-inspection-derived
+  END_NODE_TABLE entries.

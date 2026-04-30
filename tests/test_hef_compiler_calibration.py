@@ -58,6 +58,9 @@ def fake_hailo_sdk(monkeypatch):
             captured["har"] = har
             captured["hw_arch"] = hw_arch
 
+        def load_model_script(self, script):
+            captured["model_script"] = script
+
         def optimize(self, calib_data, *args, **kwargs):
             captured["optimize_called_with"] = calib_data
 

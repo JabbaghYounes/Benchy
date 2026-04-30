@@ -297,6 +297,40 @@ class HEFCompiler:
         logger.info("Running model optimization...")
         logger.info(f"  Using {calib_data.shape[0]} calibration samples")
 
+        # Build a model script (ALLS) so the runner picks the
+        # optimization flavor we want instead of the SDK defaults.
+        # The SDK's optimization_level cases in mo_config.py are
+        # MUTUALLY EXCLUSIVE: level 1 enables bias_correction, level 2
+        # enables finetune (QAT) but NOT bias_correction, level 3/4 add
+        # adaround. Without bias_correction the seg/pose/OBB heads keep
+        # 16-bit L2 biases and chip mapping fails on Hailo-8 with
+        # "DW resources calculation failed for 16bit L2 biases / 16x4
+        # not supported in activation2".
+        #
+        # The fix: pick the flavor (drives finetune/adaround) AND
+        # explicitly enable bias_correction on top via the ALLS command
+        # post_quantization_optimization(bias_correction, policy=enabled).
+        # The PostQuantizationFeature enum (acceleras_definitions.py)
+        # lists the valid feature names: bias_correction, train_encoding,
+        # finetune, adaround, block_round_training, mix_precision_search.
+        script_lines = [
+            f"model_optimization_flavor("
+            f"optimization_level={config.optimization_level}, "
+            f"compression_level={config.compression_level})",
+        ]
+        if config.optimization_level >= 1:
+            # Force bias_correction on at every level >= 1. At level 1
+            # it's already on; at level 2/3/4 the flavor's elif would
+            # otherwise leave it off.
+            script_lines.append(
+                "post_quantization_optimization(bias_correction, policy=enabled)"
+            )
+        model_script = "\n".join(script_lines) + "\n"
+        logger.info("Loading model script:")
+        for line in script_lines:
+            logger.info(f"  {line}")
+        runner.load_model_script(model_script)
+
         try:
             # Optimize the model (includes quantization)
             runner.optimize(calib_data)

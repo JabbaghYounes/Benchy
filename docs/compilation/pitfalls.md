@@ -222,6 +222,56 @@ honest answer is "use v8 segmentation instead, or upgrade to AI HAT+
 `model_optimization_config(...)` is theoretically possible but
 unlikely to recover enough budget — left as a speculative experiment.
 
+## 12. `yolo26n-seg / hailo8` needs per-layer precision overrides
+
+Verified 2026-04-30 retry sweep: with `END_NODE_TABLE` entries in
+place (v26 head naming uses `one2one_cv*` prefixes), v26 OBB and
+v26 pose compile cleanly on Hailo-8, but v26 segmentation fails at
+mapping after ~60 min:
+
+```
+concat23 errors: ... format_conversion13_sd48 has 2 APUs but max
+allowed is 1
+```
+
+This is a chip-resource-allocation conflict — exactly the failure
+mode that Hailo's official `yolo26n.alls` solves with per-layer
+`quantization_param([...], precision_mode=a16_w16)` overrides on
+the few specific layers that don't fit at 8-bit (`dw1, dw6, dw7,
+dw8`, `conv61, conv77, conv91, conv64, conv80, conv94`,
+`output_layer1..6`). Without an authoritative reference for the
+v26-seg layer set, the fix requires generalising the model-script
+emission in `hef_compiler.py` to accept per-(version, task)
+`quantization_param` overrides, then iteratively compiling +
+reading the mapper's "X has 2 APUs but max allowed is 1" line +
+adding X to a `quantization_param` override.
+
+The v26-detection layer set is a useful starting point (many
+overlapping layers). Estimate: 1–3 h of compile-iterate cycles
+yields one HEF (`v26_segmentation_n_hailo8.hef`). Compiles fine
+on Hailo-10H without overrides — the more capable chip has the
+headroom v26-seg needs. Documented as Step (b) in the 2026-04-29
+NVIDIA session notes' "Outstanding" section.
+
+## 13. `yolo26n` detection on Hailo-10H is unsupported by Hailo's own YAML
+
+`hailo_model_zoo/cfg/networks/yolo26n.yaml` (the only v26 task
+with a published Hailo Model Zoo YAML) declares:
+
+```yaml
+supported_hw_arch: [hailo8, hailo8l]
+```
+
+Hailo's own definition excludes Hailo-10H. Compiling
+`--hw-arch hailo10h --model yolo26n.pt` will fail at mapping with
+something like `format_conversion13 errors`; this is intended by
+Hailo, not a tooling bug. v26 seg/pose/obb on Hailo-10H work fine
+(verified 2026-04-30) — only the plain detection variant is
+out-of-policy. If you need v26 detection on the AI HAT+ 2 Pi:
+either wait for Hailo to broaden support (unlikely soon), use v11
+detection instead (similar accuracy in the n size), or fall back
+to the Hailo-8 / 8L Pi for v26 detection specifically.
+
 ## Verify-before-commit checklist
 
 Before adding any `.hef` to the repo:

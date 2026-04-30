@@ -6,16 +6,20 @@
 
 ## Outcome
 
-Setup validated, then full sweep run end-to-end. Six fresh HEFs landed in `resources/hefs/` (in addition to the two `/tmp/` sanity HEFs that proved the path).
+Setup validated, full sweep run, and a follow-up retry sweep with corrected `END_NODE_TABLE` for OBB and v26 — **fifteen fresh HEFs landed in `resources/hefs/`** by end of session. Only three failures remained, each understood:
 
-**Sweep totals:** 6 / 18 attempted compiles succeeded.
+- `yolo11n-seg / hailo8` — chip-side FPS budget; not end-node related (compiles fine on h10h)
+- `yolo26n-seg / hailo8` — needs per-layer `quantization_param` precision_mode overrides; deferred
+- `yolo26n det / hailo10h` — Hailo's own `yolo26n.yaml` flags `supported_hw_arch: [hailo8, hailo8l]` only; not a tooling bug
 
-| Architecture | Pass | Fail | Wall time |
+### Per-arch totals after retry
+
+| Architecture | Pass | Fail | Combined wall time |
 |---|---|---|---|
-| hailo8 | 1 / 7 | 6 | 82 min |
-| hailo10h | 5 / 11 | 6 | 134 min |
+| hailo8 | 5 / 7 gap models | 2 | 82 + 101 = 183 min |
+| hailo10h | 10 / 11 sweep models | 1 | 134 + 103 = 237 min |
 
-The 6 staged HEFs:
+### The 15 staged HEFs
 
 | Filename | Source model | Size |
 |---|---|---|
@@ -25,10 +29,17 @@ The 6 staged HEFs:
 | `v8_detection_n_hailo10h.hef` | yolov8n | 4.1 MB |
 | `v8_detection_s_hailo10h.hef` | yolov8s | 12 MB |
 | `v11_detection_n_hailo10h.hef` | yolo11n | 3.8 MB |
+| `v8_obb_n_hailo8.hef` | yolov8n-obb | 7.3 MB |
+| `v11_obb_n_hailo8.hef` | yolo11n-obb | 7.7 MB |
+| `v26_obb_n_hailo8.hef` | yolo26n-obb | 7.9 MB |
+| `v26_pose_n_hailo8.hef` | yolo26n-pose | 9.9 MB |
+| `v8_obb_n_hailo10h.hef` | yolov8n-obb | 3.9 MB |
+| `v11_obb_n_hailo10h.hef` | yolo11n-obb | 4.1 MB |
+| `v26_obb_n_hailo10h.hef` | yolo26n-obb | 4.2 MB |
+| `v26_segmentation_n_hailo10h.hef` | yolo26n-seg | 4.7 MB |
+| `v26_pose_n_hailo10h.hef` | yolo26n-pose | 4.8 MB |
 
-The 12 failures are all explained by either missing `END_NODE_TABLE` entries (OBB family across all three versions; v26 family across all four tasks) or a chip-side capability limit (yolo11n-seg on hailo8 — succeeded on hailo10h). No unexplained failures, no broken tooling. Detail in §"Step-9 sweep results" below.
-
-The setup doc + repo code had several gaps that blocked compilation. Six code changes and several setup-procedure additions were required to actually produce a HEF. Details below. **Step 9 done with the caveats above; Step 10 (commit + push) pending.**
+The setup doc + repo code had several gaps that blocked compilation. Code changes spanning five files and several setup-procedure additions were required. Details below. **Step 9 done. Step 10 (commit + push) is the AMD-workstation follow-up.**
 
 ## Setup procedure as actually executed
 
@@ -290,6 +301,78 @@ Both sweeps used `--calibration-data-path ~/Documents/datasets/coco-val/images/v
 
 H10h sweep's first attempt stopped after 2 "PASS" results — yolo11n-seg (correctly already-staged) and yolo11n-pose ("PASS in 12 seconds", which doesn't compile). md5 audit revealed the latter HEF was identical to `v11_pose_n_hailo8.hef`. See Issue 9 for the root cause (arch-blind cache key) and the recovery (delete bogus HEF, clear `models/hailo/`, restart). The second attempt — which is the run summarised above — was clean.
 
+## Retry sweep (after END_NODE_TABLE expansion)
+
+Once the original sweep highlighted that all OBB and v26 failures were missing-entry cases, the next move was direct: derive the entries by inspecting the failed-model ONNX files (already exported into `models/hailo/v*/<task>/<model>/model.onnx` by the original sweeps) and consulting the Hailo Model Zoo YAMLs.
+
+### Investigation method
+
+For each failed (version, task), one Python query against the corresponding ONNX:
+
+```python
+import onnx
+m = onnx.load(path)
+# Find Cos/Sin (OBB-specific angle decoders we must truncate before)
+[n.name for n in m.graph.node if n.op_type in ("Cos", "Sin")]
+# Find head Conv outputs at /model.22 (v8) or /model.23 (v11/v26)
+[n.name for n in m.graph.node if n.op_type == "Conv" and "/model.22/" in n.name or "/model.23/" in n.name]
+```
+
+Plus, for cross-checking: `hailo_model_zoo/cfg/networks/yolo26n.yaml` (= the **only** v26 task with a published Hailo Model Zoo YAML, namely v26 detection) and `hailo_model_zoo/cfg/alls/generic/yolo26n.alls`.
+
+### Discoveries from the investigation
+
+- **v26 head naming is different.** v8/v11 use bare `cv2.X.X.2/Conv` / `cv3.X.X.2/Conv` / `cv4.X.X.2/Conv`. v26 prefixes everything with `one2one_` (the one-to-one matching head Ultralytics introduced in v26): `one2one_cv2.X.X.2/Conv`, etc. v26 pose specifically uses a flatter `one2one_cv4_kpts.X/Conv` layout for the keypoint branch (no nested `.X.0/.0.2`).
+- **v26 detection has explicit per-layer precision overrides in the official ALLS:**
+  ```
+  quantization_param([dw1, dw6, dw7, dw8], precision_mode=a16_w16)
+  quantization_param([conv61, conv77, conv91, conv64, conv80, conv94], precision_mode=a16_w16)
+  quantization_param([output_layer1, output_layer2, output_layer3, output_layer4, output_layer5, output_layer6], precision_mode=a16_w16)
+  ```
+  Plus `optimization_level=4, compression_level=0` and `post_quantization_optimization(adaround, policy=enabled, batch_size=8)`. This is how Hailo's official compile makes v26 fit on hailo8 — without these per-layer overrides, end-node truncation alone may not be sufficient. Captured here for future "Issue 12 / step b" work.
+- **Hailo OBB cuts before `/model.X/Cos` and `/model.X/Sin`.** The Cos and Sin operators are the angle-decode entry; everything after is host-side per `_process_obb` / `_rotated_nms` in `postprocessing.py`.
+
+### `END_NODE_TABLE` additions
+
+Six new entries (full bodies in `har_generator.py`):
+
+| Entry | Nodes | Source |
+|---|---|---|
+| `(v8, OBB)` | 9 (cv2/cv3/cv4 × 3 scales) | yolov8n-obb ONNX inspection; analogous to v8 seg layout |
+| `(v11, OBB)` | 9 (cv2/cv3/cv4 × 3, head `/model.23`) | yolo11n-obb ONNX inspection |
+| `(v26, DETECTION)` | 6 (one2one_cv2/cv3) | `yolo26.yaml` parser.nodes verbatim |
+| `(v26, SEGMENTATION)` | 10 (9 head + `/model.23/proto/cv3/act/Mul`) | yolo26n-seg ONNX inspection |
+| `(v26, POSE)` | 9 (cv2 + cv3 + cv4_kpts) | yolo26n-pose ONNX inspection (note flat cv4_kpts.X/Conv) |
+| `(v26, OBB)` | 9 (one2one_cv2/cv3/cv4) | yolo26n-obb ONNX inspection |
+
+### Retry sweep results
+
+H8 retry — 5 previously-failed models with `--models` filter, fresh `models/hailo` cache:
+
+| Model | Result | Notes |
+|---|---|---|
+| **yolov8n-obb** | ✅ | first OBB ever to compile in this repo. ~13 min. |
+| **yolo11n-obb** | ✅ | ~19 min. |
+| **yolo26n-obb** | ✅ | ~20 min. v26 OBB worked without precision overrides (surprising but welcome). |
+| yolo26n-seg | ❌ | failed at mapping after ~60 min. `concat23 errors` — the only non-OBB v26 task that could not fit on hailo8 without precision_mode tweaks. Step (b) candidate. |
+| **yolo26n-pose** | ✅ | ~19 min. |
+
+H10h retry — same 5 models. **First attempt stopped early** because of the cache-key bug (Issue 9) recurring: 3 OBB models "PASSed" in 10 seconds each, all md5-identical to the h8 HEFs that the previous sweep had just populated into `models/hailo/`. Killed, deleted the 3 bogus h10h HEFs, cleared `models/hailo` again, restarted. Second attempt was clean:
+
+| Model | Result | Notes |
+|---|---|---|
+| **yolov8n-obb** | ✅ | ~15 min, `Successful Compilation (duration: 6m 24s)`. |
+| **yolo11n-obb** | ✅ | ~20 min. |
+| **yolo26n-obb** | ✅ | ~20 min. |
+| **yolo26n-seg** | ✅ | h10h's chip headroom evidently enough to fit v26 seg without precision overrides — the same model that just failed on h8. |
+| **yolo26n-pose** | ✅ | ~24 min. |
+
+**Retry totals: h8 4/5, h10h 5/5. Combined: 9/10.**
+
+### Working theory on remaining v26-seg / hailo8 failure
+
+The h8 mapping log showed `concat23 errors: ... format_conversion13_sd48 has 2 APUs but max allowed is 1`. This is a chip-resource-allocation conflict, the kind that the v26-detection ALLS solves with per-layer `precision_mode=a16_w16` (forcing 16-bit on a few specific layers so that the rest fit at 8-bit). Without an authoritative reference for the v26-seg layer set, fixing this requires the iterative pattern: compile, read which layer the allocator complains about, add it to a `quantization_param` override, recompile. Documented for the next session as step (b).
+
 ## Recommendations for `docs/compilation/nvidia_workstation_setup.md`
 
 The doc was the right shape but missed concrete steps. Suggested additions:
@@ -304,21 +387,21 @@ The doc was the right shape but missed concrete steps. Suggested additions:
 
 ## Outstanding / proposed next steps
 
-The plan from this point forward goes back through the AMD workstation, which has the writable git remote — node01 is air-gapped from the repo. Specifically: zip the project tree on node01 (excluding venvs, build caches, and the EULA-gated wheels), `scp` it back to the local workstation, then merge on the AMD box. After that, steps 1–4 below.
+The path forward goes back through the AMD workstation, which has the writable git remote — node01 is air-gapped from the repo. Zip the project tree on node01 (excluding venvs, build caches, and the EULA-gated wheels), `scp` it back to the local workstation, then merge on AMD. After that, steps 1–5 below.
 
 1. **Step 10 — Commit + push** (on AMD workstation, not node01). Apply commits in this order so each is reviewable in isolation:
    - (a) `nvidia_workstation_setup.md` rewrite incorporating the seven recommendations above (deadsnakes, CUDA-extras, NCCL-restore, bias_correction force, end-node guidance, pytest baseline, troubleshooting bullet for `16x4 not supported`).
    - (b) `--compression-level` CLI flag + `compression_level` field threaded through cli → pipeline → hef_compiler.
    - (c) ALLS model-script emission in `hef_compiler.py` (with the `post_quantization_optimization(bias_correction, policy=enabled)` workaround for the mutually-exclusive flavor levels).
-   - (d) `END_NODE_TABLE` correction in `har_generator.py` (raw Conv outputs from Hailo Model Zoo YAMLs, not deep post-processing layers).
-   - (e) Sweep HEFs (one commit, ~37 MB total): the 6 new files in `resources/hefs/`.
+   - (d) `END_NODE_TABLE` correction + expansion in `har_generator.py` (raw Conv outputs from Hailo Model Zoo YAMLs for v8/v11; ONNX-inspected analogues for OBB family and v26). 11 entries now (was 4 originally; corrected 4 + added 6 new + verified 1).
+   - (e) Sweep HEFs (one commit, ~95 MB total across 15 files): all the new entries in `resources/hefs/` from this session — `v11_pose_n_hailo8.hef`, `v8_obb_n_hailo8.hef`, `v11_obb_n_hailo8.hef`, `v26_obb_n_hailo8.hef`, `v26_pose_n_hailo8.hef`, plus 10 hailo10h HEFs.
    - (f) `session_notes_2026-04-29_nvidia_workstation.md` itself, dropped into `resources/` alongside the existing 2026-04-27 notes.
-2. **Cache-key arch fix** (Issue 9). Refactor `cache.get_hef_path` to include `hw_arch`, and the on-disk path to be `models/hailo/<arch>/...`. Update callers in `hef_compiler.py` and `pipeline.py`. This unblocks running multi-arch sweeps without manual cache clearing between them. Add a regression test that compiles the same model twice (once per arch) and asserts the two staged HEFs differ in md5.
-3. **Add OBB and v26 `END_NODE_TABLE` entries, retry the failures.** This is the highest-value follow-up — 4 of 12 failures (v8n-obb, v11n-obb, on both h8 and h10h) likely become passes once the OBB entries are correct. Procedure:
-   - Export each `.pt` to `.onnx` (via the existing `onnx_export.py` path); read the head-module structure with `onnx.load` + `[n.name for n in m.graph.node]`.
-   - For OBB, identify the angle-decode tail (Cos/Sin operands) and pick end-nodes one or two layers earlier. Cross-check against `_process_obb` in `postprocessing.py`.
-   - For v26 detection, copy `parser.nodes` from `hailo_model_zoo/cfg/networks/yolo26n.yaml` directly.
-   - For v26 seg/pose/obb, derive by analogy with v11 + ONNX inspection — no published reference.
-   - Once entries are in, rerun just the failed models with `--models <list>` to avoid re-compiling the working ones.
-4. **Delete or supersede `docs/compilation/end_node_truncation_plan.md`.** Its premise ("truncation is next-session work") is now wrong — the truncation infrastructure is wired and the table is partially populated. The plan also speculated that the deep post-processing layers (Sigmoid/Concat) are the right cut points; we now know they're the wrong cut points. Replacing the file with a short pointer to `har_generator.py:END_NODE_TABLE` and to this session's notes would be more useful than leaving it as-is.
-5. **(Optional) Try yolo11n-seg / hailo8 with `model_optimization_config(...)` setting a lower FPS target.** Speculative; the chip likely cannot fit it regardless. If confirmed unfittable, document in `pitfalls.md` so future attempts are short-circuited.
+2. **Cache-key arch fix** (Issue 9). Refactor `cache.get_cache_path` and `CacheManager.get_model_cache_path` to include `target_device` in the on-disk path: `models/hailo/<arch>/<version>/<task>/<model>/`. Update the ~20 call sites across `pipeline.py`, `hef_compiler.py`, `har_generator.py`, `onnx_export.py`. Add a regression test that compiles the same model twice (once per arch) and asserts the two staged HEFs differ in md5. Until this lands, **always clear `models/hailo/` between architectures** — we hit the bug twice in this session and burned ~30 min on phantom passes.
+3. **Step (b): per-layer precision_mode infrastructure for v26-seg / hailo8.** The one remaining h8 gap. Plan:
+   - Generalise the model-script emission in `hef_compiler.py` to accept per-(version, task) `quantization_param` overrides (mirrors what the v26 detection ALLS does).
+   - Iterative compile-debug: run the failing v26-seg/h8, read the mapper's `format_conversion13_sd48 has 2 APUs but max allowed is 1` line, add `quantization_param([format_conversion13], precision_mode=a16_w16)`, retry. Continue until mapping succeeds.
+   - Useful starting point: copy the v26-detection layer set (`dw1, dw6, dw7, dw8`, `conv61, conv77, conv91, conv64, conv80, conv94`, `output_layer1..6`) and adapt — many will overlap.
+   - Estimate: 1–3 h of compile-iterate cycles. Yields one HEF (`v26_segmentation_n_hailo8.hef`).
+4. **Delete or supersede `docs/compilation/end_node_truncation_plan.md`.** Its premise ("truncation is next-session work") is now done — the truncation infrastructure is wired and the table is fully populated for v8/v11/v26 across det/seg/pose/obb. The plan also speculated that the deep post-processing layers (Sigmoid/Concat) are the right cut points; we now know they're the wrong cut points. Replace with a one-page pointer to `har_generator.py:END_NODE_TABLE` and to this session's notes.
+5. **(Skip) yolo11n-seg / hailo8.** Confirmed chip-side FPS budget — six minutes of mapping then `Failed to reach required FPS on the following layers`. Compiles fine on h10h. Document in `pitfalls.md` so future attempts are short-circuited; do not try precision overrides (won't help — the issue is whole-graph compute capacity, not per-layer precision).
+6. **(Skip) yolo26n / hailo10h.** Hailo's `yolo26n.yaml` declares `supported_hw_arch: [hailo8, hailo8l]`. Failure here is intended by Hailo's own definition. Document.

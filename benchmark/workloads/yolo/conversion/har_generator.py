@@ -45,37 +45,84 @@ logger = logging.getLogger(__name__)
 #          print([n.name for n in m.graph.node])"
 #   3. Update the row below; bump tests/test_har_generator.py if needed.
 END_NODE_TABLE: dict = {
-    # YOLOv8 detection — three end-nodes feed the host-side
-    # _process_detection (Concat for raw boxes, Sigmoid_1 for class
-    # scores, Mul for the DFL-decoded box deltas).
+    # The lists below mirror what the Hailo Model Zoo's per-network
+    # YAMLs put under `parser.nodes` for v8/v11 networks (see
+    # venv-compile-*/lib/python3.10/site-packages/hailo_model_zoo/cfg/
+    # networks/<name>.yaml). The model-zoo names predate our table:
+    # truncating at the deeper post-processing layers
+    # (Concat / Sigmoid_1 / Mul) gets past HAR generation but produces
+    # subgraphs whose seg/pose heads carry 16-bit L2 biases that Hailo-8
+    # mapping can't fit ("16x4 not supported in activation1/2 / Agent
+    # infeasible"). Cutting at the raw Conv outputs and leaving the
+    # sigmoid+softmax / DFL decode to the host postprocessor is the
+    # contract Hailo's official prebuilds use, and what
+    # benchmark/workloads/yolo/postprocessing.py is already shaped for.
+    #
+    # YOLOv8 detection — head module is /model.22.
     ("v8", YOLOTask.DETECTION): [
-        "/model.22/Concat",
-        "/model.22/Sigmoid_1",
-        "/model.22/Mul",
+        "/model.22/cv2.0/cv2.0.2/Conv",
+        "/model.22/cv3.0/cv3.0.2/Conv",
+        "/model.22/cv2.1/cv2.1.2/Conv",
+        "/model.22/cv3.1/cv3.1.2/Conv",
+        "/model.22/cv2.2/cv2.2.2/Conv",
+        "/model.22/cv3.2/cv3.2.2/Conv",
     ],
-    # YOLOv11 detection — same head shape, head module is .23.
+    # YOLOv8 segmentation — copied verbatim from yolov8n_seg.yaml in
+    # the Hailo Model Zoo. Adds three mask-coefficient convs (cv4.*)
+    # per scale plus the prototype mask branch.
+    ("v8", YOLOTask.SEGMENTATION): [
+        "/model.22/cv2.0/cv2.0.2/Conv",
+        "/model.22/cv3.0/cv3.0.2/Conv",
+        "/model.22/cv4.0/cv4.0.2/Conv",
+        "/model.22/cv2.1/cv2.1.2/Conv",
+        "/model.22/cv3.1/cv3.1.2/Conv",
+        "/model.22/cv4.1/cv4.1.2/Conv",
+        "/model.22/cv2.2/cv2.2.2/Conv",
+        "/model.22/cv3.2/cv3.2.2/Conv",
+        "/model.22/cv4.2/cv4.2.2/Conv",
+        "/model.22/proto/cv3/act/Mul",
+    ],
+    # YOLOv11 detection — verbatim from yolov11n.yaml.
     ("v11", YOLOTask.DETECTION): [
-        "/model.23/Concat",
-        "/model.23/Sigmoid_1",
-        "/model.23/Mul",
+        "/model.23/cv2.0/cv2.0.2/Conv",
+        "/model.23/cv3.0/cv3.0.2/Conv",
+        "/model.23/cv2.1/cv2.1.2/Conv",
+        "/model.23/cv3.1/cv3.1.2/Conv",
+        "/model.23/cv2.2/cv2.2.2/Conv",
+        "/model.23/cv3.2/cv3.2.2/Conv",
     ],
-    # YOLOv11 segmentation — four end-nodes: detection trio plus the
-    # mask prototype tensor (proto/cv3/act/Mul). _process_segmentation /
-    # _generate_seg_masks consume these.
+    # YOLOv11 segmentation — no Hailo Model Zoo YAML exists for
+    # v11-seg (it's a gap model — that's why we're compiling it). The
+    # entries below are derived by analogy with v8-seg: same shape, head
+    # module shifted from /model.22 to /model.23. Verify the cv4.*
+    # mask-coefficient branch survived in the v11 head before relying
+    # on this for production HEFs.
     ("v11", YOLOTask.SEGMENTATION): [
-        "/model.23/Sigmoid",
-        "/model.23/Concat_2",
+        "/model.23/cv2.0/cv2.0.2/Conv",
+        "/model.23/cv3.0/cv3.0.2/Conv",
+        "/model.23/cv4.0/cv4.0.2/Conv",
+        "/model.23/cv2.1/cv2.1.2/Conv",
+        "/model.23/cv3.1/cv3.1.2/Conv",
+        "/model.23/cv4.1/cv4.1.2/Conv",
+        "/model.23/cv2.2/cv2.2.2/Conv",
+        "/model.23/cv3.2/cv3.2.2/Conv",
+        "/model.23/cv4.2/cv4.2.2/Conv",
         "/model.23/proto/cv3/act/Mul",
-        "/model.23/Concat",
     ],
-    # YOLOv11 pose — four end-nodes: detection-style outputs plus the
-    # 17-keypoint heatmap (Mul_3 / Sigmoid feed _process_pose's
-    # COCO-Pose decoder).
+    # YOLOv11 pose — also a gap model; derived by analogy with v8 pose
+    # (yolov8s_pose.yaml in the Zoo). Pose adds three keypoint convs
+    # (cv4.*) per scale, mirroring the seg layout but feeding the
+    # 17-keypoint head instead of mask coefficients.
     ("v11", YOLOTask.POSE): [
-        "/model.23/Concat",
-        "/model.23/Mul_3",
-        "/model.23/Sigmoid_1",
-        "/model.23/Sigmoid",
+        "/model.23/cv2.0/cv2.0.2/Conv",
+        "/model.23/cv3.0/cv3.0.2/Conv",
+        "/model.23/cv4.0/cv4.0.2/Conv",
+        "/model.23/cv2.1/cv2.1.2/Conv",
+        "/model.23/cv3.1/cv3.1.2/Conv",
+        "/model.23/cv4.1/cv4.1.2/Conv",
+        "/model.23/cv2.2/cv2.2.2/Conv",
+        "/model.23/cv3.2/cv3.2.2/Conv",
+        "/model.23/cv4.2/cv4.2.2/Conv",
     ],
 }
 

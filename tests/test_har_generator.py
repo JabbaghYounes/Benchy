@@ -49,7 +49,6 @@ from benchmark.workloads.yolo.conversion.har_generator import (
 # Update procedure when we capture a new hint: add the end-nodes to
 # END_NODE_TABLE and remove the (version, task) tuple from this set.
 KNOWN_GAPS = {
-    ("v8", YOLOTask.SEGMENTATION),
     ("v8", YOLOTask.POSE),
     ("v8", YOLOTask.OBB),
     ("v8", YOLOTask.CLASSIFICATION),

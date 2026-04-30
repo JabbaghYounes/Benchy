@@ -77,6 +77,7 @@ Currently staged in this directory:
     v11_pose_n_hailo8.hef           <- yolo11n-pose.pt    (workstation, 2026-04-29)
     v8_obb_n_hailo8.hef             <- yolov8n-obb.pt     (workstation, 2026-04-30)
     v11_obb_n_hailo8.hef            <- yolo11n-obb.pt     (workstation, 2026-04-30)
+    v26_detection_n_hailo8.hef      <- yolo26n.pt         (workstation, 2026-04-30, MODEL_SCRIPT_OVERRIDES)
     v26_obb_n_hailo8.hef            <- yolo26n-obb.pt     (workstation, 2026-04-30)
     v26_pose_n_hailo8.hef           <- yolo26n-pose.pt    (workstation, 2026-04-30)
 
@@ -104,13 +105,21 @@ Notes / coverage gaps as of 2026-04-30 (post-retry sweep):
   script falls back to yolov8s-pose.pt for that step.
 - v11 segmentation does not fit Hailo-8's compute budget regardless
   of compile flags — hailo10h-only. See pitfalls.md § 11.
-- v26 segmentation does not fit Hailo-8 without per-layer
-  precision_mode overrides (the v26-detection ALLS pattern).
-  Compiles fine on hailo10h. Step (b) candidate; see session notes.
-  See pitfalls.md § 12.
+- v26 segmentation on Hailo-8 is **confirmed unfixable** as of
+  2026-04-30 step (b): six different ALLS override variants attempted
+  (matmul_decomposition + four precision_mode permutations), all
+  hit the v26-head-attention multi-output matmul1 rejection that
+  Hailo-8 hardware does not accept in any supported precision mode.
+  Compiles fine on hailo10h (more chip headroom). See pitfalls.md
+  § 12.
 - v26 detection on hailo10h is NOT supported by Hailo's own YAML
   (yolo26n.yaml declares supported_hw_arch: [hailo8, hailo8l]).
   Skip; not a tooling bug. See pitfalls.md § 13.
+- v26 detection on Hailo-8 now compiles cleanly with the new
+  MODEL_SCRIPT_OVERRIDES infrastructure in
+  benchmark/workloads/yolo/conversion/hef_compiler.py — the
+  per-layer precision_mode=a16_w16 overrides for dw1..8, conv61/77/91/64/80/94,
+  output_layer1..6 mirror Hailo's official yolo26n.alls.
 - Classification is the only remaining task family with no
   END_NODE_TABLE entry (v8/v11/v26 cls). No workstation HEFs at
   size 'n' for cls; the runtime falls back to other backends if

@@ -261,6 +261,83 @@ install_hailo_runtime() {
     success "Hailo runtime installation complete"
 }
 
+# Upgrade HailoRT 4.x from the bundled .deb + .whl files (resources/hailo-8/).
+# Pi OS apt repo is pinned at 4.20.x, but validation.py calls
+# ConfigureParams.default_interface() which requires HailoRT 4.21+.
+# Idempotent: skips if hailortcli already reports the bundle's target version.
+upgrade_hailo_runtime_from_bundle() {
+    local bundle_dir="$PROJECT_ROOT/resources/hailo-8"
+    local target="4.23.0"
+    local driver_deb="$bundle_dir/hailort-pcie-driver_${target}_all.deb"
+    local runtime_deb="$bundle_dir/hailort_${target}_arm64.deb"
+    local py_wheel="$bundle_dir/hailort-${target}-cp311-cp311-linux_aarch64.whl"
+
+    info "Checking HailoRT bundle (target $target)..."
+    for f in "$driver_deb" "$runtime_deb" "$py_wheel"; do
+        if [[ ! -f "$f" ]]; then
+            warn "Bundle file missing: $f"
+            warn "Skipping HailoRT bundle upgrade — keeping current apt-installed version."
+            return 0
+        fi
+    done
+
+    local current
+    current=$(hailortcli fw-control identify 2>/dev/null \
+        | awk '/Firmware Version:/ {print $3}')
+    if [[ "$current" == "$target" ]]; then
+        success "HailoRT $target already active; nothing to do."
+        return 0
+    fi
+    info "Current HailoRT firmware: ${current:-unknown} → upgrading to $target"
+
+    if dpkg -l python3-hailort 2>/dev/null | grep -q '^ii'; then
+        info "Removing apt-installed python3-hailort (replaced by venv wheel)..."
+        apt-get remove -y python3-hailort || warn "python3-hailort removal returned non-zero"
+    fi
+
+    info "Installing HailoRT PCIe driver from bundle..."
+    dpkg -i "$driver_deb" || { error "dpkg -i $driver_deb failed"; return 1; }
+    info "Installing HailoRT runtime from bundle..."
+    dpkg -i "$runtime_deb" || { error "dpkg -i $runtime_deb failed"; return 1; }
+
+    if lsmod | grep -q '^hailo_pci'; then
+        info "Reloading hailo_pci module..."
+        if rmmod hailo_pci 2>/dev/null && modprobe hailo_pci; then
+            success "hailo_pci reloaded"
+        else
+            warn "Could not reload hailo_pci (likely in-use). Reboot required for new driver to take effect."
+        fi
+    else
+        modprobe hailo_pci 2>/dev/null || warn "modprobe hailo_pci failed"
+    fi
+
+    if [[ -d "$VENV_DIR" ]]; then
+        local venv_site
+        venv_site=$("$VENV_DIR/bin/python" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
+        if [[ -n "$venv_site" && -L "$venv_site/hailo_platform" ]]; then
+            info "Removing stale apt-symlink at $venv_site/hailo_platform"
+            rm -f "$venv_site/hailo_platform"
+        fi
+        info "Installing HailoRT Python wheel into venv..."
+        "$VENV_DIR/bin/pip" install --force-reinstall --no-deps "$py_wheel" \
+            || warn "Wheel install failed: $py_wheel"
+        local actual_user
+        actual_user=${SUDO_USER:-$USER}
+        chown -R "$actual_user:$actual_user" "$VENV_DIR"
+    else
+        warn "venv missing at $VENV_DIR; skipping wheel install (call setup_venv first)."
+    fi
+
+    local new_version
+    new_version=$(hailortcli fw-control identify 2>/dev/null \
+        | awk '/Firmware Version:/ {print $3}')
+    if [[ "$new_version" == "$target" ]]; then
+        success "HailoRT upgraded to $target"
+    else
+        warn "HailoRT version after install: ${new_version:-unknown}. A reboot may be required."
+    fi
+}
+
 # Create Python virtual environment
 setup_venv() {
     info "Setting up Python virtual environment..."
@@ -559,6 +636,7 @@ main() {
     setup_udev_rules
     setup_venv
     install_python_deps
+    upgrade_hailo_runtime_from_bundle
     install_ollama
 
     if [[ "$PULL_MODELS" == true ]]; then

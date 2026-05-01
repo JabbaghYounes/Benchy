@@ -580,23 +580,26 @@ class HailoBackend(YOLOBackend):
             raise FileNotFoundError(f"HEF file not found: {hef_path}")
 
         try:
-            from hailo_platform import HEF, VDevice, ConfigureParams, FormatType
+            from hailo_platform import VDevice, FormatType
 
             logger.info(f"Loading HEF: {hef_path}")
 
-            # Load the HEF
-            self._hef = HEF(str(hef_path))
-
-            # Create virtual device
+            # HailoRT 5.x InferModel API. The 4.x VDevice.configure +
+            # ConfigureParams.create_from_hef path was dropped in 5.x; that
+            # call now raises HAILO_NOT_IMPLEMENTED on Hailo-10H.
             self._vdevice = VDevice()
+            self._infer_model = self._vdevice.create_infer_model(str(hef_path))
 
-            # Configure the inference model
-            configure_params = ConfigureParams.create_from_hef(
-                self._hef, interface=ConfigureParams.default_interface()
-            )
-            self._configured_infer_model = self._vdevice.configure(
-                self._hef, configure_params
-            )[0]
+            # FLOAT32 in/out (5.x equivalent of the old quantized=False
+            # vstream params). Postprocessor expects float tensors.
+            self._infer_model.input().set_format_type(FormatType.FLOAT32)
+            for output_stream in self._infer_model.outputs:
+                output_stream.set_format_type(FormatType.FLOAT32)
+
+            self._configured_infer_model = self._infer_model.configure()
+            # Preserve self._hef for any external callers; the InferModel
+            # exposes the underlying HEF directly in 5.x.
+            self._hef = self._infer_model.hef
 
             logger.info("HEF loaded successfully")
 
@@ -693,34 +696,31 @@ class HailoBackend(YOLOBackend):
             raise RuntimeError("Post-processor not initialized. Call prepare_model() first.")
 
         try:
-            from hailo_platform import InferVStreams, InputVStreamParams, OutputVStreamParams
-
             # Phase 4: Preprocessing with timing
             preprocess_start = time.perf_counter()
             preprocessed = self._preprocess(input_data)
             preprocess_end = time.perf_counter()
             preprocess_ms = (preprocess_end - preprocess_start) * 1000
 
-            # Get input/output stream info
-            input_vstream_info = self._hef.get_input_vstream_infos()[0]
-            output_vstream_infos = self._hef.get_output_vstream_infos()
-
-            # Create vstream params
-            input_params = InputVStreamParams.make_from_network_group(
-                self._configured_infer_model, quantized=False
+            # HailoRT 5.x InferModel API. Format types were already set to
+            # FLOAT32 in _load_hef, so output buffers are float32 of the
+            # advertised shape.
+            input_stream = self._infer_model.input()
+            output_buffers = {
+                out.name: np.empty(out.shape, dtype=np.float32)
+                for out in self._infer_model.outputs
+            }
+            bindings = self._configured_infer_model.create_bindings(
+                input_buffers={input_stream.name: np.ascontiguousarray(preprocessed)},
+                output_buffers=output_buffers,
             )
-            output_params = OutputVStreamParams.make_from_network_group(
-                self._configured_infer_model, quantized=False
-            )
 
-            # Phase 4: Run inference on NPU with precise timing
+            # Phase 4: Run inference on NPU with precise timing.
+            # Bindings creation above is excluded from the NPU timing window —
+            # it's a CPU-side allocation, not part of the actual inference.
             inference_start = time.perf_counter()
-
-            with InferVStreams(
-                self._configured_infer_model, input_params, output_params
-            ) as infer_pipeline:
-                input_dict = {input_vstream_info.name: preprocessed}
-                raw_outputs = infer_pipeline.infer(input_dict)
+            self._configured_infer_model.run([bindings], timeout=10000)
+            raw_outputs = output_buffers
 
             inference_end = time.perf_counter()
             inference_ms = (inference_end - inference_start) * 1000
@@ -926,6 +926,11 @@ class HailoBackend(YOLOBackend):
             except Exception:
                 pass
             self._configured_infer_model = None
+
+        # InferModel must be dropped before VDevice — InferModel keeps the
+        # VDevice alive (per HailoRT 5.x docs); releasing in the wrong order
+        # logs "Lost communication with the server".
+        self._infer_model = None
 
         if self._vdevice is not None:
             try:

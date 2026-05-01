@@ -656,7 +656,11 @@ class LLMBenchmarkRunner:
                 seed=self.config.seed,
                 max_tokens=1,
                 timeout=self.config.prewarm_timeout_seconds,
-                keep_alive="-1",  # keep loaded for the duration of the run
+                # Ollama 0.14+ rejects bare "-1" with `time: missing unit
+                # in duration "-1"` — pass a negative duration string so
+                # the parser accepts it; magnitude is irrelevant since
+                # Ollama treats any negative duration as "keep forever".
+                keep_alive="-1m",
             )
         except requests.RequestException as e:
             logger.warning(

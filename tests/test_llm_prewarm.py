@@ -50,7 +50,7 @@ def test_prewarm_issues_one_keep_alive_call_with_long_timeout(monkeypatch):
     assert kwargs["model"] == "llama2:7b"
     assert kwargs["max_tokens"] == 1
     assert kwargs["timeout"] == 1800
-    assert kwargs["keep_alive"] == "-1"
+    assert kwargs["keep_alive"] == "-1m"
 
 
 def test_prewarm_does_not_raise_on_failure(monkeypatch):

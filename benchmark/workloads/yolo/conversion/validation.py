@@ -423,20 +423,42 @@ class ModelValidator:
                     return shape[1]
                 elif len(shape) == 1:
                     return shape[0]
+            return None
 
-        elif task == YOLOTask.DETECTION:
-            # Detection outputs are more complex
-            # YOLO typically outputs (N, anchors, 5 + num_classes)
-            # or uses separate outputs for boxes and classes
-            for layer in output_layers:
-                shape = layer["shape"]
-                # Look for class dimension (usually > 4 for boxes)
-                if len(shape) >= 2:
-                    last_dim = shape[-1]
-                    if last_dim > 4:
-                        # Subtract box coordinates (x, y, w, h)
-                        return last_dim - 4
+        # Detection-family tasks (det, obb, pose, seg) on workstation-compiled
+        # HEFs ship with truncated heads — the END_NODE_TABLE in
+        # har_generator.py cuts at raw cv*.X.X.2/Conv outputs, so each stride
+        # emits separate branches: box (4 or 64 ch) + cls (nc ch) + task-
+        # specific extras (angle for OBB, keypoints for pose, mask coeffs
+        # for seg). Filter the extras and the cls branch is what's left.
+        last_dims = [
+            layer["shape"][-1]
+            for layer in output_layers
+            if len(layer["shape"]) >= 2
+        ]
+        if not last_dims:
+            return None
 
+        # Box branches: 64 = 4 * reg_max=16 (raw conv, v8/v11), or 4 (post-DFL, v26).
+        excluded = {4, 64}
+        if task == YOLOTask.OBB:
+            excluded |= {1}            # angle branch
+        elif task == YOLOTask.POSE:
+            excluded |= {51}           # 17 keypoints * 3 (x, y, conf)
+        elif task == YOLOTask.SEGMENTATION:
+            excluded |= {32}           # mask coefficients + prototype channel dim
+
+        candidates = [d for d in last_dims if d not in excluded]
+        if candidates:
+            # The cls branch repeats once per stride; pick the most common.
+            from collections import Counter
+            return Counter(candidates).most_common(1)[0][0]
+
+        # Legacy combined-head fallback: single tensor (N, anchors, 4 + nc)
+        # where the box dim is folded in. Subtract the 4 box coords.
+        for d in last_dims:
+            if d > 4:
+                return d - 4
         return None
 
     def _validate_class_count(

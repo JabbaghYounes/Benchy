@@ -751,10 +751,17 @@ class YOLOPostProcessor:
         ):
             pose_output = pose_output.T
         elif pose_output.shape[-1] != expected_channels:
+            # Truncated-head HEFs emit per-stride branches (box / cls / kpts
+            # as separate outputs) instead of the combined (4 + nc + 51)
+            # tensor this decoder expects. _get_detection_output picks one
+            # branch and the kpt reshape later would crash on indivisible
+            # sizes. Match the OBB/seg behaviour: return [] gracefully.
             logger.warning(
                 f"Pose output last-dim {pose_output.shape[-1]}, expected "
-                f"{expected_channels}; attempting best-effort decode."
+                f"{expected_channels}; truncated-head layout is not yet "
+                f"decoded — returning no detections."
             )
+            return []
 
         boxes_xywh = pose_output[:, :4]
         class_scores = pose_output[:, 4 : 4 + config.num_classes]

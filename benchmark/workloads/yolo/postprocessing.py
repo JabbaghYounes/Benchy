@@ -316,6 +316,15 @@ class YOLOPostProcessor:
         Returns:
             List of Detection objects
         """
+        # Truncated-head HEFs emit per-stride box+cls branches; reassemble
+        # them into the combined-head layout that the decoder expects.
+        # Returns None for combined-head HEFs, leaving outputs unchanged.
+        assembled = self._assemble_truncated_head(
+            outputs, YOLOTask.DETECTION, config
+        )
+        if assembled is not None:
+            outputs = assembled
+
         # Get the main detection output
         # Hailo outputs may have different names depending on model
         detection_output = self._get_detection_output(outputs)
@@ -399,6 +408,12 @@ class YOLOPostProcessor:
         Returns:
             List of OrientedBox objects after rotated NMS
         """
+        assembled = self._assemble_truncated_head(
+            outputs, YOLOTask.OBB, config
+        )
+        if assembled is not None:
+            outputs = assembled
+
         obb_output = self._get_detection_output(outputs)
 
         if obb_output is None:
@@ -518,6 +533,12 @@ class YOLOPostProcessor:
         a full-resolution mask, and the upsampling can be added by a
         consumer if needed.
         """
+        assembled = self._assemble_truncated_head(
+            outputs, YOLOTask.SEGMENTATION, config
+        )
+        if assembled is not None:
+            outputs = assembled
+
         det_output, proto_output = self._get_seg_outputs(outputs, config)
 
         if det_output is None or proto_output is None:
@@ -731,6 +752,12 @@ class YOLOPostProcessor:
           - Keypoint coordinates are scaled when the caller provides
             original_width / original_height (input -> original).
         """
+        assembled = self._assemble_truncated_head(
+            outputs, YOLOTask.POSE, config
+        )
+        if assembled is not None:
+            outputs = assembled
+
         pose_output = self._get_detection_output(outputs)
 
         if pose_output is None:
@@ -826,6 +853,260 @@ class YOLOPostProcessor:
         return results
 
     # ---------- end Pose processing ----------
+
+    # ---------- Truncated-head assembly --------------------------------------
+    #
+    # The HEFs in resources/hefs/ are compiled with end-node truncation per
+    # END_NODE_TABLE in conversion/har_generator.py — the heads are cut at
+    # raw cv*.X.X.2/Conv outputs (one per scale, one per branch). On the
+    # chip this means the runtime returns multiple per-stride tensors
+    # (3 strides × {box, cls, optional kpts/angle/mask_coeffs}) instead of
+    # the single combined-head tensor that combined-head HEFs / .pt models
+    # produce. The helpers below reassemble that layout into the combined
+    # form so the existing _process_* decoders work unchanged.
+    #
+    # Per-stride channel layouts (NHWC, batch dim already stripped):
+    #
+    #   Detection:    box (H, W, 64)        + cls (H, W, nc)
+    #   OBB:          box (H, W, 64)        + cls (H, W, nc) + angle (H, W, 1)
+    #   Pose:         box (H, W, 64)        + cls (H, W, nc) + kpts  (H, W, 51)
+    #   Segmentation: box (H, W, 64)        + cls (H, W, nc) + coeffs(H, W, 32)
+    #                 + one shared prototype tensor (H_p, W_p, 32) at input/4
+    #
+    # Box decoding uses DFL (Distribution Focal Loss): each of the 4 box
+    # edges is a 16-bin softmax distribution over distance-from-anchor in
+    # feature-map units; expectation over the bins gives a continuous
+    # distance, which is then converted to xywh in input pixels.
+    #
+    # Class scores are raw logits (sigmoid here); pose keypoint xy uses
+    # the Ultralytics decode `(2*v + (anchor - 0.5)) * stride`; OBB angle
+    # uses `(sigmoid(v) - 0.25) * pi`.
+
+    DFL_BINS = 16  # YOLOv8/v11/v26 all use a 16-bin DFL.
+    SEG_PROTO_CHANNELS = 32  # alias of SEG_NUM_MASK_COEFFS for assembler use.
+    POSE_KPTS_CHANNELS = 51  # 17 keypoints × (x, y, vis).
+
+    def _assemble_truncated_head(
+        self,
+        outputs: Dict[str, np.ndarray],
+        task: YOLOTask,
+        config: PostProcessConfig,
+    ) -> Optional[Dict[str, np.ndarray]]:
+        """Assemble per-stride truncated-head outputs into the combined layout.
+
+        Returns a new outputs dict whose tensors match what the existing
+        combined-head decoders expect:
+
+          - Detection / Pose:   {"combined": (1, anchors, 4 + nc + extras)}
+          - OBB:                {"combined": (1, anchors, 5 + nc)}
+          - Segmentation:       {"combined": (1, anchors, 4 + nc + 32),
+                                 "prototype": (1, 32, H_p, W_p)}
+
+        Returns None when the layout doesn't look like a truncated head
+        (combined-head HEFs hit this path), so the caller can fall through
+        to its existing decode logic without any change of behaviour.
+        """
+        if task not in (
+            YOLOTask.DETECTION,
+            YOLOTask.OBB,
+            YOLOTask.POSE,
+            YOLOTask.SEGMENTATION,
+        ):
+            return None
+
+        nc = config.num_classes
+        if nc <= 0:
+            return None
+
+        # Group every (H, W, C) output by feature-map shape; isolate the
+        # seg prototype (4-D NHWC tensor whose feature map is input/4).
+        by_hw: Dict[Tuple[int, int], List[np.ndarray]] = {}
+        proto: Optional[np.ndarray] = None
+        for tensor in outputs.values():
+            t = tensor
+            # Hailo gives NHWC with batch dim 1.
+            if t.ndim == 4 and t.shape[0] == 1:
+                t = t[0]
+            if t.ndim != 3:
+                continue
+            h, w, c = t.shape
+            if (
+                task == YOLOTask.SEGMENTATION
+                and c == self.SEG_PROTO_CHANNELS
+                and h == config.input_height // 4
+                and w == config.input_width // 4
+            ):
+                proto = t  # (H_p, W_p, 32)
+                continue
+            by_hw.setdefault((h, w), []).append(t)
+
+        if not by_hw:
+            return None
+
+        # Sort strides finest -> coarsest (largest H first).
+        strides_sorted = sorted(by_hw.items(), key=lambda kv: -kv[0][0])
+        if len(strides_sorted) < 2:
+            # A single stride group is more likely a combined-head tensor
+            # the caller should decode directly; bail out.
+            return None
+
+        per_stride_combined: List[np.ndarray] = []
+        for (h, w), branches in strides_sorted:
+            stride = max(config.input_height // h, 1)
+            box_t = cls_t = kpts_t = angle_t = coeffs_t = None
+            for t in branches:
+                c = t.shape[-1]
+                if c == 4 * self.DFL_BINS and box_t is None:
+                    box_t = t
+                elif c == nc and cls_t is None:
+                    cls_t = t
+                elif (
+                    task == YOLOTask.POSE
+                    and c == self.POSE_KPTS_CHANNELS
+                    and kpts_t is None
+                ):
+                    kpts_t = t
+                elif task == YOLOTask.OBB and c == 1 and angle_t is None:
+                    angle_t = t
+                elif (
+                    task == YOLOTask.SEGMENTATION
+                    and c == self.SEG_PROTO_CHANNELS
+                    and coeffs_t is None
+                ):
+                    coeffs_t = t
+
+            if box_t is None or cls_t is None:
+                # Missing the required branches at this stride — abort
+                # rather than emitting a partial / mismatched decode.
+                return None
+
+            n_anchors = h * w
+            box_xywh = self._dfl_decode_box(
+                box_t.reshape(n_anchors, 4 * self.DFL_BINS), h, w, stride
+            )
+            cls_logits = cls_t.reshape(n_anchors, nc).astype(np.float32)
+            cls_scores = self._sigmoid(cls_logits)
+
+            if task == YOLOTask.OBB:
+                if angle_t is None:
+                    return None
+                angle_logits = angle_t.reshape(n_anchors, 1).astype(np.float32)
+                # Ultralytics OBB angle: (sigmoid(v) - 0.25) * pi  → [-pi/4, 3pi/4]
+                angle = (self._sigmoid(angle_logits) - 0.25) * np.pi
+                # Combined OBB layout: (cx, cy, w, h, angle, *cls).
+                stride_combined = np.concatenate(
+                    [box_xywh, angle, cls_scores], axis=1
+                )
+            elif task == YOLOTask.POSE and kpts_t is not None:
+                kpts_decoded = self._decode_kpts_branch(
+                    kpts_t.reshape(n_anchors, 17, 3), h, w, stride
+                )
+                stride_combined = np.concatenate(
+                    [box_xywh, cls_scores, kpts_decoded.reshape(n_anchors, 51)],
+                    axis=1,
+                )
+            elif task == YOLOTask.SEGMENTATION and coeffs_t is not None:
+                coeffs = coeffs_t.reshape(n_anchors, self.SEG_PROTO_CHANNELS)
+                stride_combined = np.concatenate(
+                    [box_xywh, cls_scores, coeffs], axis=1
+                )
+            else:
+                stride_combined = np.concatenate([box_xywh, cls_scores], axis=1)
+
+            per_stride_combined.append(stride_combined)
+
+        combined = np.concatenate(per_stride_combined, axis=0)[None, ...]
+        result: Dict[str, np.ndarray] = {"combined": combined}
+        if task == YOLOTask.SEGMENTATION:
+            if proto is None:
+                return None
+            # _get_seg_outputs scans for a 4-D tensor with shape[1] == 32,
+            # i.e. NCHW (1, 32, H_p, W_p). Convert NHWC -> NCHW + batch.
+            result["prototype"] = proto.transpose(2, 0, 1)[None, ...]
+        return result
+
+    @staticmethod
+    def _sigmoid(x: np.ndarray) -> np.ndarray:
+        return 1.0 / (1.0 + np.exp(-np.clip(x, -50.0, 50.0)))
+
+    def _dfl_decode_box(
+        self,
+        box_logits: np.ndarray,
+        h: int,
+        w: int,
+        stride: int,
+    ) -> np.ndarray:
+        """Decode 4×16 DFL distance distributions to xywh in input pixels.
+
+        Returns (n_anchors, 4) array of (cx, cy, w, h).
+        """
+        n_anchors = h * w
+        bins = box_logits.reshape(n_anchors, 4, self.DFL_BINS).astype(np.float32)
+        # Numerically stable softmax over the 16 bins.
+        bins = bins - bins.max(axis=-1, keepdims=True)
+        exp = np.exp(bins)
+        soft = exp / np.clip(exp.sum(axis=-1, keepdims=True), 1e-12, None)
+        bin_idx = np.arange(self.DFL_BINS, dtype=np.float32)
+        # (n_anchors, 4) distances in feature-map units (l, t, r, b).
+        dist = (soft * bin_idx).sum(axis=-1)
+
+        # Anchor centers in feature-map units (top-left + 0.5 offset).
+        gy, gx = np.meshgrid(
+            np.arange(h, dtype=np.float32),
+            np.arange(w, dtype=np.float32),
+            indexing="ij",
+        )
+        anchor_x = (gx + 0.5).reshape(n_anchors)
+        anchor_y = (gy + 0.5).reshape(n_anchors)
+
+        l, t, r, b = dist[:, 0], dist[:, 1], dist[:, 2], dist[:, 3]
+        x1 = (anchor_x - l) * stride
+        y1 = (anchor_y - t) * stride
+        x2 = (anchor_x + r) * stride
+        y2 = (anchor_y + b) * stride
+        cx = (x1 + x2) * 0.5
+        cy = (y1 + y2) * 0.5
+        ww = x2 - x1
+        hh = y2 - y1
+        return np.stack([cx, cy, ww, hh], axis=1)
+
+    def _decode_kpts_branch(
+        self,
+        kpts: np.ndarray,
+        h: int,
+        w: int,
+        stride: int,
+    ) -> np.ndarray:
+        """Decode (n_anchors, 17, 3) raw kpt logits to input-pixel coords.
+
+        Ultralytics YOLO-pose kpt decode for x/y; visibility is left as a
+        raw logit because the downstream `_process_pose` decoder applies
+        the sigmoid itself — keeping the layout compatible with the
+        combined-head HEFs that this assembler is impersonating.
+            x = (raw_x * 2 + (anchor_x - 0.5)) * stride
+            y = (raw_y * 2 + (anchor_y - 0.5)) * stride
+            v = raw_v   (sigmoid applied later by _process_pose)
+        """
+        n_anchors = h * w
+        gy, gx = np.meshgrid(
+            np.arange(h, dtype=np.float32),
+            np.arange(w, dtype=np.float32),
+            indexing="ij",
+        )
+        anchor_x = gx.reshape(n_anchors).astype(np.float32)
+        anchor_y = gy.reshape(n_anchors).astype(np.float32)
+
+        out = np.empty_like(kpts, dtype=np.float32)
+        out[:, :, 0] = (
+            kpts[:, :, 0].astype(np.float32) * 2.0 + (anchor_x[:, None] - 0.5)
+        ) * stride
+        out[:, :, 1] = (
+            kpts[:, :, 1].astype(np.float32) * 2.0 + (anchor_y[:, None] - 0.5)
+        ) * stride
+        out[:, :, 2] = kpts[:, :, 2].astype(np.float32)
+        return out
+
+    # ---------- end truncated-head assembly ----------------------------------
 
     def _get_detection_output(
         self,

@@ -165,6 +165,7 @@ class HailoBackend(YOLOBackend):
         self._vdevice = None
         self._infer_model = None
         self._configured_infer_model = None
+        self._cim_activated = False
 
         # Phase 3: Model validator for sanity checks
         self._validator = ModelValidator()
@@ -601,6 +602,24 @@ class HailoBackend(YOLOBackend):
             # exposes the underlying HEF directly in 5.x.
             self._hef = self._infer_model.hef
 
+            # HailoRT 4.x: the InferModel pipeline auto-deactivates after a
+            # single sync run() unless we explicitly activate it; subsequent
+            # runs then fail with HAILO_STREAM_NOT_ACTIVATED. HailoRT 5.x
+            # manages activation via the scheduler and rejects activate()
+            # outright. Detect the major version and only activate on 4.x.
+            import hailo_platform
+            hailort_major = int(hailo_platform.__version__.split(".", 1)[0])
+            if hailort_major < 5:
+                try:
+                    self._configured_infer_model.activate()
+                    self._cim_activated = True
+                except Exception as e:
+                    logger.warning(
+                        "HailoRT 4.x activate() failed (%s) — multi-run "
+                        "inference may hit HAILO_STREAM_NOT_ACTIVATED.",
+                        e,
+                    )
+
             logger.info("HEF loaded successfully")
 
         except ImportError as e:
@@ -728,17 +747,31 @@ class HailoBackend(YOLOBackend):
             # Phase 4: Post-processing with timing
             postprocess_start = time.perf_counter()
 
-            # Update post-processor config with thresholds
-            postprocess_config = PostProcessConfig(
-                conf_threshold=conf_threshold,
-                iou_threshold=iou_threshold,
-                input_width=self._input_resolution,
-                input_height=self._input_resolution,
-                num_classes=self._postprocessor.config.num_classes,
-            )
+            # On-chip NMS dispatch. Hailo Model Zoo's prebuilt v8/v11 detection
+            # HEFs for Hailo-8 bake the NMS layer into the chip and emit a
+            # single HAILO_NMS_BY_CLASS output with shape (num_classes, 5,
+            # max_bboxes) — already-decoded detections, not raw FPN tensors.
+            # Hailo-10H detection HEFs emit raw FPN tensors instead, so the
+            # raw-tensor postprocessor handles those. Branch on is_nms so the
+            # same code path works on both AI HAT+ generations.
+            on_chip_nms_outputs = [o for o in self._infer_model.outputs if o.is_nms]
+            if on_chip_nms_outputs:
+                results = self._decode_on_chip_nms(
+                    bindings,
+                    on_chip_nms_outputs,
+                    conf_threshold,
+                )
+            else:
+                postprocess_config = PostProcessConfig(
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    input_width=self._input_resolution,
+                    input_height=self._input_resolution,
+                    num_classes=self._postprocessor.config.num_classes,
+                )
 
-            # Process outputs using the post-processor
-            results = self._postprocessor.process(raw_outputs, postprocess_config)
+                # Process outputs using the post-processor
+                results = self._postprocessor.process(raw_outputs, postprocess_config)
 
             postprocess_end = time.perf_counter()
             postprocess_ms = (postprocess_end - postprocess_start) * 1000
@@ -780,6 +813,55 @@ class HailoBackend(YOLOBackend):
         except Exception as e:
             logger.error(f"Inference failed: {e}")
             raise RuntimeError(f"Inference failed: {e}")
+
+    def _decode_on_chip_nms(
+        self,
+        bindings,
+        nms_outputs: list,
+        conf_threshold: float,
+    ) -> List[Detection]:
+        """Convert HAILO_NMS_BY_CLASS outputs directly into Detection objects.
+
+        Hailo's NMS-on-chip layer emits a packed buffer that the wrapper
+        unpacks via get_buffer(tf_format=False) into a list[num_classes] of
+        per-class numpy arrays of shape (num_dets, 5) where the 5 columns
+        are (y_min, x_min, y_max, x_max, score) in normalized [0, 1]
+        coordinates. We rescale to input-frame pixels here so downstream
+        consumers see the same units the raw-tensor postprocessor produces.
+        """
+        detections: List[Detection] = []
+        class_names = self._postprocessor.config.class_names
+        input_w = self._input_resolution
+        input_h = self._input_resolution
+        for out in nms_outputs:
+            per_class = bindings.output(out.name).get_buffer(tf_format=False)
+            for class_id, arr in enumerate(per_class):
+                if arr is None or arr.size == 0:
+                    continue
+                cname = (
+                    class_names[class_id]
+                    if class_names and class_id < len(class_names)
+                    else None
+                )
+                for row in arr:
+                    score = float(row[4])
+                    if score < conf_threshold:
+                        continue
+                    y_min, x_min, y_max, x_max = (
+                        float(row[0]), float(row[1]), float(row[2]), float(row[3])
+                    )
+                    detections.append(Detection(
+                        bbox=(
+                            x_min * input_w,
+                            y_min * input_h,
+                            x_max * input_w,
+                            y_max * input_h,
+                        ),
+                        confidence=score,
+                        class_id=class_id,
+                        class_name=cname,
+                    ))
+        return detections
 
     def _preprocess(self, input_data: np.ndarray) -> np.ndarray:
         """Preprocess input for Hailo inference.
@@ -921,6 +1003,12 @@ class HailoBackend(YOLOBackend):
     def cleanup(self) -> None:
         """Release Hailo resources."""
         if self._configured_infer_model is not None:
+            if self._cim_activated:
+                try:
+                    self._configured_infer_model.deactivate()
+                except Exception:
+                    pass
+                self._cim_activated = False
             try:
                 self._configured_infer_model.shutdown()
             except Exception:

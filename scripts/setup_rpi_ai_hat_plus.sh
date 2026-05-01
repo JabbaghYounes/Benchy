@@ -321,6 +321,18 @@ upgrade_hailo_runtime_from_bundle() {
         info "Installing HailoRT Python wheel into venv..."
         "$VENV_DIR/bin/pip" install --force-reinstall --no-deps "$py_wheel" \
             || warn "Wheel install failed: $py_wheel"
+
+        # The HailoRT 4.x wheel was built against numpy 1.x and its METADATA
+        # declares `numpy<2`. Because we install it with --no-deps that
+        # constraint isn't enforced, leaving numpy 2.x in place. The pybind11
+        # buffer ABI silently breaks: every set_buffer call leaves the C++
+        # side with size 0, and InferModel.run fails with "Input buffer size
+        # 0 is different than expected ..." on every YOLO step. Pin numpy<2
+        # here so the runtime ABI matches the wheel.
+        info "Pinning numpy<2 to match HailoRT 4.x wheel ABI..."
+        "$VENV_DIR/bin/pip" install --quiet 'numpy<2' \
+            || warn "numpy<2 install failed; YOLO inference will hit Input-buffer-size-0 until fixed."
+
         local actual_user
         actual_user=${SUDO_USER:-$USER}
         chown -R "$actual_user:$actual_user" "$VENV_DIR"

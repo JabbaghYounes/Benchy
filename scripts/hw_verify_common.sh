@@ -97,17 +97,33 @@ hw_ensure_python_deps() {
         fi
     done
 
-    if (( ${#missing[@]} == 0 )); then
-        return 0
+    if (( ${#missing[@]} != 0 )); then
+        info "Self-heal: pip-installing missing deps (${missing[*]}) into the active venv..."
+        if ! "$py" -m pip install --quiet "${missing[@]}"; then
+            error "Failed to install ${missing[*]}."
+            error "Re-run scripts/setup_rpi_ai_hat_plus*.sh, or manually: pip install ${missing[*]}"
+            exit 2
+        fi
+        success "Installed missing deps: ${missing[*]}"
     fi
 
-    info "Self-heal: pip-installing missing deps (${missing[*]}) into the active venv..."
-    if ! "$py" -m pip install --quiet "${missing[@]}"; then
-        error "Failed to install ${missing[*]}."
-        error "Re-run scripts/setup_rpi_ai_hat_plus*.sh, or manually: pip install ${missing[*]}"
-        exit 2
+    # numpy ABI guard for HailoRT 4.x. The 4.x wheel was built against
+    # numpy 1.x and its METADATA declares `numpy<2`; with numpy 2.x in the
+    # venv every pybind11 set_buffer silently lands as size 0 and YOLO
+    # inference fails with "Input buffer size 0 is different than expected
+    # 4915200" on every step. Only enforce on hosts that actually have the
+    # 4.x stack installed (Hailo-8 / 8L AI HAT+) — leave AI HAT+ 2 / Jetson
+    # alone since they're on numpy-2-friendly stacks.
+    if "$py" -c "import hailo_platform, sys; sys.exit(0 if hailo_platform.__version__.startswith('4.') else 1)" >/dev/null 2>&1; then
+        if "$py" -c "import numpy, sys; sys.exit(0 if int(numpy.__version__.split('.',1)[0]) >= 2 else 1)" >/dev/null 2>&1; then
+            info "Self-heal: HailoRT 4.x stack detected with numpy>=2; pinning numpy<2 to fix ABI..."
+            if ! "$py" -m pip install --quiet 'numpy<2'; then
+                error "Failed to downgrade numpy. YOLO inference will fail with Input-buffer-size-0."
+                exit 2
+            fi
+            success "numpy pinned to <2 for HailoRT 4.x ABI compatibility"
+        fi
     fi
-    success "Installed missing deps: ${missing[*]}"
 }
 
 # Preflight gates -------------------------------------------------------------

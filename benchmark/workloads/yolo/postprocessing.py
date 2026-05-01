@@ -956,7 +956,8 @@ class YOLOPostProcessor:
             box_t = cls_t = kpts_t = angle_t = coeffs_t = None
             for t in branches:
                 c = t.shape[-1]
-                if c == 4 * self.DFL_BINS and box_t is None:
+                # Box branch: 64ch = DFL (v8/v11), 4ch = direct distance (v26).
+                if c in (4 * self.DFL_BINS, 4) and box_t is None:
                     box_t = t
                 elif c == nc and cls_t is None:
                     cls_t = t
@@ -981,9 +982,7 @@ class YOLOPostProcessor:
                 return None
 
             n_anchors = h * w
-            box_xywh = self._dfl_decode_box(
-                box_t.reshape(n_anchors, 4 * self.DFL_BINS), h, w, stride
-            )
+            box_xywh = self._decode_box_branch(box_t, h, w, stride)
             cls_logits = cls_t.reshape(n_anchors, nc).astype(np.float32)
             cls_scores = self._sigmoid(cls_logits)
 
@@ -1029,28 +1028,52 @@ class YOLOPostProcessor:
     def _sigmoid(x: np.ndarray) -> np.ndarray:
         return 1.0 / (1.0 + np.exp(-np.clip(x, -50.0, 50.0)))
 
-    def _dfl_decode_box(
+    def _decode_box_branch(
         self,
-        box_logits: np.ndarray,
+        box_t: np.ndarray,
         h: int,
         w: int,
         stride: int,
     ) -> np.ndarray:
-        """Decode 4×16 DFL distance distributions to xywh in input pixels.
+        """Decode a per-stride box branch to xywh in input pixels.
 
-        Returns (n_anchors, 4) array of (cx, cy, w, h).
+        Two layouts in the wild:
+          - 64-channel DFL (v8 / v11): 4×16 softmax distributions over
+            distance bins; expectation gives the continuous distance.
+          - 4-channel direct (v26): the raw conv output already represents
+            the (l, t, r, b) distances in feature-map units, no DFL stage.
+
+        Both produce the same (n_anchors, 4) ltrb-distances tensor that
+        feeds the shared anchor → xywh conversion.
         """
         n_anchors = h * w
-        bins = box_logits.reshape(n_anchors, 4, self.DFL_BINS).astype(np.float32)
-        # Numerically stable softmax over the 16 bins.
-        bins = bins - bins.max(axis=-1, keepdims=True)
-        exp = np.exp(bins)
-        soft = exp / np.clip(exp.sum(axis=-1, keepdims=True), 1e-12, None)
-        bin_idx = np.arange(self.DFL_BINS, dtype=np.float32)
-        # (n_anchors, 4) distances in feature-map units (l, t, r, b).
-        dist = (soft * bin_idx).sum(axis=-1)
+        c = box_t.shape[-1]
+        if c == 4 * self.DFL_BINS:
+            bins = box_t.reshape(n_anchors, 4, self.DFL_BINS).astype(np.float32)
+            # Numerically stable softmax over the 16 bins.
+            bins = bins - bins.max(axis=-1, keepdims=True)
+            exp = np.exp(bins)
+            soft = exp / np.clip(exp.sum(axis=-1, keepdims=True), 1e-12, None)
+            bin_idx = np.arange(self.DFL_BINS, dtype=np.float32)
+            dist = (soft * bin_idx).sum(axis=-1)
+        elif c == 4:
+            dist = box_t.reshape(n_anchors, 4).astype(np.float32)
+        else:
+            raise ValueError(
+                f"Unsupported box branch channel count: {c} "
+                f"(expected 4 or {4 * self.DFL_BINS})"
+            )
+        return self._ltrb_to_xywh(dist, h, w, stride)
 
-        # Anchor centers in feature-map units (top-left + 0.5 offset).
+    @staticmethod
+    def _ltrb_to_xywh(
+        dist: np.ndarray,
+        h: int,
+        w: int,
+        stride: int,
+    ) -> np.ndarray:
+        """Convert (n_anchors, 4) ltrb distances + grid stride to xywh in input pixels."""
+        n_anchors = h * w
         gy, gx = np.meshgrid(
             np.arange(h, dtype=np.float32),
             np.arange(w, dtype=np.float32),

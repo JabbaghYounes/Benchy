@@ -50,16 +50,19 @@ def _seed_dfl_at_distance(
             )
 
 
-def _build_empty_strides(num_classes: int, extras: dict) -> dict:
+def _build_empty_strides(num_classes: int, extras: dict, box_layout: str = "dfl") -> dict:
     """Build an outputs dict with all-zero per-stride branches.
 
     `extras` keys: 'kpts' (51), 'angle' (1), 'coeffs' (32). Add the seg
-    prototype separately via `_with_seg_proto` if needed.
+    prototype separately via `_with_seg_proto` if needed. `box_layout`
+    is "dfl" (64-ch, v8/v11) or "direct" (4-ch, v26).
     """
+    box_channels = 4 * DFL_BINS if box_layout == "dfl" else 4
+    box_fill = -10.0 if box_layout == "dfl" else 0.0
     outputs = {}
     for h, w, stride in STRIDES:
         outputs[f"box_s{stride}"] = np.full(
-            (1, h, w, 4 * DFL_BINS), -10.0, dtype=np.float32
+            (1, h, w, box_channels), box_fill, dtype=np.float32
         )
         outputs[f"cls_s{stride}"] = np.full(
             (1, h, w, num_classes), -10.0, dtype=np.float32
@@ -232,6 +235,34 @@ def test_assemble_seg_recovers_detection_and_proto_shape():
 
 
 # ----- tests: combined-head fallthrough ------------------------------------
+
+
+def test_assemble_v26_direct_distance_box_branch():
+    """v26 emits 4-channel direct ltrb distances instead of 64-ch DFL.
+
+    Same anchor + stride decode applies; just skip the softmax/expectation.
+    """
+    proc = YOLOPostProcessor(YOLOTask.DETECTION)
+    cfg = PostProcessConfig(num_classes=80, conf_threshold=0.5)
+    outputs = _build_empty_strides(num_classes=80, extras={}, box_layout="direct")
+
+    # Stride-8 cell (10, 10): direct distances (4, 5, 6, 7) in feature-map units.
+    # Anchor center at (10.5, 10.5) → input pixels x1=52, y1=44, x2=132, y2=140.
+    box_s8 = outputs["box_s8"][0]
+    cls_s8 = outputs["cls_s8"][0]
+    box_s8[10, 10, :] = [4, 5, 6, 7]
+    cls_s8[10, 10, 5] = 8.0
+
+    detections = proc._process_detection(outputs, cfg)
+    assert len(detections) == 1
+    d = detections[0]
+    assert d.class_id == 5
+    assert d.confidence > 0.99
+    x1, y1, x2, y2 = d.bbox
+    assert math.isclose(x1, 52.0, abs_tol=1.0)
+    assert math.isclose(y1, 44.0, abs_tol=1.0)
+    assert math.isclose(x2, 132.0, abs_tol=1.0)
+    assert math.isclose(y2, 140.0, abs_tol=1.0)
 
 
 def test_assembler_returns_none_for_combined_head_layout():

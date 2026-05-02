@@ -1,0 +1,16 @@
+platform,model_name,backend,prompt_id,num_runs,tps_mean,tps_std,ttft_mean_ms,ttft_std_ms,output_tokens_mean
+rpi_ai_hat_plus,llama3.2:1b,ollama-cpu,hazard_reasoning,1,0.62,0.0,1959.99,0.0,256
+rpi_ai_hat_plus,llama3.2:1b,ollama-cpu,mission_preflight,1,0.62,0.0,1927.79,0.0,256
+rpi_ai_hat_plus,llama3.2:1b,ollama-cpu,scene_description,1,0.62,0.0,1929.1,0.0,92
+rpi_ai_hat_plus,llama3.2:1b,ollama-cpu,target_identification,1,0.62,0.0,1924.36,0.0,256
+rpi_ai_hat_plus,llama3.2:1b,ollama-cpu,telemetry_interpretation,1,0.63,0.0,1936.43,0.0,54
+rpi_ai_hat_plus_2,llama3.2:1b,hailo-10h,hazard_reasoning,6,10.448333333333334,0.1799351735116476,454.9616666666667,3.271173591643634,28
+rpi_ai_hat_plus_2,llama3.2:1b,hailo-10h,mission_preflight,6,10.081666666666667,0.04445971959725677,456.19166666666666,3.6836743431886956,256
+rpi_ai_hat_plus_2,llama3.2:1b,hailo-10h,scene_description,6,10.513333333333334,0.03669695718539403,454.47666666666663,3.8137208427815814,20
+rpi_ai_hat_plus_2,llama3.2:1b,hailo-10h,target_identification,6,10.136666666666667,0.08617811013631396,455.2883333333333,2.380112742427693,149
+rpi_ai_hat_plus_2,llama3.2:1b,hailo-10h,telemetry_interpretation,6,10.088333333333333,0.04020779360604985,454.87333333333333,3.0786533852752442,191
+rpi_ai_hat_plus_2,llama3.2:1b,ollama-cpu,hazard_reasoning,8,6.805,0.09576757578339638,453.54875000000004,4.159561918897572,256
+rpi_ai_hat_plus_2,llama3.2:1b,ollama-cpu,mission_preflight,8,6.82875,0.10920982425718719,457.5075,13.702054851111091,256
+rpi_ai_hat_plus_2,llama3.2:1b,ollama-cpu,scene_description,8,6.99,0.10085350054127319,452.5775,3.9887260766171533,92
+rpi_ai_hat_plus_2,llama3.2:1b,ollama-cpu,target_identification,8,6.795,0.17386365758424438,453.27,4.477486539821842,256
+rpi_ai_hat_plus_2,llama3.2:1b,ollama-cpu,telemetry_interpretation,8,6.96125,0.07698562017861328,453.95375,8.59663212709323,54

@@ -170,6 +170,31 @@ Profiles are configured in `configs/yolo_benchmark.yaml` and
 per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 (LLM-only) `api_base`, `backend`, `npu_metrics`.
 
+## Results
+
+Aggregated cross-platform results from real hardware runs are in
+**[`docs/showcase.md`](docs/showcase.md)** — head-to-head YOLO
+throughput, LLM NPU-vs-CPU speedup, embedded charts, and an
+[interactive dashboard](docs/showcase/dashboard.html) you can open in
+any browser.
+
+**Headline prescription** (full breakdown + caveats in the showcase):
+
+| Use case | Winner | Margin |
+|---|---|---|
+| Pure vision (det / OBB / seg / pose) | **AI HAT+ Hailo-8 (26 TOPS)** | **2.6× – 6.8× faster** than AI HAT+ 2 across every comparable model |
+| LLM on NPU | **AI HAT+ 2 Hailo-10H** | Only choice — Hailo-8 has no onboard SDRAM. **1.49× decode speedup** vs Pi 5 CPU |
+| Both vision AND LLM-on-NPU | **AI HAT+ 2 Hailo-10H** | Pay 2.6× – 6.8× vision throughput penalty for the LLM capability |
+
+The Hailo-8 (26 TOPS) is vision-dedicated silicon with INT8 throughput
+tuned for convnets. The Hailo-10H trades raw vision throughput for
+40 TOPS at INT4 + 8 GB onboard SDRAM, which is what enables LLM
+hosting at all. The data reflects exactly that engineering trade.
+
+![YOLO throughput, head-to-head](docs/showcase/charts/yolo_throughput_comparison.png)
+
+![LLM `llama3.2:1b` decode throughput, NPU vs CPU on the same Pi](docs/showcase/charts/llm_npu_vs_cpu.png)
+
 ## Key Assumptions
 
 1. **Native installation** - Benchmarks run natively on target hardware, not in containers
@@ -183,6 +208,7 @@ per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 
 | Document | Description |
 |----------|-------------|
+| [Showcase](docs/showcase.md) | **Cross-platform aggregated results** — head-to-head AI HAT+ vs AI HAT+ 2 with charts, tables, interactive dashboard |
 | [CLI Reference](docs/cli.md) | Full command reference with examples |
 | [Workloads](docs/workloads.md) | YOLO and LLM benchmark details, metrics, and model groups |
 | [Hailo NPU](docs/hailo.md) | Hailo-8 / 8L / 10H integration, model conversion, and limitations |

@@ -91,9 +91,15 @@ hw_run_step "llm-npu-llama3.2:1b [unsupported-on-this-hw]" \
     "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
     --workload llm --backend hailo-10h --require-npu-metrics
 
-# CPU-side comparison row — same on both Pi 5 boards (Cortex-A76).
-hw_run_step "llm-cpu-llama2:7b (drone prompts)" \
-    "python -m benchmark run llm --profile drone --output $HW_RESULTS_DIR" \
+# CPU-side comparison row at the same 1B model size as the AI HAT+ 2 Pi's
+# `npu` step + step 12's stub above — so the two boards' "CPU LLM" rows
+# in the cross-platform dashboard are at the same model size and directly
+# comparable. Drone profile (llama2:7b) was tried 2026-05-01: per-request
+# wall time ran ~40 min at max_tokens=256, projecting ~26 hours for the
+# full 5-prompt × 13-run sweep. See
+# resources/session_notes_2026-05-02_llm_drone_profile_unworkable.md.
+hw_run_step "llm-cpu-llama3.2:1b (compare profile)" \
+    "python -m benchmark run llm --profile compare --output $HW_RESULTS_DIR" \
     --workload llm --backend ollama-cpu
 
 hw_finalize_with_report

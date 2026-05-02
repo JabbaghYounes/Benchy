@@ -51,10 +51,20 @@ HW_TOTAL_STEPS=0   # set by entrypoints if they want a [i/N] prefix
 # ----------------------------------------------------------------------------
 
 hw_init() {
-    # Initialise state: results + logs directory under results/, timestamped.
+    # Initialise state: results + logs directory, timestamped, scoped by
+    # board so the two Pis' bundles don't intermingle in `results/`.
+    # Pass the Platform enum name as $1 (e.g. `rpi_ai_hat_plus`,
+    # `rpi_ai_hat_plus_2`, `jetson_orin_nano`) to nest under
+    # `results/<platform>/hw_verify_<ts>/`. Omit for the legacy flat
+    # `results/hw_verify_<ts>/` layout — kept so old entrypoints keep
+    # working but new entrypoints should pass it.
+    local platform="${1:-}"
+    local base="$_HW_PROJECT_ROOT/results"
+    [[ -n "$platform" ]] && base="$base/$platform"
+
     local timestamp
     timestamp="$(date '+%Y%m%d_%H%M%S')"
-    HW_RESULTS_DIR="${HW_RESULTS_DIR:-$_HW_PROJECT_ROOT/results/hw_verify_$timestamp}"
+    HW_RESULTS_DIR="${HW_RESULTS_DIR:-$base/hw_verify_$timestamp}"
     HW_LOGS_DIR="$HW_RESULTS_DIR/logs"
     mkdir -p "$HW_LOGS_DIR"
     HW_START_TIME=$(date +%s)

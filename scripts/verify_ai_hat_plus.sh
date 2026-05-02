@@ -30,7 +30,7 @@ source "$SCRIPT_DIR/hw_verify_common.sh"
 # + 1 (LLM-on-NPU stub) + 1 (LLM-on-CPU comparison row) = 13 steps.
 HW_TOTAL_STEPS=13
 
-hw_init
+hw_init rpi_ai_hat_plus
 hw_ensure_python_deps
 hw_preflight_rpi_ai_hat_plus
 

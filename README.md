@@ -145,9 +145,12 @@ host LLMs) and a real run on AI HAT+ 2.
 ./scripts/verify_ai_hat_plus_2.sh
 ```
 
-Output lands in `results/hw_verify_<timestamp>/` (per-step `.log`s,
-`bench_*.json` artefacts, and on AI HAT+ 2 a generated `report/`
-dashboard). v26 entries are tagged `[experimental]` and counted
+Output lands in `results/<platform>/hw_verify_<timestamp>/` — i.e.
+`results/rpi_ai_hat_plus/hw_verify_<ts>/` for the AI HAT+ board and
+`results/rpi_ai_hat_plus_2/hw_verify_<ts>/` for the AI HAT+ 2 board —
+so the two Pis' bundles don't intermingle when both push to the same
+repo. Each bundle holds per-step `.log`s, `bench_*.json` artefacts, and
+a generated `report/` dashboard. v26 entries are tagged `[experimental]` and counted
 separately at the end so a v26 failure doesn't read as a project
 regression.
 

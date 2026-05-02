@@ -82,8 +82,9 @@ curl -sS http://localhost:8000/api/tags
 The smart HW-verify scripts (`scripts/verify_ai_hat_plus.sh`,
 `scripts/verify_ai_hat_plus_2.sh`) use continue-on-failure: a single
 broken model doesn't abort the rest of the sweep. Each step writes a
-`.log` under `results/hw_verify_<timestamp>/logs/` — that's the first
-place to look when the summary reports a FAIL.
+`.log` under `results/<platform>/hw_verify_<timestamp>/logs/` (e.g.
+`results/rpi_ai_hat_plus/hw_verify_<ts>/logs/` on the AI HAT+ Pi) —
+that's the first place to look when the summary reports a FAIL.
 
 | Issue | Solution |
 |-------|----------|

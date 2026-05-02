@@ -44,7 +44,8 @@ python -m benchmark run llm --profile npu
 # Phase 2 / 3 task with progress + timing + JSON validation + a final
 # pass/fail summary. Continue-on-failure semantics; v26 entries are
 # tagged [experimental] and counted separately. Output lands in
-# results/hw_verify_<timestamp>/.
+# results/<platform>/hw_verify_<timestamp>/ (e.g.
+# results/rpi_ai_hat_plus/hw_verify_<ts>/ on the AI HAT+ Pi).
 ./scripts/verify_ai_hat_plus.sh         # Pi 5 + AI HAT+ (Hailo-8 / 8L)
 ./scripts/verify_ai_hat_plus_2.sh       # Pi 5 + AI HAT+ 2 (Hailo-10H, also LLM-on-NPU)
 

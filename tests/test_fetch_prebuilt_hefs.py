@@ -157,10 +157,18 @@ def _mk_head_ok():
 
 
 def test_dry_run_does_not_create_files(tmp_path):
-    """Dry-run never writes the destination file even when HEAD says 200."""
+    """Dry-run never writes the destination file even when HEAD says 200.
+
+    Pinned to ``--source zoo`` so the test mocks (which respond to HEAD
+    only) don't have to handle the release manifest GET that ``--source
+    both`` (the default) would issue first.
+    """
     with patch.object(fetch_mod.urllib.request, "urlopen", _mk_head_ok()):
         rc = fetch_mod.main(
-            ["--arch", "hailo10h", "--dry-run", "--output-dir", str(tmp_path)]
+            [
+                "--arch", "hailo10h", "--source", "zoo",
+                "--dry-run", "--output-dir", str(tmp_path),
+            ]
         )
     assert rc == 0
     assert tmp_path.is_dir()
@@ -429,3 +437,517 @@ def test_arch_both_expands_to_hailo8_and_hailo10h(tmp_path):
     assert "hailo8" in captured_arches
     assert "hailo10h" in captured_arches
     assert "hailo8l" not in captured_arches  # 'both' is hailo8 + hailo10h
+
+
+# =============================================================================
+# GitHub Release source — release_url, manifest loading, fetch_from_release,
+# fetch_release_for_arches, fetch_with_release_fallback, --source flag.
+# =============================================================================
+
+import hashlib
+import json
+import urllib.error
+
+
+# ----------------------- URL construction
+
+
+def test_release_url_uses_canonical_filename_under_release_tag():
+    url = fetch_mod.release_url("v8_segmentation_n_hailo10h.hef")
+    assert url == (
+        "https://github.com/JabbaghYounes/Benchy/releases/download/"
+        f"{fetch_mod.HEFS_RELEASE_TAG}/v8_segmentation_n_hailo10h.hef"
+    )
+
+
+def test_release_url_threads_explicit_tag():
+    url = fetch_mod.release_url("v26_obb_n_hailo10h.hef", tag="hefs-v2")
+    assert "/hefs-v2/v26_obb_n_hailo10h.hef" in url
+
+
+def test_release_manifest_url_points_at_manifest_json():
+    url = fetch_mod.release_manifest_url()
+    assert url.endswith(f"/{fetch_mod.HEFS_RELEASE_TAG}/manifest.json")
+
+
+# ----------------------- manifest loading
+
+
+def _mk_release_manifest_payload(entries: list[dict]) -> bytes:
+    """Build a release manifest.json payload mirroring the publishing
+    script's schema (release_tag, hef_count, total_size_bytes, hefs)."""
+    return json.dumps(
+        {
+            "release_tag": fetch_mod.HEFS_RELEASE_TAG,
+            "hef_count": len(entries),
+            "total_size_bytes": sum(e["size_bytes"] for e in entries),
+            "hefs": entries,
+        }
+    ).encode()
+
+
+class _CtxBytes:
+    """Minimal context-manager wrapping a bytes payload — supports both
+    .read(n) chunked reads (used by fetch_from_release) and .read() with
+    no args (used by load_release_manifest via json.loads(resp.read()))."""
+
+    def __init__(self, payload: bytes):
+        self._buf = io.BytesIO(payload)
+
+    def read(self, n: int = -1) -> bytes:
+        return self._buf.read(n) if n > 0 else self._buf.read()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_load_release_manifest_parses_canonical_filename_index(tmp_path):
+    """load_release_manifest returns a dict keyed by canonical filename
+    so callers can do O(1) lookup by the name they want."""
+    payload = _mk_release_manifest_payload(
+        [
+            {
+                "filename": "v8_obb_n_hailo10h.hef",
+                "sha256": "deadbeef",
+                "size_bytes": 100,
+                "yolo_version": "v8",
+                "task": "obb",
+                "size": "n",
+                "arch": "hailo10h",
+                "source": "workstation-rtx2080ti-2026-04-30",
+            }
+        ]
+    )
+
+    def _open(url, timeout=None):  # noqa: ARG001
+        return _CtxBytes(payload)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        manifest = fetch_mod.load_release_manifest()
+
+    assert "v8_obb_n_hailo10h.hef" in manifest
+    assert manifest["v8_obb_n_hailo10h.hef"]["sha256"] == "deadbeef"
+    assert manifest["v8_obb_n_hailo10h.hef"]["arch"] == "hailo10h"
+
+
+def test_load_release_manifest_propagates_404(tmp_path):
+    """A missing manifest is the caller's signal to either abort
+    (--source release) or degrade to zoo-only (--source both default).
+    Function itself just propagates the HTTPError."""
+
+    def _raise_404(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _raise_404):
+        with pytest.raises(urllib.error.HTTPError):
+            fetch_mod.load_release_manifest()
+
+
+# ----------------------- fetch_from_release
+
+
+def test_fetch_from_release_writes_canonical_file_and_passes_sha(tmp_path):
+    payload = b"FAKE-HEF-h10h-segmentation-n"
+    sha = hashlib.sha256(payload).hexdigest()
+
+    def _open(url, timeout=None):  # noqa: ARG001
+        return _CtxBytes(payload)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        result = fetch_mod.fetch_from_release(
+            "v8_segmentation_n_hailo10h.hef",
+            "hailo10h",
+            tmp_path,
+            sha,
+        )
+
+    assert result.status == "downloaded"
+    assert result.source == "release"
+    assert result.dest == tmp_path / "v8_segmentation_n_hailo10h.hef"
+    assert result.dest.read_bytes() == payload
+
+
+def test_fetch_from_release_sha_mismatch_deletes_file_and_errors(tmp_path):
+    """A mismatched SHA-256 means corruption / wrong asset / drift; the
+    fetcher deletes the partial file (so a retry doesn't see a stale
+    file and skip) and surfaces a clear 'sha-mismatch' status."""
+    payload = b"actual bytes from server"
+
+    def _open(url, timeout=None):  # noqa: ARG001
+        return _CtxBytes(payload)
+
+    expected_but_wrong = "0" * 64
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        result = fetch_mod.fetch_from_release(
+            "v8_obb_n_hailo10h.hef",
+            "hailo10h",
+            tmp_path,
+            expected_but_wrong,
+        )
+
+    assert result.status == "sha-mismatch"
+    assert result.source == "release"
+    assert result.error is not None and "sha256" in result.error
+    assert not result.dest.exists()  # deleted, no stale leftover
+
+
+def test_fetch_from_release_404_returns_missing_not_error(tmp_path):
+    """A 404 on a release asset is "not in this release" (exactly the
+    same semantic as Zoo 404), not a hard failure. main() exits 0 on
+    missing-* statuses."""
+
+    def _raise_404(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _raise_404):
+        result = fetch_mod.fetch_from_release(
+            "v99_nope_n_hailo10h.hef",
+            "hailo10h",
+            tmp_path,
+            "deadbeef",
+        )
+
+    assert result.status == "missing-404"
+    assert result.source == "release"
+    assert not result.dest.exists()
+
+
+def test_fetch_from_release_existing_file_with_matching_sha_is_skipped(tmp_path):
+    payload = b"already-there-and-valid"
+    sha = hashlib.sha256(payload).hexdigest()
+    existing = tmp_path / "v8_detection_n_hailo10h.hef"
+    existing.write_bytes(payload)
+
+    from unittest.mock import MagicMock
+    spy = MagicMock()
+    with patch.object(fetch_mod.urllib.request, "urlopen", spy):
+        result = fetch_mod.fetch_from_release(
+            "v8_detection_n_hailo10h.hef",
+            "hailo10h",
+            tmp_path,
+            sha,
+        )
+
+    assert result.status == "skipped-exists"
+    assert result.source == "release"
+    spy.assert_not_called()  # no network call when local sha matches
+
+
+def test_fetch_from_release_existing_file_with_wrong_sha_reports_mismatch(tmp_path):
+    """When the local file exists but doesn't match the manifest sha,
+    the fetcher reports sha-mismatch (so the user can decide to
+    --overwrite) but does NOT auto-delete the local file — it might be
+    an intentional manual stage."""
+    existing = tmp_path / "v8_detection_n_hailo10h.hef"
+    existing.write_bytes(b"local custom build")
+
+    from unittest.mock import MagicMock
+    spy = MagicMock()
+    with patch.object(fetch_mod.urllib.request, "urlopen", spy):
+        result = fetch_mod.fetch_from_release(
+            "v8_detection_n_hailo10h.hef",
+            "hailo10h",
+            tmp_path,
+            "deadbeef" * 8,
+        )
+
+    assert result.status == "sha-mismatch"
+    assert existing.exists()  # don't auto-delete user-staged files
+    spy.assert_not_called()
+
+
+# ----------------------- fetch_release_for_arches
+
+
+def test_fetch_release_for_arches_filters_by_arch(tmp_path):
+    """Only fetch HEFs whose manifest entry matches a requested arch."""
+    payload_h10h = b"h10h-payload"
+    payload_h8 = b"h8-payload"
+    sha_h10h = hashlib.sha256(payload_h10h).hexdigest()
+    sha_h8 = hashlib.sha256(payload_h8).hexdigest()
+
+    manifest = {
+        "v8_detection_n_hailo10h.hef": {
+            "filename": "v8_detection_n_hailo10h.hef",
+            "sha256": sha_h10h,
+            "size_bytes": len(payload_h10h),
+            "arch": "hailo10h",
+        },
+        "v8_detection_n_hailo8.hef": {
+            "filename": "v8_detection_n_hailo8.hef",
+            "sha256": sha_h8,
+            "size_bytes": len(payload_h8),
+            "arch": "hailo8",
+        },
+    }
+
+    def _open(url, timeout=None):  # noqa: ARG001
+        # Route by canonical filename in the URL
+        if "hailo10h" in url:
+            return _CtxBytes(payload_h10h)
+        return _CtxBytes(payload_h8)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        results = fetch_mod.fetch_release_for_arches(
+            ("hailo10h",),
+            output_dir=tmp_path,
+            release_manifest=manifest,
+        )
+
+    assert len(results) == 1
+    assert results[0].dest.name == "v8_detection_n_hailo10h.hef"
+    assert results[0].status == "downloaded"
+
+
+# ----------------------- fetch_with_release_fallback
+
+
+def test_fallback_uses_zoo_when_zoo_has_the_hef(tmp_path):
+    """If the canonical filename has a Zoo equivalent and the Zoo URL
+    succeeds, the release URL is never touched — keeps the Zoo as the
+    primary source for HEFs both have."""
+    zoo_payload = b"FROM-ZOO"
+    captured_urls: list[str] = []
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        captured_urls.append(url)
+        return _CtxBytes(zoo_payload)
+
+    manifest = {
+        "v8_detection_n_hailo8.hef": {
+            "filename": "v8_detection_n_hailo8.hef",
+            "sha256": hashlib.sha256(zoo_payload).hexdigest(),
+            "arch": "hailo8",
+        },
+    }
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        results = fetch_mod.fetch_with_release_fallback(
+            ("hailo8",),
+            zoo_versions={"hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            release_manifest=manifest,
+        )
+
+    assert len(results) == 1
+    assert results[0].source == "zoo"
+    assert all("releases/download" not in u for u in captured_urls)
+
+
+def test_fallback_falls_through_to_release_on_zoo_404(tmp_path):
+    """Zoo 404 → release attempted. Release returns the bytes; sha
+    matches; result tagged source='release'."""
+    release_payload = b"FROM-RELEASE"
+    sha = hashlib.sha256(release_payload).hexdigest()
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        if "hailo-model-zoo" in url:
+            raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+        return _CtxBytes(release_payload)
+
+    manifest = {
+        "v8_detection_n_hailo8.hef": {
+            "filename": "v8_detection_n_hailo8.hef",
+            "sha256": sha,
+            "arch": "hailo8",
+        },
+    }
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        results = fetch_mod.fetch_with_release_fallback(
+            ("hailo8",),
+            zoo_versions={"hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            release_manifest=manifest,
+        )
+
+    assert len(results) == 1
+    assert results[0].source == "release"
+    assert results[0].status == "downloaded"
+
+
+def test_fallback_skips_zoo_for_hefs_zoo_doesnt_ship(tmp_path):
+    """OBB HEFs aren't in ZOO_MANIFEST, so the fallback should go
+    directly to release without making a Zoo request first."""
+    release_payload = b"FROM-RELEASE-OBB"
+    sha = hashlib.sha256(release_payload).hexdigest()
+    captured_urls: list[str] = []
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        captured_urls.append(url)
+        if "hailo-model-zoo" in url:
+            raise AssertionError(
+                f"Should not have hit Zoo for an OBB HEF; got {url}"
+            )
+        return _CtxBytes(release_payload)
+
+    manifest = {
+        "v11_obb_n_hailo10h.hef": {
+            "filename": "v11_obb_n_hailo10h.hef",
+            "sha256": sha,
+            "arch": "hailo10h",
+        },
+    }
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        results = fetch_mod.fetch_with_release_fallback(
+            ("hailo10h",),
+            zoo_versions={"hailo10h": "v2.18.0"},
+            output_dir=tmp_path,
+            release_manifest=manifest,
+        )
+
+    assert len(results) == 1
+    assert results[0].source == "release"
+
+
+def test_fallback_surfaces_zoo_5xx_without_silent_release_fallback(tmp_path):
+    """A 503 from the Zoo is a real problem, not 'not in catalogue'.
+    Fallback should surface the Zoo error rather than silently retrying
+    against the release — paper-over would mask outages."""
+    captured_urls: list[str] = []
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        captured_urls.append(url)
+        if "hailo-model-zoo" in url:
+            raise urllib.error.HTTPError(
+                url, 503, "Service Unavailable", hdrs=None, fp=None
+            )
+        raise AssertionError(f"Should not have hit release after Zoo 5xx; got {url}")
+
+    manifest = {
+        "v8_detection_n_hailo8.hef": {
+            "filename": "v8_detection_n_hailo8.hef",
+            "sha256": "deadbeef" * 8,
+            "arch": "hailo8",
+        },
+    }
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        results = fetch_mod.fetch_with_release_fallback(
+            ("hailo8",),
+            zoo_versions={"hailo8": "v2.16.0"},
+            output_dir=tmp_path,
+            release_manifest=manifest,
+        )
+
+    assert len(results) == 1
+    assert results[0].source == "zoo"
+    assert results[0].status == "error"
+    assert "503" in (results[0].error or "")
+
+
+# ----------------------- main() routing for --source
+
+
+def test_main_source_release_requires_reachable_manifest(tmp_path):
+    """--source release with an unreachable manifest is a hard error
+    (not a silent fall-through to zoo) — that mode is the user being
+    explicit about wanting verified release fetches."""
+
+    def _raise_404(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _raise_404):
+        rc = fetch_mod.main(
+            [
+                "--arch", "hailo10h", "--source", "release",
+                "--output-dir", str(tmp_path),
+            ]
+        )
+
+    assert rc == 1
+
+
+def test_main_source_both_degrades_to_zoo_when_manifest_unreachable(tmp_path):
+    """The default mode silently falls back to zoo when the release
+    manifest isn't reachable — keeps offline / air-gapped workflows
+    working without surprises."""
+
+    def _raise_503(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(
+            url, 503, "Service Unavailable", hdrs=None, fp=None
+        )
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _raise_503):
+        rc = fetch_mod.main(
+            [
+                "--arch", "hailo10h", "--source", "both",
+                "--output-dir", str(tmp_path),
+            ]
+        )
+
+    # Manifest 503 → fall back to zoo → all zoo URLs also 503 → all
+    # results are status='error' → main returns 1. The point of this
+    # test is that we don't crash with an uncaught exception during
+    # the manifest fetch, not that we exit 0 in an outage.
+    assert rc == 1  # zoo-side errors still fail the run
+
+
+def test_main_source_release_sha_mismatch_exits_nonzero(tmp_path):
+    """SHA mismatch must fail the run (a corrupt or wrong asset is a
+    silent footgun otherwise)."""
+    payload = b"corrupt-or-wrong-asset"
+    bad_sha = "f" * 64
+    manifest_payload = _mk_release_manifest_payload(
+        [
+            {
+                "filename": "v8_obb_n_hailo10h.hef",
+                "sha256": bad_sha,
+                "size_bytes": len(payload),
+                "yolo_version": "v8",
+                "task": "obb",
+                "size": "n",
+                "arch": "hailo10h",
+                "source": "workstation-rtx2080ti-2026-04-30",
+            }
+        ]
+    )
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        if url.endswith("manifest.json"):
+            return _CtxBytes(manifest_payload)
+        return _CtxBytes(payload)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        rc = fetch_mod.main(
+            [
+                "--arch", "hailo10h", "--source", "release",
+                "--output-dir", str(tmp_path),
+            ]
+        )
+
+    assert rc == 1
+    assert not (tmp_path / "v8_obb_n_hailo10h.hef").exists()
+
+
+def test_main_release_tag_override_threaded_through(tmp_path):
+    """--release-tag should change the manifest URL the fetcher hits
+    (so users can pin to a specific batch when reproducing old runs)."""
+    captured_urls: list[str] = []
+
+    def _open(url_or_req, timeout=None):  # noqa: ARG001
+        url = url_or_req if isinstance(url_or_req, str) else url_or_req.full_url
+        captured_urls.append(url)
+        raise urllib.error.HTTPError(url, 404, "Not Found", hdrs=None, fp=None)
+
+    with patch.object(fetch_mod.urllib.request, "urlopen", _open):
+        fetch_mod.main(
+            [
+                "--arch", "hailo10h", "--source", "release",
+                "--release-tag", "hefs-v99",
+                "--output-dir", str(tmp_path),
+            ]
+        )
+
+    manifest_urls = [u for u in captured_urls if u.endswith("manifest.json")]
+    assert manifest_urls, "expected at least one manifest URL"
+    assert all("/hefs-v99/" in u for u in manifest_urls)

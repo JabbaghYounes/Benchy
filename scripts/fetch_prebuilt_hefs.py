@@ -1,40 +1,55 @@
 #!/usr/bin/env python3
-"""Fetch prebuilt HEFs from the Hailo Model Zoo S3 catalogue.
+"""Fetch prebuilt HEFs from the Hailo Model Zoo and/or the Benchy GitHub Release.
 
-Downloads HEFs for the standard YOLO models the Zoo publishes, renames
-them to Benchy's canonical ``<version>_<task>_<size>_<arch>.hef``
-convention, and stages them under ``resources/hefs/``. The Pi-side
-runtime (``benchmark/workloads/yolo/conversion/hef_source.py``) picks
-them up automatically.
+Two sources, picked via ``--source``:
 
-URL pattern (per ``resources/hefs/NAMING.txt``)::
+1. **Hailo Model Zoo S3** (``--source zoo``). The original path. Downloads
+   from ``hailo-model-zoo.s3.eu-west-2.amazonaws.com`` per the URL pattern::
 
-    https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<zoo_version>/<arch>/<filename>.hef
+       https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<zoo_version>/<arch>/<filename>.hef
 
-The catalogue is incomplete: the Zoo does not publish OBB HEFs at all,
-does not publish pose at the ``n`` size, and as of 2026-04 has no v11
-segmentation/pose/OBB or any v26 prebuilts for Hailo-8. 404s are
-expected and treated as "not in the catalogue" — they are reported but
-do not abort the sweep.
+   The catalogue is incomplete: the Zoo does not publish OBB HEFs at all,
+   does not publish pose at the ``n`` size, and as of 2026-04 has no v11
+   segmentation/pose/OBB or any v26 prebuilts for Hailo-8. 403/404 are
+   expected and treated as "not in the catalogue".
 
-Use this for the easy half of the bring-up (detection / pose / seg
-where the Zoo ships them); use ``scripts/compile_workstation_hefs.sh``
-for the gap models the Zoo does not.
+2. **Benchy GitHub Release** (``--source release``). Pulls every HEF
+   listed in the release's ``manifest.json`` for the requested arches and
+   verifies SHA-256 against the manifest. The release is the canonical
+   home for Benchy's workstation-compiled gap-fillers (every Hailo-10H
+   HEF, every OBB HEF, every v26 HEF, etc.). URL pattern::
+
+       https://github.com/JabbaghYounes/Benchy/releases/download/<HEFS_RELEASE_TAG>/<canonical_filename>
+
+3. **Both** (``--source both``, default). Iterates the release manifest
+   for the requested arches; for each HEF that the Zoo also publishes,
+   tries the Zoo first and falls back to the release on 403/404; for
+   gap-fillers the Zoo doesn't ship, goes directly to the release. If
+   the release manifest is unreachable (offline, GitHub rate-limited),
+   degrades silently to ``--source zoo`` with a warning.
+
+Pi-side runtime (``benchmark/workloads/yolo/conversion/hef_source.py``)
+picks up staged HEFs from ``resources/hefs/`` automatically. Use
+``scripts/compile_workstation_hefs.sh`` to produce HEFs that aren't yet
+in either source.
 
 Usage::
 
     scripts/fetch_prebuilt_hefs.py --arch hailo8
     scripts/fetch_prebuilt_hefs.py --arch hailo10h --dry-run
-    scripts/fetch_prebuilt_hefs.py --arch both --zoo-version v2.18.0
+    scripts/fetch_prebuilt_hefs.py --arch both --source release
+    scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v2
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 import urllib.error
 import urllib.request
 
@@ -61,6 +76,17 @@ DEFAULT_ZOO_VERSIONS: dict[str, str] = {
 }
 
 ARCHES = tuple(DEFAULT_ZOO_VERSIONS.keys())
+
+# GitHub Release source. Bumped deliberately when a new HEF batch is
+# published — the fetcher pins to a specific tag so older Pi setups stay
+# reproducible. The release tip is mirrored in
+# /tmp/benchy-hefs-v1/release_notes.md (during the publish flow) and on
+# the GitHub release page.
+HEFS_RELEASE_TAG = "hefs-v1"
+
+GITHUB_RELEASE_BASE_URL = (
+    "https://github.com/JabbaghYounes/Benchy/releases/download"
+)
 
 
 @dataclass(frozen=True)
@@ -119,12 +145,13 @@ def zoo_url(entry: HEFManifestEntry, arch: str, zoo_version: str) -> str:
 
 @dataclass
 class FetchResult:
-    entry: HEFManifestEntry
+    entry: Optional[HEFManifestEntry]  # None for release fetches (no Zoo manifest entry)
     arch: str
     url: str
     dest: Path
-    status: str            # "downloaded" / "skipped-exists" / "missing-404" / "error"
+    status: str            # "downloaded" / "skipped-exists" / "missing-403/404" / "error" / "sha-mismatch"
     error: str | None = None
+    source: str = "zoo"    # "zoo" or "release" — tagged so summary/log output is unambiguous
 
 
 def _classify_http_error(
@@ -248,10 +275,251 @@ def fetch_all(
     return results
 
 
+# ============================================================================
+# GitHub Release source
+# ============================================================================
+#
+# The release source is the canonical home for Benchy's workstation-compiled
+# gap-fillers (every Hailo-10H HEF, every OBB HEF, every v26 HEF). The release
+# publishes a manifest.json alongside the .hef assets; we use it to know what
+# exists and to verify SHA-256 on every download.
+
+
+def release_url(canonical_filename: str, tag: str = HEFS_RELEASE_TAG) -> str:
+    """Build the asset download URL for a HEF in a Benchy release."""
+    return f"{GITHUB_RELEASE_BASE_URL}/{tag}/{canonical_filename}"
+
+
+def release_manifest_url(tag: str = HEFS_RELEASE_TAG) -> str:
+    """Build the URL of the release's manifest.json asset."""
+    return f"{GITHUB_RELEASE_BASE_URL}/{tag}/manifest.json"
+
+
+def _sha256_of(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    """Stream the file through sha256 — handles 50+ MB HEFs without OOM."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def load_release_manifest(
+    tag: str = HEFS_RELEASE_TAG,
+    *,
+    timeout: float = 30.0,
+) -> dict[str, dict]:
+    """Download and parse manifest.json from the release.
+
+    Returns a dict keyed by canonical filename, mapping to the per-HEF
+    manifest entry (with 'sha256', 'size_bytes', 'yolo_version', 'task',
+    'size', 'arch', 'source').
+
+    Raises ``urllib.error.URLError`` / ``HTTPError`` on network failure
+    and ``json.JSONDecodeError`` on bad payload — callers decide whether
+    to abort or degrade to zoo-only.
+    """
+    url = release_manifest_url(tag)
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+    return {h["filename"]: h for h in data["hefs"]}
+
+
+def fetch_from_release(
+    canonical_filename: str,
+    arch: str,
+    output_dir: Path,
+    expected_sha256: str,
+    *,
+    tag: str = HEFS_RELEASE_TAG,
+    dry_run: bool = False,
+    overwrite: bool = False,
+    timeout: float = 60.0,
+) -> FetchResult:
+    """Download one HEF from the release and verify SHA-256.
+
+    Mirrors :func:`fetch_one` semantics for status values; adds a
+    ``"sha-mismatch"`` status that deletes the partial file and surfaces
+    a clear error so the caller exits non-zero.
+    """
+    url = release_url(canonical_filename, tag)
+    dest = output_dir / canonical_filename
+
+    if dest.exists() and not overwrite:
+        # Existing local file — trust the manifest and re-verify before
+        # claiming "skipped-exists". A stale file from a previous botched
+        # download would be a silent footgun otherwise.
+        actual = _sha256_of(dest)
+        if actual == expected_sha256:
+            return FetchResult(None, arch, url, dest, "skipped-exists", source="release")
+        # Mismatch on existing file — treat the same as a fresh fetch
+        # mismatch: report and return so the user can decide whether to
+        # --overwrite. Don't auto-delete; the file might be intentional
+        # (e.g. a manually-staged variant).
+        return FetchResult(
+            None, arch, url, dest, "sha-mismatch",
+            error=f"existing file sha256 {actual} != manifest {expected_sha256}",
+            source="release",
+        )
+
+    if dry_run:
+        req = urllib.request.Request(url, method="HEAD")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout):
+                return FetchResult(None, arch, url, dest, "downloaded", source="release")
+        except urllib.error.HTTPError as e:
+            status, err = _classify_http_error(e)
+            return FetchResult(None, arch, url, dest, status, err, source="release")
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            return FetchResult(None, arch, url, dest, "error", str(e), source="release")
+
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp, open(
+            dest, "wb"
+        ) as out:
+            while chunk := resp.read(64 * 1024):
+                out.write(chunk)
+    except urllib.error.HTTPError as e:
+        status, err = _classify_http_error(e)
+        # Partial download cleanup
+        if dest.exists():
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+        return FetchResult(None, arch, url, dest, status, err, source="release")
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        if dest.exists():
+            try:
+                dest.unlink()
+            except OSError:
+                pass
+        return FetchResult(None, arch, url, dest, "error", str(e), source="release")
+
+    actual = _sha256_of(dest)
+    if actual != expected_sha256:
+        # Partial / corrupt / wrong-asset — delete and surface error
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+        return FetchResult(
+            None, arch, url, dest, "sha-mismatch",
+            error=f"sha256 {actual} != manifest {expected_sha256}",
+            source="release",
+        )
+
+    return FetchResult(None, arch, url, dest, "downloaded", source="release")
+
+
+def fetch_release_for_arches(
+    arches: Iterable[str],
+    *,
+    output_dir: Path,
+    release_manifest: dict[str, dict],
+    tag: str = HEFS_RELEASE_TAG,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> list[FetchResult]:
+    """Fetch every HEF in the release manifest matching the requested arches."""
+    arches_t = set(arches)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    results: list[FetchResult] = []
+    for filename, info in sorted(release_manifest.items()):
+        if info["arch"] not in arches_t:
+            continue
+        results.append(
+            fetch_from_release(
+                filename,
+                info["arch"],
+                output_dir,
+                info["sha256"],
+                tag=tag,
+                dry_run=dry_run,
+                overwrite=overwrite,
+            )
+        )
+    return results
+
+
+def fetch_with_release_fallback(
+    arches: Iterable[str],
+    *,
+    zoo_versions: dict[str, str],
+    output_dir: Path,
+    release_manifest: dict[str, dict],
+    tag: str = HEFS_RELEASE_TAG,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> list[FetchResult]:
+    """Auto-source: try the Zoo first, fall back to the release.
+
+    Iterates the *release manifest* (not ZOO_MANIFEST) so gap-fillers the
+    Zoo doesn't ship are covered. For each canonical filename:
+
+    - If a ZOO_MANIFEST entry produces the same canonical filename for
+      this arch, try the Zoo first. On 403/404, fall back to release.
+      Other Zoo errors (5xx, network) abort that file with the Zoo
+      error — don't paper over real problems with a release fetch.
+    - If no Zoo equivalent exists, go straight to release.
+    """
+    arches_t = set(arches)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Build canonical_filename -> (zoo entry, arch) lookup.
+    zoo_lookup: dict[str, tuple[HEFManifestEntry, str]] = {}
+    for entry in ZOO_MANIFEST:
+        for arch in arches_t:
+            zoo_lookup[entry.canonical_filename(arch)] = (entry, arch)
+
+    results: list[FetchResult] = []
+    for filename, info in sorted(release_manifest.items()):
+        if info["arch"] not in arches_t:
+            continue
+
+        zoo_match = zoo_lookup.get(filename)
+        if zoo_match is not None:
+            entry, arch = zoo_match
+            zoo_result = fetch_one(
+                entry,
+                arch,
+                zoo_versions[arch],
+                output_dir,
+                dry_run=dry_run,
+                overwrite=overwrite,
+            )
+            if zoo_result.status in ("downloaded", "skipped-exists"):
+                results.append(zoo_result)
+                continue
+            if zoo_result.status not in ("missing-403", "missing-404"):
+                # Real error — surface it instead of silently retrying.
+                results.append(zoo_result)
+                continue
+            # Else: fall through to release (still record the zoo miss
+            # for context? Skip — keeps summary uncluttered. The release
+            # result below stands as the authoritative outcome.)
+
+        results.append(
+            fetch_from_release(
+                filename,
+                info["arch"],
+                output_dir,
+                info["sha256"],
+                tag=tag,
+                dry_run=dry_run,
+                overwrite=overwrite,
+            )
+        )
+    return results
+
+
 def _format_summary(results: list[FetchResult], dry_run: bool) -> str:
     counts: dict[str, int] = {}
+    source_counts: dict[str, int] = {}
     for r in results:
         counts[r.status] = counts.get(r.status, 0) + 1
+        if r.status == "downloaded":
+            source_counts[r.source] = source_counts.get(r.source, 0) + 1
 
     missing = counts.get("missing-403", 0) + counts.get("missing-404", 0)
 
@@ -259,9 +527,12 @@ def _format_summary(results: list[FetchResult], dry_run: bool) -> str:
     lines = [
         "",
         "=== Fetch Summary ===",
-        f"  {verb}:        {counts.get('downloaded', 0)}",
+        f"  {verb}:        {counts.get('downloaded', 0)}"
+        + (f"  (zoo: {source_counts.get('zoo', 0)}, release: {source_counts.get('release', 0)})"
+           if source_counts else ""),
         f"  Already on disk: {counts.get('skipped-exists', 0)}",
         f"  Not in catalogue (403/404): {missing}",
+        f"  SHA-256 mismatch: {counts.get('sha-mismatch', 0)}",
         f"  Errors:           {counts.get('error', 0)}",
         "",
     ]
@@ -271,20 +542,23 @@ def _format_summary(results: list[FetchResult], dry_run: bool) -> str:
             "skipped-exists": "  SKIP",
             "missing-403": "  MISS",
             "missing-404": "  MISS",
+            "sha-mismatch": "  HASH",
             "error": "  ERR ",
         }.get(r.status, "  ?   ")
         suffix = f" ({r.error})" if r.error else ""
         if r.status.startswith("missing-"):
             suffix = f" ({r.status.split('-', 1)[1]})"
-        lines.append(f"{marker} {r.arch:8s} {r.dest.name:48s} <- {r.url}{suffix}")
+        src_tag = f"[{r.source:7s}]"
+        lines.append(f"{marker} {src_tag} {r.arch:8s} {r.dest.name:48s} <- {r.url}{suffix}")
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=(
-            "Fetch prebuilt HEFs from the Hailo Model Zoo S3 catalogue and "
-            "stage them in resources/hefs/ with Benchy's canonical naming."
+            "Fetch prebuilt HEFs from the Hailo Model Zoo and/or the Benchy "
+            "GitHub Release. Stages them in resources/hefs/ with canonical "
+            "naming for the Pi-side runtime."
         )
     )
     p.add_argument(
@@ -292,6 +566,26 @@ def main(argv: list[str] | None = None) -> int:
         choices=("hailo8", "hailo8l", "hailo10h", "both"),
         default="hailo8",
         help="Target architecture. 'both' = hailo8 + hailo10h.",
+    )
+    p.add_argument(
+        "--source",
+        choices=("zoo", "release", "both"),
+        default="both",
+        help=(
+            "Where to fetch from. 'zoo' = Hailo Model Zoo S3 only "
+            "(legacy behavior). 'release' = Benchy GitHub Release only "
+            "(SHA-256 verified). 'both' (default) = try zoo first, fall "
+            "back to release for HEFs the zoo doesn't ship; degrades to "
+            "zoo-only if the release manifest is unreachable."
+        ),
+    )
+    p.add_argument(
+        "--release-tag",
+        default=HEFS_RELEASE_TAG,
+        help=(
+            f"Benchy release tag to fetch from (default: {HEFS_RELEASE_TAG}). "
+            "Bump deliberately to pull a newer batch of compiled HEFs."
+        ),
     )
     p.add_argument(
         "--zoo-version",
@@ -341,25 +635,78 @@ def main(argv: list[str] | None = None) -> int:
 
     versions = resolve_zoo_versions(arches, override=args.zoo_version)
 
+    # Load release manifest if either source needs it. For default 'both',
+    # degrade to zoo-only on failure (keeps existing offline workflows
+    # functional). For explicit 'release', a load failure is fatal.
+    release_manifest: Optional[dict[str, dict]] = None
+    if args.source in ("release", "both"):
+        try:
+            release_manifest = load_release_manifest(args.release_tag)
+            log.info(
+                "Loaded release manifest %s with %d entries",
+                args.release_tag, len(release_manifest),
+            )
+        except (urllib.error.URLError, urllib.error.HTTPError,
+                json.JSONDecodeError, OSError) as e:
+            if args.source == "release":
+                log.error(
+                    "--source release requires a reachable manifest at %s. "
+                    "Failed: %s",
+                    release_manifest_url(args.release_tag), e,
+                )
+                return 1
+            log.warning(
+                "Release manifest at %s unreachable (%s); falling back to "
+                "--source zoo only.",
+                release_manifest_url(args.release_tag), e,
+            )
+            args.source = "zoo"
+            release_manifest = None
+
     log.info(
-        "Fetching from Hailo Model Zoo for arches %s -> %s%s",
+        "Fetching from %s for arches %s -> %s%s",
+        args.source,
         ", ".join(f"{a}@{versions[a]}" for a in arches),
         args.output_dir,
         " (dry-run)" if args.dry_run else "",
     )
 
-    results = fetch_all(
-        arches,
-        zoo_versions=versions,
-        output_dir=args.output_dir,
-        dry_run=args.dry_run,
-        overwrite=args.overwrite,
-    )
+    if args.source == "zoo":
+        results = fetch_all(
+            arches,
+            zoo_versions=versions,
+            output_dir=args.output_dir,
+            dry_run=args.dry_run,
+            overwrite=args.overwrite,
+        )
+    elif args.source == "release":
+        assert release_manifest is not None  # narrowed by the load block above
+        results = fetch_release_for_arches(
+            arches,
+            output_dir=args.output_dir,
+            release_manifest=release_manifest,
+            tag=args.release_tag,
+            dry_run=args.dry_run,
+            overwrite=args.overwrite,
+        )
+    else:  # both
+        assert release_manifest is not None
+        results = fetch_with_release_fallback(
+            arches,
+            zoo_versions=versions,
+            output_dir=args.output_dir,
+            release_manifest=release_manifest,
+            tag=args.release_tag,
+            dry_run=args.dry_run,
+            overwrite=args.overwrite,
+        )
 
     print(_format_summary(results, args.dry_run))
 
-    error_count = sum(1 for r in results if r.status == "error")
-    return 1 if error_count else 0
+    # SHA mismatches and real network errors fail the run; missing assets
+    # and skipped-exists do not (matches Zoo-only behavior for 403/404).
+    fatal = sum(1 for r in results if r.status in ("error", "sha-mismatch"))
+    return 1 if fatal else 0
 
 
 if __name__ == "__main__":

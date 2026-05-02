@@ -176,7 +176,67 @@ exist for any YOLO version; pose is published at sizes s and m only
 (not n); segmentation / pose / OBB are not published for v11 or v26.
 Those tasks require workstation compilation from `.pt` — see
 [docs/hef_compilation.md](hef_compilation.md) for the end-to-end
-workflow.
+workflow, or pull the workstation-compiled HEFs from the Benchy
+GitHub Release (next subsection).
+
+### Sourcing HEFs from the Benchy GitHub Release
+
+The gap-filler HEFs the Model Zoo doesn't ship (every Hailo-10H HEF,
+every OBB HEF, every v26 HEF, v8/v11 segmentation/pose at size `n`)
+are published as a curated GitHub Release. The fetcher falls back to
+the release automatically when the Zoo returns 404/403:
+
+```bash
+scripts/fetch_prebuilt_hefs.py --arch hailo10h
+# Tries Zoo S3 first per the existing path; for HEFs the Zoo doesn't
+# publish, falls back to the release pinned by HEFS_RELEASE_TAG (in
+# scripts/fetch_prebuilt_hefs.py — currently "hefs-v1"). Verifies
+# SHA-256 against the release's manifest.json before staging into
+# resources/hefs/. Mismatch is a hard fail; partial files are deleted.
+```
+
+The release is the canonical home for the workstation-compiled HEFs
+listed in `resources/session_notes_2026-04-29_nvidia_workstation.md`
+and `resources/session_notes_2026-05-02_hefs-v1_release_prep.md`. To
+pin a different release version (reproducing an older verify run),
+pass `--release-tag hefs-vN`. The full release catalogue, per-HEF
+provenance, and compile-environment metadata (DFC version, calibration
+setup, wheel SHA-256s) live on the
+[release page](https://github.com/JabbaghYounes/Benchy/releases).
+
+`scripts/fetch_prebuilt_hefs.py --source release` skips the Zoo
+entirely and pulls only from the release — useful if the Zoo bucket
+is rate-limiting or the release covers everything you need.
+`--source zoo` is the legacy path (Zoo only). The default `--source
+both` covers everything available across either source.
+
+The setup scripts (`setup_rpi_ai_hat_plus.sh`,
+`setup_rpi_ai_hat_plus_2.sh`) call the fetcher with the right
+`--arch` for the detected board at the end of installation — fresh Pi
+clones get HEFs staged automatically. The HW-verify runners
+(`verify_ai_hat_plus[_2].sh`) gate on HEFs being present in
+`resources/hefs/` before starting the sweep, so a setup that ran with
+no network gets a clear remediation message ("run the fetcher first")
+instead of opaque per-step compile failures.
+
+### Restricted-egress / air-gapped setups
+
+If the Pi can't reach `github.com` (corporate firewall, isolated
+network, deliberate offline), HEFs can be staged manually instead of
+running the fetcher:
+
+1. On any machine with network access, download the HEFs you need
+   from the [release page](https://github.com/JabbaghYounes/Benchy/releases)
+   using the canonical `<version>_<task>_<size>_<arch>.hef` naming.
+2. Transfer them to the Pi (scp / USB / etc.) into `resources/hefs/`.
+3. Run `verify_ai_hat_plus[_2].sh` as normal. The runtime resolver
+   (`benchmark/workloads/yolo/conversion/hef_source.py`) checks
+   `resources/hefs/` first; the fetcher is convenience, not a hard
+   dependency.
+
+The same workflow applies to manually-compiled HEFs from a workstation
+that aren't yet in the release — drop them into `resources/hefs/`
+with canonical names and the runtime picks them up unchanged.
 
 ## Cache Management
 

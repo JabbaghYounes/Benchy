@@ -77,6 +77,34 @@ curl -sS http://localhost:8000/api/tags
 | Model not in `/api/tags` | Pull the npu-profile HEF: `curl -sS http://localhost:8000/api/pull -H 'Content-Type: application/json' -d '{"model":"llama3.2:1b","stream":true}'`. (The hailo-ollama API field is `model`, NOT `name` — sending `name` returns a 500 with a null-pointer stacktrace from oatpp.) |
 | Model Zoo GenAI `.deb` not installed | Download `hailo_gen_ai_model_zoo_<ver>_arm64.deb` from Hailo Developer Zone (EULA-gated), then `sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_arm64.deb`. (`scripts/setup_rpi_ai_hat_plus_2.sh --with-genai` is documented but does not install the model zoo on Pi OS Bookworm — the apt source has no matching package.) |
 
+## HEF acquisition (fetcher) issues
+
+`scripts/fetch_prebuilt_hefs.py` failures fall into a few clean
+buckets; the runtime can fall back to manually-staged HEFs in all of
+them. See `docs/hailo.md` "Restricted-egress / air-gapped setups" for
+the manual-drop path.
+
+```bash
+# Verify what the fetcher would do without writing anything
+scripts/fetch_prebuilt_hefs.py --arch both --dry-run
+
+# Force re-download + SHA-256 re-verify (use after a corrupted run)
+scripts/fetch_prebuilt_hefs.py --arch both --overwrite
+
+# Pin to a specific release batch (reproducing an older verify run)
+scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v1
+```
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `Connection refused` / DNS error | Air-gapped or restricted egress | Manual-drop path in `docs/hailo.md` ("Restricted-egress / air-gapped setups"); runtime checks `resources/hefs/` first |
+| `HTTP 404` on a release asset | Requested HEF isn't in the pinned `HEFS_RELEASE_TAG` (e.g. `v8_pose_s_hailo10h.hef` is not in `hefs-v1`) | Check the release notes for the "still needed" list; bump `HEFS_RELEASE_TAG` if a newer release covers it; or workstation-compile via `scripts/compile_workstation_hefs.sh` |
+| `HTTP 403` on a Zoo URL | Hailo Model Zoo S3 hasn't published this combo (expected for OBB / v26 / Hailo-10H subset) | Expected — fetcher falls through to the release path automatically. Only a problem if `--source zoo` was passed explicitly |
+| `HTTP 429` rate-limited | Anonymous GitHub API caps at ~60 req/hr per IP | Wait an hour, or set `GITHUB_TOKEN` env var (~5000/hr authenticated) |
+| `sha256 ... != manifest ...` | Partial download or asset re-upload against the same tag | Delete the file in `resources/hefs/` and re-run with `--overwrite`. Persistent mismatches mean the release manifest is out of sync — open an issue |
+| Verify script: `No <arch> HEFs found in resources/hefs/` (exit 2) | First setup hasn't run, or fetcher failed silently during setup | Run the fetcher manually: `python3 scripts/fetch_prebuilt_hefs.py --arch <arch>`. The verify scripts intentionally don't auto-fetch — keeps user in control of network IO |
+| Setup script logs "HEF fetch failed" | Network unreachable at setup time | Setup intentionally continues on fetch failure. Re-run later: `source venv/bin/activate && python3 scripts/fetch_prebuilt_hefs.py --arch <arch>` |
+
 ## Hardware verification runner failures
 
 The smart HW-verify scripts (`scripts/verify_ai_hat_plus.sh`,

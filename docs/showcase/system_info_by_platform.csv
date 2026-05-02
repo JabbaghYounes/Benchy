@@ -1,0 +1,3 @@
+platform,cpu_model,accelerator,ram_size_gb,cooling_config,power_mode,os_version,kernel_version
+rpi_ai_hat_plus,Raspberry Pi 5 Model B Rev 1.1,Hailo-8 NPU (26 TOPS),15.8,Active (Fan),ondemand,Debian GNU/Linux 12 (bookworm),6.12.75+rpt-rpi-2712
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,Active (Fan),ondemand,Debian GNU/Linux 12 (bookworm),6.12.75+rpt-rpi-2712

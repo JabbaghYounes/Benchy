@@ -165,14 +165,45 @@ _hw_assert_platform() {
     success "Platform check OK ($detected)"
 }
 
+# _hw_assert_hefs_present <arch>
+#
+# Hard-fail if no HEFs matching `*_<arch>.hef` exist under
+# resources/hefs/. Called from each board's preflight so a fresh
+# clone (where HEFs are no longer in git) gets a clear remediation
+# message before the runner starts churning through 13 steps.
+_hw_assert_hefs_present() {
+    local arch="$1"
+    local pattern="$_HW_PROJECT_ROOT/resources/hefs/*_${arch}.hef"
+
+    # `compgen -G` tests a glob without nullglob noise / hangs.
+    if ! compgen -G "$pattern" >/dev/null; then
+        error "No ${arch} HEFs found in resources/hefs/."
+        error "Expected files matching: *_${arch}.hef"
+        error ""
+        error "Fix: stage HEFs from the GitHub Release (hefs-v1):"
+        error "  source venv/bin/activate"
+        error "  python3 scripts/fetch_prebuilt_hefs.py --arch ${arch}"
+        error ""
+        error "Air-gapped install? Drop HEFs manually into"
+        error "resources/hefs/ with canonical names — see"
+        error "docs/hailo.md 'Restricted-egress / air-gapped setups'."
+        exit 2
+    fi
+    local count
+    count="$(compgen -G "$pattern" | wc -l)"
+    success "HEFs check OK (${count} ${arch} HEFs staged)"
+}
+
 hw_preflight_rpi_ai_hat_plus() {
     info "Preflight: Pi 5 + AI HAT+ (Hailo-8 / 8L)"
     _hw_assert_platform "rpi_ai_hat_plus"
+    _hw_assert_hefs_present "hailo8"
 }
 
 hw_preflight_rpi_ai_hat_plus_2() {
     info "Preflight: Pi 5 + AI HAT+ 2 (Hailo-10H)"
     _hw_assert_platform "rpi_ai_hat_plus_2"
+    _hw_assert_hefs_present "hailo10h"
 }
 
 # Step execution --------------------------------------------------------------

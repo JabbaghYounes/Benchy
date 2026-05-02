@@ -22,6 +22,14 @@ env/
 # and points the per-arch compile venv at it; never commit the wheels.
 resources/hailo-sdk/*.whl
 
+# Prebuilt HEFs are distributed via the Benchy GitHub Release (~390 MB
+# total across 30+ files), not in git. `scripts/fetch_prebuilt_hefs.py`
+# stages them into resources/hefs/ on first setup; the runtime
+# `hef_source.py` loads them from there. NAMING.txt and the .gitkeep
+# stay tracked as documentation + directory-preservation.
+resources/hefs/*.hef
+resources/hefs/manifest.json
+
 # Build artifacts
 build/
 dist/

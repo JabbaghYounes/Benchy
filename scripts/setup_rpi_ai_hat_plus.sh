@@ -631,6 +631,26 @@ print_usage_instructions() {
     fi
 }
 
+# Stage prebuilt HEFs from the GitHub Release (and Hailo Model Zoo for the
+# subset that has Zoo prebuilts). Network failure here is non-fatal — the
+# user can re-run the fetcher anytime, and the verify scripts gate on HEFs
+# being present so they'll know if anything's missing at run time. See
+# scripts/fetch_prebuilt_hefs.py and docs/hailo.md for the full source story.
+stage_prebuilt_hefs() {
+    info "Staging prebuilt HEFs (--arch hailo8) from hefs-v1 release..."
+
+    # Fetcher uses Python stdlib only, but route through the venv's
+    # python3 to guarantee >=3.10 (uses PEP 604 union syntax).
+    if "$VENV_DIR/bin/python3" "$SCRIPT_DIR/fetch_prebuilt_hefs.py" --arch hailo8; then
+        success "HEFs staged in resources/hefs/"
+    else
+        warn "HEF fetch failed — re-run later with:"
+        warn "  source venv/bin/activate"
+        warn "  python3 scripts/fetch_prebuilt_hefs.py --arch hailo8"
+        warn "Verify scripts will refuse to start without HEFs present."
+    fi
+}
+
 # Main execution
 main() {
     info "Starting Raspberry Pi AI HAT+ setup for Edge AI Benchmark Suite"
@@ -649,6 +669,7 @@ main() {
     setup_venv
     install_python_deps
     upgrade_hailo_runtime_from_bundle
+    stage_prebuilt_hefs
     install_ollama
 
     if [[ "$PULL_MODELS" == true ]]; then

@@ -67,6 +67,37 @@ keypoints are small enough (17 × 3 floats per detection) to ship in
 `PoseResult.to_dict()`. v26-pose is **experimental** for the same
 reason as v26-obb / v26-seg.
 
+### HEF availability in `hefs-v1`
+
+Backend-supported (table above) is a separate axis from "is there a
+prebuilt HEF you can actually run." The Benchy GitHub Release
+[`hefs-v1`](https://github.com/JabbaghYounes/Benchy/releases/tag/hefs-v1)
+ships **30 HEFs** that the fetcher
+(`scripts/fetch_prebuilt_hefs.py`) stages into `resources/hefs/` on
+first setup:
+
+- **Hailo-8 (19):** v8 det n/s/m/l/x, v11 det n/s/m, v26 det n,
+  v8 seg n/s/m, v8 pose s/m, v11 pose n, v8 obb n, v11 obb n,
+  v26 obb n, v26 pose n.
+- **Hailo-10H (11):** v8 det n/s, v11 det n, v8 seg n, v11 seg n,
+  v11 pose n, v8 obb n, v11 obb n, v26 obb n, v26 seg n, v26 pose n.
+
+#### Known gaps (each understood)
+
+| Missing HEF | Cause | Status |
+|---|---|---|
+| `v8 pose n` (Hailo-8 / 10H) | Hailo Model Zoo publishes pose at sizes s/m only | Use `s` instead |
+| `v8 pose s_hailo10h` | Compile failure — missing `("v8", YOLOTask.POSE)` entry in `END_NODE_TABLE` (`har_generator.py`); concrete patch in `resources/session_notes_2026-05-02_hefs-v1_release_prep.md` | Deferred to `hefs-v2` |
+| `v11 seg_hailo8` | Chip-side FPS budget overflow — compiles fine on Hailo-10H. See `docs/compilation/pitfalls.md` § 11 | h10h-only |
+| `v26 seg_hailo8` | Hardware-unfittable — v26 head attention's multi-output `matmul1` cannot be ingested by Hailo-8 in any supported precision mode (six override variants attempted). See `pitfalls.md` § 12 | h10h-only |
+| `v26 det_hailo10h` | Not supported by Hailo's own `yolo26n.yaml` (`supported_hw_arch: [hailo8, hailo8l]` only). See `pitfalls.md` § 13 | h8-only |
+| Classification (all three YOLO versions, both arches) | No postprocessor priority yet — backend supports it but no HEFs compiled | Future work |
+
+See `resources/hefs/NAMING.txt` for the full inventory and
+[`docs/compilation/pitfalls.md`](compilation/pitfalls.md) §§ 10-13 for
+the gating issues. The `hefs-v2` release will close `v8 pose s_hailo10h`
+once the END_NODE_TABLE patch lands.
+
 ## Model Conversion Pipeline
 
 Hailo requires model conversion from PyTorch to HEF format:

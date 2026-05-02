@@ -1,0 +1,52 @@
+2026-04-28 09:13:37 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_091337_6cdedc0d
+2026-04-28 09:13:37 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-04-28 09:13:37 - benchmark.cli - INFO - Profile: default
+2026-04-28 09:13:37 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-28 09:13:37 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo26n-obb.pt
+2026-04-28 09:13:37 - benchmark.cli - INFO - Inferred version: v26, task: obb
+2026-04-28 09:13:37 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo8
+2026-04-28 09:13:37 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-28 09:13:37 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo26n-obb.pt
+2026-04-28 09:13:37 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo8/v26/obb/yolo26n-obb/model.hef, starting conversion pipeline...
+2026-04-28 09:13:37 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo26n-obb.pt
+2026-04-28 09:13:39 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+2026-04-28 09:13:39 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.pipeline - INFO - Starting conversion pipeline for yolo26n-obb.pt
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.pipeline - INFO -   YOLO version: v26
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Task: obb
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Target: hailo8
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.pipeline - INFO - Stage 1/3: ONNX Export
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.onnx_export - INFO - Exporting yolo26n-obb.pt to ONNX...
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Resolution: 640x640
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Batch size: 1
+2026-04-28 09:13:39 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Opset: 11
+[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.pt to 'yolo26n-obb.pt': 13% ━╸────────── 752.0KB/5.6MB 7.3MB/s 0.1s<0.7s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.pt to 'yolo26n-obb.pt': 59% ━━━━━━━───── 3.3/5.6MB 25.7MB/s 0.2s<0.1s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-obb.pt to 'yolo26n-obb.pt': 100% ━━━━━━━━━━━━ 5.6MB 20.0MB/s 0.3s
+Ultralytics 8.4.7 🚀 Python-3.11.2 torch-2.9.1+cpu CPU (Cortex-A76)
+YOLO26n-obb summary (fused): 132 layers, 2,449,332 parameters, 0 gradients, 5.4 GFLOPs
+
+[34m[1mPyTorch:[0m starting from 'yolo26n-obb.pt' with input shape (1, 3, 640, 640) BCHW and output shape(s) (1, 300, 7) (5.6 MB)
+
+[34m[1mONNX:[0m starting export with onnx 1.21.0 opset 11...
+/home/snpi/Documents/Benchy/venv/lib/python3.11/site-packages/torch/onnx/_internal/torchscript_exporter/symbolic_opset9.py:5353: UserWarning: Exporting aten::index operator of advanced indexing in opset 11 is achieved by combination of multiple ONNX operators, including Reshape, Transpose, Concat, and Gather. If indices include negative values, the exported graph will produce incorrect results.
+  warnings.warn(
+[34m[1mONNX:[0m slimming with onnxslim 0.1.91...
+[0;93m2026-04-28 09:13:43.280539350 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+[0;93m2026-04-28 09:13:43.280600424 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+[34m[1mONNX:[0m export success ✅ 2.3s, saved as 'yolo26n-obb.onnx' (9.6 MB)
+
+Export complete (3.4s)
+Results saved to [1m/home/snpi/Documents/Benchy[0m
+Predict:         yolo predict task=obb model=yolo26n-obb.onnx imgsz=640 
+Validate:        yolo val task=obb model=yolo26n-obb.onnx imgsz=640 data=/home/mason/code/ultralytics/ultralytics/cfg/datasets/DOTAv1.yaml  
+Visualize:       https://netron.app
+2026-04-28 09:13:44 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX validation passed
+2026-04-28 09:13:44 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX exported successfully: models/hailo/v26/obb/yolo26n-obb/model.onnx
+2026-04-28 09:13:44 - benchmark.workloads.yolo.conversion.pipeline - INFO -   ONNX exported: models/hailo/v26/obb/yolo26n-obb/model.onnx
+2026-04-28 09:13:44 - benchmark.cli - ERROR -   Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v26/obb/yolo26n-obb/model.onnx. Please complete conversion using Hailo SDK.
+2026-04-28 09:13:44 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091337_6cdedc0d.json
+
+Benchmark Complete: bench_20260428_091337_6cdedc0d
+----------------------------------------
+Results saved to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256
+Validation FAILED for /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091337_6cdedc0d.json:
+  - yolo_results is empty — the runner produced no rows

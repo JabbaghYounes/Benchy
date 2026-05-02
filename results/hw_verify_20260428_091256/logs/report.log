@@ -1,0 +1,31 @@
+2026-04-28 09:24:37 - benchmark.cli - INFO - Generating report from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091328_6a9b0023.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091337_6cdedc0d.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091411_43a06389.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091436_da988e0d.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091402_6b1c9caa.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091320_8fad8ece.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091419_ccc6d721.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091308_c3e2363e.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091437_47e9c194.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091345_4f6d3225.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091427_2c6983d6.json
+2026-04-28 09:24:37 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091354_f2c427df.json
+2026-04-28 09:24:37 - benchmark.cli - INFO - Aggregated JSON written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437.json
+2026-04-28 09:24:37 - benchmark.aggregation.csv_writer - INFO - LLM aggregated CSV written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_llm.csv
+2026-04-28 09:24:37 - benchmark.aggregation.csv_writer - INFO - Platform summary CSV written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_platforms.csv
+2026-04-28 09:24:37 - benchmark.reporting.dashboard - INFO - Dashboard written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_dashboard.html
+
+Report Generated: report_20260428_092437
+----------------------------------------
+YOLO results: 0
+LLM results: 1
+Platforms: 1
+
+Output files:
+  JSON: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437.json
+  LLM CSV: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_llm.csv
+  PLATFORMS CSV: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_platforms.csv
+  Dashboard: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_dashboard.html
+
+Open dashboard in browser: file:///home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/report/report_20260428_092437_dashboard.html

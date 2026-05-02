@@ -1,0 +1,16 @@
+2026-05-01 10:57:50 - benchmark.cli - INFO - Starting benchmark run: bench_20260501_105750_2eaaeabc
+2026-05-01 10:57:50 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-05-01 10:57:50 - benchmark.cli - INFO - Profile: default
+2026-05-01 10:57:50 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-05-01 10:57:50 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolov8s-pose.pt
+2026-05-01 10:57:50 - benchmark.cli - INFO - Inferred version: v8, task: pose
+2026-05-01 10:57:50 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo8
+2026-05-01 10:57:50 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-05-01 10:57:50 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolov8s-pose.pt
+2026-05-01 10:57:50 - benchmark.workloads.yolo.backends.hailo - INFO - Using cached HEF: models/hailo/hailo8/v8/pose/yolov8s-pose/model.hef
+2026-05-01 10:57:50 - benchmark.workloads.yolo.backends.hailo - INFO - Running model sanity check (Phase 3)...
+2026-05-01 10:57:50 - benchmark.workloads.yolo.conversion.validation - INFO - Validating HEF model: models/hailo/hailo8/v8/pose/yolov8s-pose/model.hef
+2026-05-01 10:57:50 - benchmark.workloads.yolo.conversion.validation - INFO -   Task: pose
+[HailoRT] [error] CHECK failed - Input buffer size 0 is different than expected 4915200 for input 'yolov8s_pose/input_layer1'
+[HailoRT] [error] CHECK_SUCCESS failed with status=HAILO_INVALID_OPERATION(6)
+[HailoRT] [error] CHECK_SUCCESS failed with status=HAILO_INVALID_OPERATION(6)

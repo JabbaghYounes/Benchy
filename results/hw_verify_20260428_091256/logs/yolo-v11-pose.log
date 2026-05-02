@@ -1,0 +1,50 @@
+2026-04-28 09:14:19 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_091419_ccc6d721
+2026-04-28 09:14:19 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-04-28 09:14:19 - benchmark.cli - INFO - Profile: default
+2026-04-28 09:14:19 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-28 09:14:19 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo11n-pose.pt
+2026-04-28 09:14:19 - benchmark.cli - INFO - Inferred version: v11, task: pose
+2026-04-28 09:14:19 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo8
+2026-04-28 09:14:19 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-28 09:14:19 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo11n-pose.pt
+2026-04-28 09:14:19 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo8/v11/pose/yolo11n-pose/model.hef, starting conversion pipeline...
+2026-04-28 09:14:19 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo11n-pose.pt
+2026-04-28 09:14:22 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+2026-04-28 09:14:22 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.pipeline - INFO - Starting conversion pipeline for yolo11n-pose.pt
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.pipeline - INFO -   YOLO version: v11
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Task: pose
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Target: hailo8
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.pipeline - INFO - Stage 1/3: ONNX Export
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.onnx_export - INFO - Exporting yolo11n-pose.pt to ONNX...
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Resolution: 640x640
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Batch size: 1
+2026-04-28 09:14:22 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Opset: 11
+[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-pose.pt to 'yolo11n-pose.pt': 14% ━╸────────── 864.0KB/6.0MB 8.4MB/s 0.1s<0.6s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-pose.pt to 'yolo11n-pose.pt': 48% ━━━━━╸────── 2.9/6.0MB 20.3MB/s 0.2s<0.2s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-pose.pt to 'yolo11n-pose.pt': 75% ━━━━━━━━╸─── 4.5/6.0MB 15.9MB/s 0.3s<0.1s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-pose.pt to 'yolo11n-pose.pt': 100% ━━━━━━━━━━━━ 6.0MB 15.1MB/s 0.4s
+Ultralytics 8.4.7 🚀 Python-3.11.2 torch-2.9.1+cpu CPU (Cortex-A76)
+YOLO11n-pose summary (fused): 109 layers, 2,866,468 parameters, 0 gradients, 7.4 GFLOPs
+
+[34m[1mPyTorch:[0m starting from 'yolo11n-pose.pt' with input shape (1, 3, 640, 640) BCHW and output shape(s) (1, 56, 8400) (6.0 MB)
+
+[34m[1mONNX:[0m starting export with onnx 1.21.0 opset 11...
+[34m[1mONNX:[0m slimming with onnxslim 0.1.91...
+[0;93m2026-04-28 09:14:25.498330622 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+[0;93m2026-04-28 09:14:25.498388306 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+[34m[1mONNX:[0m export success ✅ 2.2s, saved as 'yolo11n-pose.onnx' (11.3 MB)
+
+Export complete (3.3s)
+Results saved to [1m/home/snpi/Documents/Benchy[0m
+Predict:         yolo predict task=pose model=yolo11n-pose.onnx imgsz=640 
+Validate:        yolo val task=pose model=yolo11n-pose.onnx imgsz=640 data=/ultralytics/ultralytics/cfg/datasets/coco-pose.yaml  
+Visualize:       https://netron.app
+2026-04-28 09:14:26 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX validation passed
+2026-04-28 09:14:26 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX exported successfully: models/hailo/v11/pose/yolo11n-pose/model.onnx
+2026-04-28 09:14:26 - benchmark.workloads.yolo.conversion.pipeline - INFO -   ONNX exported: models/hailo/v11/pose/yolo11n-pose/model.onnx
+2026-04-28 09:14:26 - benchmark.cli - ERROR -   Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v11/pose/yolo11n-pose/model.onnx. Please complete conversion using Hailo SDK.
+2026-04-28 09:14:26 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091419_ccc6d721.json
+
+Benchmark Complete: bench_20260428_091419_ccc6d721
+----------------------------------------
+Results saved to: /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256
+Validation FAILED for /home/snpi/Documents/Benchy/results/hw_verify_20260428_091256/bench_20260428_091419_ccc6d721.json:
+  - yolo_results is empty — the runner produced no rows

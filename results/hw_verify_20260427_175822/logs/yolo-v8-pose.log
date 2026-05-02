@@ -1,0 +1,20 @@
+2026-04-27 17:58:54 - benchmark.cli - INFO - Starting benchmark run: bench_20260427_175854_49136e32
+2026-04-27 17:58:54 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-04-27 17:58:54 - benchmark.cli - INFO - Profile: default
+2026-04-27 17:58:54 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-27 17:58:54 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolov8n-pose.pt
+2026-04-27 17:58:54 - benchmark.cli - INFO - Inferred version: v8, task: pose
+2026-04-27 17:58:54 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo8
+2026-04-27 17:58:54 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-27 17:58:54 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolov8n-pose.pt
+2026-04-27 17:58:54 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo8/v8/pose/yolov8n-pose/model.hef, starting conversion pipeline...
+2026-04-27 17:58:54 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolov8n-pose.pt
+2026-04-27 17:58:55 - benchmark.workloads.yolo.conversion.onnx_export - WARNING - ONNX export not available: No module named 'onnx'
+2026-04-27 17:58:56 - benchmark.cli - ERROR -   Failed: ONNX export not available. Install ultralytics: pip install ultralytics onnx
+2026-04-27 17:58:56 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175854_49136e32.json
+
+Benchmark Complete: bench_20260427_175854_49136e32
+----------------------------------------
+Results saved to: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822
+Validation FAILED for /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175854_49136e32.json:
+  - yolo_results is empty — the runner produced no rows

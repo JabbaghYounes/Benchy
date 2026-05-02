@@ -1,0 +1,58 @@
+{
+  "run_id": "bench_20260502_093827_99c4692a",
+  "system_info": {
+    "platform": "rpi_ai_hat_plus",
+    "cpu_model": "Raspberry Pi 5 Model B Rev 1.1",
+    "accelerator": "Hailo-8 NPU (26 TOPS)",
+    "ram_size_gb": 15.8,
+    "storage_type": "SD Card",
+    "cooling_config": "Active (Fan)",
+    "power_mode": "ondemand",
+    "os_version": "Debian GNU/Linux 12 (bookworm)",
+    "kernel_version": "6.12.75+rpt-rpi-2712",
+    "hostname": "raspberrypi",
+    "timestamp": "2026-05-02T09:38:27.123314"
+  },
+  "workload_type": "yolo",
+  "started_at": "2026-05-02T09:38:27.123408",
+  "completed_at": "2026-05-02T09:38:27.676438",
+  "yolo_results": [
+    {
+      "model_name": "yolov8n.pt",
+      "yolo_version": "v8",
+      "task": "detection",
+      "input_resolution": "640x640",
+      "latency": {
+        "first_inference_ms": 9.864,
+        "mean_ms": 10.008,
+        "std_ms": 0.19,
+        "min_ms": 9.854,
+        "max_ms": 10.438,
+        "p50_ms": 9.921,
+        "p95_ms": 10.438,
+        "p99_ms": 10.438
+      },
+      "throughput_fps": 99.92,
+      "backend": "hailo",
+      "map_score": null,
+      "precision": null,
+      "recall": null,
+      "resource_utilization": {
+        "cpu_percent": 9.8,
+        "accelerator_percent": null,
+        "memory_used_mb": 7904.8,
+        "memory_total_mb": 16219.0,
+        "power_watts": null
+      },
+      "power_idle_watts": null,
+      "power_inference_watts": null,
+      "warmup_runs": 3,
+      "measured_runs": 10
+    }
+  ],
+  "llm_results": [],
+  "metadata": {
+    "profile": "default",
+    "config_dir": "/home/snpi/Documents/Benchy/configs"
+  }
+}

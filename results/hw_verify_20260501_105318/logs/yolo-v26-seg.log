@@ -1,0 +1,52 @@
+2026-05-01 10:54:00 - benchmark.cli - INFO - Starting benchmark run: bench_20260501_105400_224273ab
+2026-05-01 10:54:00 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-05-01 10:54:00 - benchmark.cli - INFO - Profile: default
+2026-05-01 10:54:00 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-05-01 10:54:00 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo26n-seg.pt
+2026-05-01 10:54:00 - benchmark.cli - INFO - Inferred version: v26, task: segmentation
+2026-05-01 10:54:01 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-05-01 10:54:01 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-05-01 10:54:01 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo26n-seg.pt
+2026-05-01 10:54:01 - benchmark.workloads.yolo.backends.hailo - INFO - Using cached HEF: models/hailo/hailo10h/v26/segmentation/yolo26n-seg/model.hef
+2026-05-01 10:54:01 - benchmark.workloads.yolo.backends.hailo - INFO - Running model sanity check (Phase 3)...
+2026-05-01 10:54:01 - benchmark.workloads.yolo.conversion.validation - INFO - Validating HEF model: models/hailo/hailo10h/v26/segmentation/yolo26n-seg/model.hef
+2026-05-01 10:54:01 - benchmark.workloads.yolo.conversion.validation - INFO -   Task: segmentation
+2026-05-01 10:54:03 - benchmark.workloads.yolo.conversion.validation - INFO - Test inference successful in 82.63ms
+2026-05-01 10:54:03 - benchmark.workloads.yolo.conversion.validation - INFO - Model validation PASSED
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO - Model validation PASSED
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO -   Input layers: 1
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO -   Output layers: 10
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO -   Detected classes: 80
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO -   Test inference: 82.63ms
+2026-05-01 10:54:03 - benchmark.workloads.yolo.backends.hailo - INFO - Loading HEF: models/hailo/hailo10h/v26/segmentation/yolo26n-seg/model.hef
+2026-05-01 10:54:04 - benchmark.workloads.yolo.backends.hailo - INFO - HEF loaded successfully
+2026-05-01 10:54:04 - benchmark.workloads.yolo.backends.hailo - INFO - Initialized post-processor for segmentation with 80 classes
+2026-05-01 10:54:04 - benchmark.workloads.yolo.runner - INFO - Starting benchmark: 3 warmup, 10 measured runs (Phase 5 enforcement)
+2026-05-01 10:54:04 - benchmark.workloads.yolo.execution - INFO - Starting warmup phase: 3 runs (excluded from metrics)
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.execution - INFO - Starting measurement phase: 10 runs
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:04 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:05 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:05 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:05 - benchmark.workloads.yolo.postprocessing - WARNING - Segmentation outputs missing or unrecognised
+2026-05-01 10:54:05 - benchmark.workloads.yolo.execution - INFO - Benchmark complete: 10 measured runs
+2026-05-01 10:54:05 - benchmark.workloads.yolo.runner - INFO - Running validation for accuracy metrics...
+2026-05-01 10:54:05 - benchmark.workloads.yolo.runner - INFO - Validation not available for Hailo backend
+2026-05-01 10:54:05 - benchmark.cli - INFO -   [hailo] Throughput: 12.38 FPS, Latency: 80.79ms
+2026-05-01 10:54:05 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_105318/bench_20260501_105400_224273ab.json
+2026-05-01 10:54:05 - benchmark.cli - INFO - YOLO CSV results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_105318/bench_20260501_105400_224273ab_yolo.csv
+
+Benchmark Complete: bench_20260501_105400_224273ab
+----------------------------------------
+YOLO models benchmarked: 1
+  Average throughput: 12.38 FPS
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_105318
+OK: /home/vpn/Documents/Benchy/results/hw_verify_20260501_105318/bench_20260501_105400_224273ab.json (1 yolo result row(s))

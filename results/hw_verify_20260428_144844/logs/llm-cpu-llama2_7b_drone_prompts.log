@@ -1,0 +1,16 @@
+2026-04-28 15:07:16 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_150716_df254912
+2026-04-28 15:07:16 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-28 15:07:16 - benchmark.cli - INFO - Profile: drone
+2026-04-28 15:07:16 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-04-28 15:07:16 - benchmark.cli - INFO - Benchmarking llama2:7b
+2026-04-28 15:07:16 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-04-28 15:07:16 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-28 15:07:16 - benchmark.workloads.llm.runner - ERROR - Generation failed: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/generate
+2026-04-28 15:07:16 - benchmark.cli - ERROR -   Failed: 500 Server Error: Internal Server Error for url: http://localhost:11434/api/generate
+2026-04-28 15:07:16 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_150716_df254912.json
+
+Benchmark Complete: bench_20260428_150716_df254912
+----------------------------------------
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844
+Validation FAILED for /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_150716_df254912.json:
+  - llm_results is empty — the runner produced no rows

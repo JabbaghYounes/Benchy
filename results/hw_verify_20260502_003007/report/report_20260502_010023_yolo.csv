@@ -1,0 +1,9 @@
+model_name,yolo_version,task,input_resolution,num_runs,latency_mean_ms,latency_std_ms,latency_min_ms,latency_max_ms,latency_p50_ms,latency_p95_ms,throughput_mean_fps,throughput_std_fps,throughput_min_fps,throughput_max_fps,map_mean,map_std,precision_mean,recall_mean,cpu_percent_mean,accelerator_percent_mean,memory_used_mb_mean,power_watts_mean
+yolov8n-obb.pt,v8,obb,640x640,1,62.064,0.0,62.064,62.064,62.122,62.187,16.11,0.0,16.11,16.11,,,,,5.9,,3344.7,
+yolov8n.pt,v8,detection,640x640,1,67.463,0.0,67.463,67.463,67.306,69.837,14.82,0.0,14.82,14.82,,,,,17.4,,3361.3,
+yolo11n-pose.pt,v11,pose,640x640,1,64.34,0.0,64.34,64.34,64.381,64.488,15.54,0.0,15.54,15.54,,,,,6.5,,3330.8,
+yolo11n-obb.pt,v11,obb,640x640,1,62.671,0.0,62.671,62.671,62.611,62.909,15.96,0.0,15.96,15.96,,,,,6.3,,3360.9,
+yolo26n-pose.pt,v26,pose,640x640,1,61.112,0.0,61.112,61.112,61.134,61.422,16.36,0.0,16.36,16.36,,,,,4.7,,3314.2,
+yolo26n-obb.pt,v26,obb,640x640,1,54.475,0.0,54.475,54.475,54.471,54.633,18.36,0.0,18.36,18.36,,,,,3.6,,3366.6,
+yolo11n-seg.pt,v11,segmentation,640x640,1,81.794,0.0,81.794,81.794,81.814,82.067,12.23,0.0,12.23,12.23,,,,,8.4,,3343.9,
+yolo26n-seg.pt,v26,segmentation,640x640,1,80.348,0.0,80.348,80.348,80.305,81.013,12.45,0.0,12.45,12.45,,,,,5.7,,3321.1,

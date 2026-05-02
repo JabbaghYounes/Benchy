@@ -1,0 +1,1 @@
+model_name,model_size,prompt_id,num_runs,ttft_mean_ms,ttft_std_ms,ttft_min_ms,ttft_max_ms,tps_mean,tps_std,tps_min,tps_max,latency_mean_ms,latency_std_ms,latency_min_ms,latency_max_ms,prompt_tokens_mean,output_tokens_mean,cpu_percent_mean,accelerator_percent_mean,memory_used_mb_mean,power_watts_mean

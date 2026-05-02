@@ -1,0 +1,31 @@
+2026-05-01 23:18:32 - benchmark.cli - INFO - Starting benchmark run: bench_20260501_231832_8663dfbd
+2026-05-01 23:18:32 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-05-01 23:18:32 - benchmark.cli - INFO - Profile: compare
+2026-05-01 23:18:32 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-05-01 23:18:32 - benchmark.cli - INFO - Benchmarking llama3.2:1b
+2026-05-01 23:18:32 - benchmark.workloads.llm.runner - INFO - Pre-warming llama3.2:1b (timeout 1800s)...
+2026-05-01 23:18:33 - benchmark.workloads.llm.runner - INFO - Pre-warm complete in 0.6s
+2026-05-01 23:18:33 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-05-01 23:18:33 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 23:21:34 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: target_identification
+2026-05-01 23:21:34 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 23:30:00 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: mission_preflight
+2026-05-01 23:30:00 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 23:38:11 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: telemetry_interpretation
+2026-05-01 23:38:11 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 23:39:58 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: hazard_reasoning
+2026-05-01 23:39:58 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 23:48:05 - benchmark.cli - INFO -   [scene_description] TPS: 6.85, TTFT: 450.1ms
+2026-05-01 23:48:05 - benchmark.cli - INFO -   [target_identification] TPS: 6.65, TTFT: 447.3ms
+2026-05-01 23:48:05 - benchmark.cli - INFO -   [mission_preflight] TPS: 6.87, TTFT: 449.1ms
+2026-05-01 23:48:05 - benchmark.cli - INFO -   [telemetry_interpretation] TPS: 7.01, TTFT: 452.3ms
+2026-05-01 23:48:05 - benchmark.cli - INFO -   [hazard_reasoning] TPS: 6.90, TTFT: 455.2ms
+2026-05-01 23:48:05 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231832_8663dfbd.json
+2026-05-01 23:48:05 - benchmark.cli - INFO - LLM CSV results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231832_8663dfbd_llm.csv
+
+Benchmark Complete: bench_20260501_231832_8663dfbd
+----------------------------------------
+LLM prompts benchmarked: 5
+  Average tokens/sec: 6.86
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735
+OK: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231832_8663dfbd.json (5 llm result row(s))

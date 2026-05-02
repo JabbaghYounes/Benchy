@@ -1,0 +1,16 @@
+2026-04-27 17:59:05 - benchmark.cli - INFO - Starting benchmark run: bench_20260427_175905_fae797a3
+2026-04-27 17:59:05 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-04-27 17:59:05 - benchmark.cli - INFO - Profile: drone
+2026-04-27 17:59:05 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-04-27 17:59:05 - benchmark.cli - INFO - Benchmarking llama2:7b
+2026-04-27 17:59:05 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-04-27 17:59:05 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-27 18:04:05 - benchmark.workloads.llm.runner - ERROR - Generation failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=300)
+2026-04-27 18:04:05 - benchmark.cli - ERROR -   Failed: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=300)
+2026-04-27 18:04:05 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175905_fae797a3.json
+
+Benchmark Complete: bench_20260427_175905_fae797a3
+----------------------------------------
+Results saved to: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822
+Validation FAILED for /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175905_fae797a3.json:
+  - llm_results is empty — the runner produced no rows

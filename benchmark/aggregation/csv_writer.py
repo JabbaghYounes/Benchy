@@ -40,7 +40,10 @@ YOLO_AGGREGATED_COLUMNS = [
     "power_watts_mean",
 ]
 
-# Column definitions for aggregated LLM results
+# Column definitions for aggregated LLM results.
+# Must stay in lockstep with LLMAggregatedMetrics.to_dict() in
+# benchmark/aggregation/aggregator.py — csv.DictWriter raises ValueError
+# if the dataclass emits a field not listed here.
 LLM_AGGREGATED_COLUMNS = [
     "model_name",
     "model_size",
@@ -50,20 +53,35 @@ LLM_AGGREGATED_COLUMNS = [
     "ttft_std_ms",
     "ttft_min_ms",
     "ttft_max_ms",
+    "ttft_median_ms",
     "tps_mean",
     "tps_std",
     "tps_min",
     "tps_max",
+    "tps_median",
     "latency_mean_ms",
     "latency_std_ms",
     "latency_min_ms",
     "latency_max_ms",
     "prompt_tokens_mean",
     "output_tokens_mean",
+    # Model Expansion PRD fields
+    "parameter_group",
+    "architecture",
+    "specialization",
+    "prompt_category",
+    "peak_memory_mb_mean",
+    "truncation_rate",
+    # Resource utilisation
     "cpu_percent_mean",
     "accelerator_percent_mean",
     "memory_used_mb_mean",
     "power_watts_mean",
+    # Phase 7 — backend axis (CPU vs Hailo-10H NPU)
+    "backend",
+    "npu_utilization_percent_mean",
+    "npu_power_watts_mean",
+    "hailort_version",
 ]
 
 # Column definitions for platform summary

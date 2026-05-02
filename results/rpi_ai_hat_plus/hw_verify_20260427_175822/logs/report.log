@@ -1,0 +1,35 @@
+2026-04-27 18:04:05 - benchmark.cli - INFO - Generating report from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175843_0908027b.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175901_72a75e27.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175904_4f8975d5.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175832_06489307.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175839_cfd69122.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175836_8fea1733.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175850_ffaabc28.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175857_aa7845db.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175854_49136e32.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175825_e7379a5b.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175846_7f1e7e9b.json
+2026-04-27 18:04:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/bench_20260427_175905_fae797a3.json
+2026-04-27 18:04:05 - benchmark.cli - INFO - Aggregated JSON written to: /home/snpi/Documents/Benchy/results/hw_verify_20260427_175822/report/report_20260427_180405.json
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/snpi/Documents/Benchy/benchmark/__main__.py", line 5, in <module>
+    main()
+  File "/home/snpi/Documents/Benchy/benchmark/cli.py", line 1092, in main
+    return cmd_report(args)
+           ^^^^^^^^^^^^^^^^
+  File "/home/snpi/Documents/Benchy/benchmark/cli.py", line 681, in cmd_report
+    csv_paths = csv_writer.write_all(aggregator, output_dir, report_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/snpi/Documents/Benchy/benchmark/aggregation/csv_writer.py", line 190, in write_all
+    self.write_llm_aggregated(llm_metrics, llm_path)
+  File "/home/snpi/Documents/Benchy/benchmark/aggregation/csv_writer.py", line 131, in write_llm_aggregated
+    writer.writerow(metric.to_dict())
+  File "/usr/lib/python3.11/csv.py", line 154, in writerow
+    return self.writer.writerow(self._dict_to_list(rowdict))
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/csv.py", line 149, in _dict_to_list
+    raise ValueError("dict contains fields not in fieldnames: "
+ValueError: dict contains fields not in fieldnames: 'ttft_median_ms', 'tps_median', 'npu_power_watts_mean', 'hailort_version', 'truncation_rate', 'peak_memory_mb_mean', 'backend', 'prompt_category', 'specialization', 'parameter_group', 'npu_utilization_percent_mean', 'architecture'

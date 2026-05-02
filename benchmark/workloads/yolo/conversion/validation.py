@@ -423,20 +423,42 @@ class ModelValidator:
                     return shape[1]
                 elif len(shape) == 1:
                     return shape[0]
+            return None
 
-        elif task == YOLOTask.DETECTION:
-            # Detection outputs are more complex
-            # YOLO typically outputs (N, anchors, 5 + num_classes)
-            # or uses separate outputs for boxes and classes
-            for layer in output_layers:
-                shape = layer["shape"]
-                # Look for class dimension (usually > 4 for boxes)
-                if len(shape) >= 2:
-                    last_dim = shape[-1]
-                    if last_dim > 4:
-                        # Subtract box coordinates (x, y, w, h)
-                        return last_dim - 4
+        # Detection-family tasks (det, obb, pose, seg) on workstation-compiled
+        # HEFs ship with truncated heads — the END_NODE_TABLE in
+        # har_generator.py cuts at raw cv*.X.X.2/Conv outputs, so each stride
+        # emits separate branches: box (4 or 64 ch) + cls (nc ch) + task-
+        # specific extras (angle for OBB, keypoints for pose, mask coeffs
+        # for seg). Filter the extras and the cls branch is what's left.
+        last_dims = [
+            layer["shape"][-1]
+            for layer in output_layers
+            if len(layer["shape"]) >= 2
+        ]
+        if not last_dims:
+            return None
 
+        # Box branches: 64 = 4 * reg_max=16 (raw conv, v8/v11), or 4 (post-DFL, v26).
+        excluded = {4, 64}
+        if task == YOLOTask.OBB:
+            excluded |= {1}            # angle branch
+        elif task == YOLOTask.POSE:
+            excluded |= {51}           # 17 keypoints * 3 (x, y, conf)
+        elif task == YOLOTask.SEGMENTATION:
+            excluded |= {32}           # mask coefficients + prototype channel dim
+
+        candidates = [d for d in last_dims if d not in excluded]
+        if candidates:
+            # The cls branch repeats once per stride; pick the most common.
+            from collections import Counter
+            return Counter(candidates).most_common(1)[0][0]
+
+        # Legacy combined-head fallback: single tensor (N, anchors, 4 + nc)
+        # where the box dim is folded in. Subtract the 4 box coords.
+        for d in last_dims:
+            if d > 4:
+                return d - 4
         return None
 
     def _validate_class_count(
@@ -509,60 +531,48 @@ class ModelValidator:
 
         try:
             import time
-            from hailo_platform import (
-                HEF,
-                VDevice,
-                ConfigureParams,
-                InferVStreams,
-                InputVStreamParams,
-                OutputVStreamParams,
-            )
+            from hailo_platform import VDevice, FormatType
 
-            # Load HEF
-            hef = HEF(str(hef_path))
-
-            # Create virtual device
+            # HailoRT 5.x InferModel API. The 4.x InferVStreams /
+            # ConfigureParams.default_interface path was removed in 5.x and
+            # raises HAILO_NOT_IMPLEMENTED on the Hailo-10H runtime.
             vdevice = VDevice()
+            infer_model = vdevice.create_infer_model(str(hef_path))
 
-            # Configure inference
-            configure_params = ConfigureParams.create_from_hef(
-                hef, interface=ConfigureParams.default_interface()
-            )
-            configured_network = vdevice.configure(hef, configure_params)[0]
+            # FLOAT32 in/out is the 5.x equivalent of the old quantized=False
+            # vstream params — we want raw float tensors out for downstream
+            # NaN/Inf checks and the YOLO postprocessor.
+            infer_model.input().set_format_type(FormatType.FLOAT32)
+            for output_stream in infer_model.outputs:
+                output_stream.set_format_type(FormatType.FLOAT32)
 
-            # Get input/output info
-            input_vstream_info = hef.get_input_vstream_infos()[0]
-            output_vstream_infos = hef.get_output_vstream_infos()
+            configured_infer_model = infer_model.configure()
 
-            # Create vstream params
-            input_params = InputVStreamParams.make_from_network_group(
-                configured_network, quantized=False
-            )
-            output_params = OutputVStreamParams.make_from_network_group(
-                configured_network, quantized=False
-            )
-
-            # Create test input (random normalized image)
-            input_shape = tuple(input_vstream_info.shape)
+            # Generate test input matching the model's expected shape.
+            input_stream = infer_model.input()
             rng = np.random.default_rng(42)
-            test_input = rng.random(input_shape, dtype=np.float32)
+            test_input = rng.random(tuple(input_stream.shape), dtype=np.float32)
 
-            # Run inference
+            # Allocate output buffers up front so we can read them back
+            # after run() returns — bindings hold references, not copies.
+            output_buffers = {
+                out.name: np.empty(out.shape, dtype=np.float32)
+                for out in infer_model.outputs
+            }
+            bindings = configured_infer_model.create_bindings(
+                input_buffers={input_stream.name: np.ascontiguousarray(test_input)},
+                output_buffers=output_buffers,
+            )
+
+            # Run inference (timeout in ms; 10s is generous for a single frame).
             start_time = time.perf_counter()
-
-            with InferVStreams(
-                configured_network, input_params, output_params
-            ) as infer_pipeline:
-                input_dict = {input_vstream_info.name: test_input}
-                outputs = infer_pipeline.infer(input_dict)
-
+            configured_infer_model.run([bindings], timeout=10000)
             end_time = time.perf_counter()
             result.inference_latency_ms = (end_time - start_time) * 1000
 
-            # Validate outputs
-            result.output_statistics = self._compute_output_statistics(outputs)
+            # Validate outputs (same shape as legacy: dict[name -> ndarray])
+            result.output_statistics = self._compute_output_statistics(output_buffers)
 
-            # Check output validity
             all_valid = True
             for name, stats in result.output_statistics.items():
                 if stats["has_nan"]:
@@ -575,8 +585,11 @@ class ModelValidator:
             result.inference_successful = all_valid
             result.output_range_valid = all_valid
 
-            # Cleanup
-            configured_network.shutdown()
+            # Cleanup. ConfiguredInferModel must be released before the
+            # VDevice or HailoRT logs "Lost communication with the server".
+            configured_infer_model.shutdown()
+            del configured_infer_model
+            del infer_model
             vdevice.release()
 
             if all_valid:

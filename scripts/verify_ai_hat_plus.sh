@@ -30,7 +30,8 @@ source "$SCRIPT_DIR/hw_verify_common.sh"
 # + 1 (LLM-on-NPU stub) + 1 (LLM-on-CPU comparison row) = 13 steps.
 HW_TOTAL_STEPS=13
 
-hw_init
+hw_init rpi_ai_hat_plus
+hw_ensure_python_deps
 hw_preflight_rpi_ai_hat_plus
 
 # Mock-only smoke suite first. If pytest is broken, every later step
@@ -65,9 +66,13 @@ hw_run_step "yolo-v26-seg [experimental]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
 
-# Phase 3c — Pose.
+# Phase 3c — Pose. Size 's' instead of the 'n' used elsewhere because
+# the Hailo Model Zoo only publishes pose HEFs at sizes s and m (no n).
+# Verify is a smoke test, not a benchmark — the size mismatch is fine
+# here, but consumer-facing benchmark profiles should keep sizes
+# consistent. See Issue 11 in resources/session_issues_2026-04-27.md.
 hw_run_step "yolo-v8-pose" \
-    "python -m benchmark run yolo --backend hailo --yolo-model yolov8n-pose.pt --output $HW_RESULTS_DIR" \
+    "python -m benchmark run yolo --backend hailo --yolo-model yolov8s-pose.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task pose --backend hailo
 hw_run_step "yolo-v11-pose" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo11n-pose.pt --output $HW_RESULTS_DIR" \
@@ -82,13 +87,19 @@ hw_run_step "yolo-v26-pose [experimental]" \
 # explicit zero bar for cross-platform comparison rather than a missing
 # row. We deliberately don't gate on a curl preflight to :8000 here —
 # we want the stub written regardless of hailo-ollama's reachability.
-hw_run_step "llm-npu-qwen2:1.5b [unsupported-on-this-hw]" \
+hw_run_step "llm-npu-llama3.2:1b [unsupported-on-this-hw]" \
     "python -m benchmark run llm --profile npu --output $HW_RESULTS_DIR" \
     --workload llm --backend hailo-10h --require-npu-metrics
 
-# CPU-side comparison row — same on both Pi 5 boards (Cortex-A76).
-hw_run_step "llm-cpu-llama2:7b (drone prompts)" \
-    "python -m benchmark run llm --profile drone --output $HW_RESULTS_DIR" \
+# CPU-side comparison row at the same 1B model size as the AI HAT+ 2 Pi's
+# `npu` step + step 12's stub above — so the two boards' "CPU LLM" rows
+# in the cross-platform dashboard are at the same model size and directly
+# comparable. Drone profile (llama2:7b) was tried 2026-05-01: per-request
+# wall time ran ~40 min at max_tokens=256, projecting ~26 hours for the
+# full 5-prompt × 13-run sweep. See
+# resources/session_notes_2026-05-02_llm_drone_profile_unworkable.md.
+hw_run_step "llm-cpu-llama3.2:1b (compare profile)" \
+    "python -m benchmark run llm --profile compare --output $HW_RESULTS_DIR" \
     --workload llm --backend ollama-cpu
 
 hw_finalize_with_report

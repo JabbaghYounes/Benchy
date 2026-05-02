@@ -1,0 +1,79 @@
+{
+  "aggregation_id": "report_20260430_225449",
+  "created_at": "2026-04-30T22:54:49.676173",
+  "runs": [
+    "bench_20260430_224438_a8d53f0e",
+    "bench_20260430_224449_6b3a756f",
+    "bench_20260430_224448_57f4c946",
+    "bench_20260430_224447_a6eb73d8",
+    "bench_20260430_224442_7be5d35f",
+    "bench_20260430_224435_1c30ba3d",
+    "bench_20260430_224446_44fcf7c7",
+    "bench_20260430_224447_b24a9db3",
+    "bench_20260430_224437_c3f1f474",
+    "bench_20260430_224438_1c1352d5",
+    "bench_20260430_224436_aa7837a6",
+    "bench_20260430_224439_ef95ab77"
+  ],
+  "platform_summary": {
+    "rpi_ai_hat_plus": {
+      "platform": "rpi_ai_hat_plus",
+      "num_benchmark_runs": 12,
+      "num_yolo_results": 0,
+      "num_llm_results": 1,
+      "cpu_model": "Raspberry Pi 5 Model B Rev 1.1",
+      "accelerator": "Hailo-8 NPU (26 TOPS)",
+      "ram_size_gb": 15.8,
+      "os_version": "Debian GNU/Linux 12 (bookworm)",
+      "yolo_avg_fps": null,
+      "yolo_avg_latency_ms": null,
+      "llm_avg_tps": 0.0,
+      "llm_avg_ttft_ms": 0.0
+    }
+  },
+  "yolo_summary": {
+    "models": [],
+    "total_results": 0
+  },
+  "llm_summary": {
+    "models": [
+      {
+        "model_name": "llama3.2:1b",
+        "model_size": "1B",
+        "prompt_id": "unsupported-on-this-hardware",
+        "num_runs": 1,
+        "ttft_mean_ms": 0.0,
+        "ttft_std_ms": 0.0,
+        "ttft_min_ms": 0.0,
+        "ttft_max_ms": 0.0,
+        "ttft_median_ms": 0.0,
+        "tps_mean": 0.0,
+        "tps_std": 0.0,
+        "tps_min": 0.0,
+        "tps_max": 0.0,
+        "tps_median": 0.0,
+        "latency_mean_ms": 0.0,
+        "latency_std_ms": 0.0,
+        "latency_min_ms": 0.0,
+        "latency_max_ms": 0.0,
+        "prompt_tokens_mean": 0,
+        "output_tokens_mean": 0,
+        "parameter_group": null,
+        "architecture": null,
+        "specialization": null,
+        "prompt_category": null,
+        "peak_memory_mb_mean": null,
+        "truncation_rate": 0.0,
+        "cpu_percent_mean": null,
+        "accelerator_percent_mean": null,
+        "memory_used_mb_mean": null,
+        "power_watts_mean": null,
+        "backend": "hailo-10h",
+        "npu_utilization_percent_mean": null,
+        "npu_power_watts_mean": null,
+        "hailort_version": null
+      }
+    ],
+    "total_results": 1
+  }
+}

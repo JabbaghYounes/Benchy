@@ -31,6 +31,85 @@ from benchmark.workloads.yolo.conversion.calibration import (
 logger = logging.getLogger(__name__)
 
 
+# Per-(yolo_version, task) extra ALLS commands to inject before
+# runner.optimize(). Layered on top of the standard
+# `model_optimization_flavor(...)` and
+# `post_quantization_optimization(bias_correction, policy=enabled)`
+# lines that every model gets. Use this for chip-side workarounds:
+# matmul decomposition, per-layer precision_mode, layer-specific
+# quantization params — anything the SDK accepts as an ALLS command.
+#
+# Entries are sourced from:
+# - The Hailo Model Zoo `.alls` scripts when an official one exists
+#   (e.g. yolo26n.alls under
+#   `hailo_model_zoo/cfg/alls/generic/`). These typically force a
+#   handful of layers to a16_w16 so the rest fit at 8-bit.
+# - Iterative compile-debug: read the mapper's failure message,
+#   identify the failing layer (Hailo internal name like `matmul1`
+#   / `concat23` / `format_conversion13`), and add a targeted
+#   override. The Hailo names are stable across compile runs of the
+#   same network, so once you've found the right command the table
+#   entry is reusable.
+#
+# Only applied where needed; the table is keyed by (version, task)
+# rather than (version, task, hw_arch) because the overrides are
+# usually no-ops on the chip that doesn't need them (h10h tolerates
+# the un-tweaked v26 graph that h8 can't, but matmul_decomposition
+# on h10h is harmless — just adds a few seconds to compile).
+MODEL_SCRIPT_OVERRIDES: dict = {
+    # YOLOv26 segmentation — the v26 head's attention block produces
+    # a `matmul1` (and likely `matmul2`) layer with multiple outputs,
+    # which Hailo-8's compiler refuses to ingest natively:
+    #     "More than one output is not supported for layer matmul1"
+    # `pre_quantization_optimization(matmul_decomposition, ...)` splits
+    # those matmuls into smaller ops the chip handles. h10h compiled
+    # v26-seg fine without this in the 2026-04-29 retry sweep, so the
+    # override is technically only required for h8 — but it's cheap
+    # to apply on h10h too.
+    # ("v26", YOLOTask.SEGMENTATION): no working override found.
+    #
+    # v26-seg has 4 matmul layers (matmul1..matmul4 in the head's
+    # attention block, verified via ClientRunner.get_hn()). Hailo-8
+    # cannot ingest matmul1's multi-output structure ("More than one
+    # output is not supported for layer matmul1"). The 2026-04-29
+    # session attempted six different overrides:
+    #
+    #   pre_quantization_optimization(matmul_decomposition, ...,
+    #                                 precision_mode=a16_w8)  → KeyError 'meta'
+    #   pre_quantization_optimization(matmul_decomposition, ...,
+    #                                 no precision_mode)      → KeyError 'meta'
+    #   quantization_param(precision_mode=a16_w16)             → Unsupported (matmul allows {a8_w8, a8_w8_a8, a8_w8_a16})
+    #   quantization_param(precision_mode=a16_w8)              → Unsupported
+    #   quantization_param(precision_mode=a8_w8_a16)           → mapping: "precision mode is not accurate"
+    #   quantization_param(precision_mode=a8_w8_a8)            → mapping: "More than one output is not supported for layer matmul1"
+    #
+    # Conclusion: v26-seg / hailo8 is a hardware-capability gap, not a
+    # tooling gap. v26-seg compiles cleanly on hailo10h. Hailo's own
+    # Model Zoo doesn't publish v26-seg for hailo8 either.
+    # Documented in pitfalls.md (or should be); no override committed.
+    # YOLOv26 detection — the official Hailo Model Zoo `.alls`
+    # (yolo26n.alls) forces a16_w16 on a specific set of dw, conv,
+    # and output layers. Without these the v26 detection mapping
+    # fails on hailo8 with "doesn't fit" errors. v26 detection
+    # compiled in this session's sweep without these overrides
+    # (the failure mode was the missing END_NODE_TABLE entry, which
+    # the table now has) — but Hailo's reference setup includes them
+    # and they're recommended for production HEFs.
+    ("v26", YOLOTask.DETECTION): [
+        "quantization_param("
+        "[dw1, dw6, dw7, dw8], "
+        "precision_mode=a16_w16)",
+        "quantization_param("
+        "[conv61, conv77, conv91, conv64, conv80, conv94], "
+        "precision_mode=a16_w16)",
+        "quantization_param("
+        "[output_layer1, output_layer2, output_layer3, "
+        "output_layer4, output_layer5, output_layer6], "
+        "precision_mode=a16_w16)",
+    ],
+}
+
+
 @dataclass
 class HEFCompilerConfig:
     """Configuration for HEF compilation."""
@@ -145,7 +224,10 @@ class HEFCompiler:
 
         # Determine output path
         if output_path is None:
-            output_path = self.cache.get_hef_path(model_name, yolo_version, task)
+            output_path = self.cache.get_hef_path(
+                model_name, yolo_version, task,
+                target_device=config.target_device,
+            )
 
         # Check if already exists
         if output_path.exists() and not force:
@@ -202,11 +284,24 @@ class HEFCompiler:
         Returns:
             CalibrationDataset with preprocessed images
         """
+        # Thread the optional dataset_path override through. When set,
+        # the CalibrationDatasetLoader skips the Ultralytics
+        # auto-download (avoiding the ~27 GB COCO pull when only
+        # val2017 is needed) and walks the provided directory for
+        # images instead. The cache key includes the path identity so
+        # different overrides don't share a stale cache.
         calib_config = CalibrationConfig(
             num_samples=config.calibration_set_size,
             input_resolution=640,  # Standard YOLO input
             seed=config.calibration_seed,
+            dataset_path=config.calibration_data_path,
         )
+
+        if config.calibration_data_path is not None:
+            logger.info(
+                f"  Using user-provided calibration directory: "
+                f"{config.calibration_data_path}"
+            )
 
         dataset = self._calibration_loader.load(task, calib_config)
 
@@ -252,23 +347,81 @@ class HEFCompiler:
         # Get network info
         logger.debug(f"Network loaded for {config.target_device}")
 
-        # Prepare calibration dataset
+        # Prepare calibration dataset. Hailo's runner.optimize() expects
+        # a single numpy array of shape (N, H, W, C) — passing a Python
+        # list of (H, W, C) arrays trips its type-detection with
+        # "Couldn't detect CalibrationDataType" because the list looks
+        # like a per-input-layer array list, not a per-sample list.
+        # See CalibrationDataset.to_numpy_batch.
         if calibration_dataset is not None:
-            # Use Phase 3 calibration dataset directly
-            calib_data = calibration_dataset.images
-            logger.info(f"Using Phase 3 calibration dataset: {len(calib_data)} images")
+            calib_data = calibration_dataset.to_numpy_batch()
+            logger.info(
+                f"Using Phase 3 calibration dataset: shape={calib_data.shape}, "
+                f"dtype={calib_data.dtype}"
+            )
             logger.info(f"  Hash: {calibration_dataset.dataset_hash}")
         else:
-            # Load from path
-            calib_data = self._load_calibration_data(
+            # Legacy path: load from a path on disk. Stack to the same
+            # (N, H, W, C) layout for the same reason.
+            import numpy as np
+            calib_list = self._load_calibration_data(
                 calibration_path,
                 config.calibration_set_size,
                 runner,
             )
+            calib_data = np.stack(calib_list, axis=0)
+            logger.info(
+                f"Loaded calibration data from path: shape={calib_data.shape}, "
+                f"dtype={calib_data.dtype}"
+            )
 
         # Run optimization (quantization + optimization)
         logger.info("Running model optimization...")
-        logger.info(f"  Using {len(calib_data)} calibration samples")
+        logger.info(f"  Using {calib_data.shape[0]} calibration samples")
+
+        # Build a model script (ALLS) so the runner picks the
+        # optimization flavor we want instead of the SDK defaults.
+        # The SDK's optimization_level cases in mo_config.py are
+        # MUTUALLY EXCLUSIVE: level 1 enables bias_correction, level 2
+        # enables finetune (QAT) but NOT bias_correction, level 3/4 add
+        # adaround. Without bias_correction the seg/pose/OBB heads keep
+        # 16-bit L2 biases and chip mapping fails on Hailo-8 with
+        # "DW resources calculation failed for 16bit L2 biases / 16x4
+        # not supported in activation2".
+        #
+        # The fix: pick the flavor (drives finetune/adaround) AND
+        # explicitly enable bias_correction on top via the ALLS command
+        # post_quantization_optimization(bias_correction, policy=enabled).
+        # The PostQuantizationFeature enum (acceleras_definitions.py)
+        # lists the valid feature names: bias_correction, train_encoding,
+        # finetune, adaround, block_round_training, mix_precision_search.
+        script_lines = [
+            f"model_optimization_flavor("
+            f"optimization_level={config.optimization_level}, "
+            f"compression_level={config.compression_level})",
+        ]
+        if config.optimization_level >= 1:
+            # Force bias_correction on at every level >= 1. At level 1
+            # it's already on; at level 2/3/4 the flavor's elif would
+            # otherwise leave it off.
+            script_lines.append(
+                "post_quantization_optimization(bias_correction, policy=enabled)"
+            )
+        # Per-(version, task) ALLS overrides for chip-side workarounds:
+        # matmul decomposition, per-layer precision_mode, layer-specific
+        # quantization params. See MODEL_SCRIPT_OVERRIDES at the top of
+        # this module. The overrides are layered on top of the standard
+        # flavor + bias_correction lines and are typically only needed
+        # for hailo8 (h10h has more headroom and tolerates the un-tweaked
+        # graph), but they're harmless on h10h so we apply them for
+        # every arch — keeps the table simple.
+        overrides = MODEL_SCRIPT_OVERRIDES.get((yolo_version, task), [])
+        script_lines.extend(overrides)
+        model_script = "\n".join(script_lines) + "\n"
+        logger.info("Loading model script:")
+        for line in script_lines:
+            logger.info(f"  {line}")
+        runner.load_model_script(model_script)
 
         try:
             # Optimize the model (includes quantization)
@@ -493,7 +646,9 @@ class HEFCompiler:
             calibration_path: Path to calibration data (legacy)
             calibration_dataset: Phase 3 CalibrationDataset (preferred)
         """
-        metadata = self.cache.get_metadata(model_name, yolo_version, task)
+        metadata = self.cache.get_metadata(
+            model_name, yolo_version, task, target_device=config.target_device
+        )
 
         if metadata is None:
             metadata = self.cache.create_metadata(
@@ -520,7 +675,10 @@ class HEFCompiler:
         elif calibration_path is not None:
             metadata.calibration_dataset = str(calibration_path)
 
-        self.cache.save_metadata(metadata, model_name, yolo_version, task)
+        self.cache.save_metadata(
+            metadata, model_name, yolo_version, task,
+            target_device=config.target_device,
+        )
 
     def verify_hef(self, hef_path: Path) -> dict:
         """Verify a compiled HEF file.

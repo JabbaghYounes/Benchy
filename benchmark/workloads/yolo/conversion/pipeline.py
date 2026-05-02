@@ -23,6 +23,7 @@ from benchmark.workloads.yolo.conversion.onnx_export import (
 from benchmark.workloads.yolo.conversion.har_generator import (
     HARGenerator,
     HARGeneratorConfig,
+    get_end_nodes,
 )
 from benchmark.workloads.yolo.conversion.hef_compiler import (
     HEFCompiler,
@@ -74,6 +75,13 @@ class ConversionConfig:
 
     # Compilation settings
     optimization_level: int = 2
+    # Compression level passed to the Hailo SDK (0 = none / 16-bit biases,
+    # 1 = standard 8-bit biases via Bias Correction, 2 = aggressive with
+    # Adaround + Finetune). Default 1: the SDK default of 0 leaves biases
+    # at 16-bit which fails chip mapping on Hailo-8 for seg/pose/OBB heads
+    # ("DW resources calculation failed for 16bit L2 biases / 16x4 not
+    # supported in activation2"), so the gap models can't compile at all.
+    compression_level: int = 1
 
     # Cache settings
     cache_dir: Optional[Path] = None
@@ -252,14 +260,23 @@ class ModelConversionPipeline:
                 target_device=config.target_device,
                 input_resolution=config.input_resolution,
             ):
-                hef_path = self.cache.get_hef_path(model_name, yolo_version, task)
+                td = config.target_device
+                hef_path = self.cache.get_hef_path(
+                    model_name, yolo_version, task, target_device=td
+                )
                 result.success = True
                 result.hef_path = hef_path
-                result.onnx_path = self.cache.get_onnx_path(model_name, yolo_version, task)
-                result.har_path = self.cache.get_har_path(model_name, yolo_version, task)
+                result.onnx_path = self.cache.get_onnx_path(
+                    model_name, yolo_version, task, target_device=td
+                )
+                result.har_path = self.cache.get_har_path(
+                    model_name, yolo_version, task, target_device=td
+                )
                 result.completed_at = datetime.now().isoformat()
                 result.total_time_seconds = time.time() - start_time
-                result.metadata = self.cache.get_metadata(model_name, yolo_version, task)
+                result.metadata = self.cache.get_metadata(
+                    model_name, yolo_version, task, target_device=td
+                )
                 logger.info("Using cached HEF file")
                 return result
 
@@ -324,7 +341,9 @@ class ModelConversionPipeline:
             result.success = True
             result.completed_at = datetime.now().isoformat()
             result.total_time_seconds = time.time() - start_time
-            result.metadata = self.cache.get_metadata(model_name, yolo_version, task)
+            result.metadata = self.cache.get_metadata(
+                model_name, yolo_version, task, target_device=config.target_device
+            )
 
             logger.info(f"Conversion completed successfully in {result.total_time_seconds:.1f}s")
             logger.info(f"  ONNX: {result.onnx_time_seconds:.1f}s")
@@ -402,6 +421,7 @@ class ModelConversionPipeline:
                 yolo_version=yolo_version,
                 task=task,
                 config=onnx_config,
+                target_device=config.target_device,
                 force=config.force_recompile and not config.skip_onnx,
             )
             logger.info(f"  ONNX exported: {onnx_path}")
@@ -453,11 +473,30 @@ class ModelConversionPipeline:
         for warning in compat.get("warnings", []):
             logger.warning(f"HAR compatibility warning: {warning}")
 
-        # Configure generator
+        # Configure generator. End-node truncation is the only way to
+        # parse a YOLO head — the tail contains DFL/Reshape/Cos ops the
+        # Hailo parser rejects. Look up the canonical end-nodes for
+        # this (version, task) and pass them through. A miss here is
+        # not fatal: the SDK will retry via the diagnostic-hint
+        # fallback in har_generator._generate_with_sdk on parse
+        # failure.
+        end_nodes = get_end_nodes(yolo_version, task)
+        if end_nodes is None:
+            logger.warning(
+                f"No END_NODE_TABLE entry for ({yolo_version}, {task.value}); "
+                "relying on hailomz / diagnostic-hint fallback during parse."
+            )
+        else:
+            logger.info(
+                f"  End-node truncation: {len(end_nodes)} node(s) "
+                f"for ({yolo_version}, {task.value})"
+            )
+
         har_config = HARGeneratorConfig(
             target_device=config.target_device,
             input_resolution=config.input_resolution,
             batch_size=config.batch_size,
+            end_nodes=end_nodes,
         )
 
         # Generate
@@ -512,6 +551,7 @@ class ModelConversionPipeline:
         hef_config = HEFCompilerConfig(
             target_device=config.target_device,
             optimization_level=config.optimization_level,
+            compression_level=config.compression_level,
             calibration_data_path=config.calibration_data_path,
             calibration_set_size=config.calibration_set_size,
             use_ultralytics_dataset=config.use_ultralytics_calibration,
@@ -593,7 +633,8 @@ class ModelConversionPipeline:
         model_name: str,
         yolo_version: str,
         task: YOLOTask,
-        target_device: str = "hailo8l",
+        *,
+        target_device: str,
         input_resolution: int = 640,
     ) -> Optional[Path]:
         """Get cached HEF if available and valid.
@@ -602,7 +643,8 @@ class ModelConversionPipeline:
             model_name: Model name
             yolo_version: YOLO version
             task: Task type
-            target_device: Target device
+            target_device: Target Hailo arch (required keyword-only —
+                same source model produces different HEFs per arch).
             input_resolution: Input resolution
 
         Returns:
@@ -613,7 +655,9 @@ class ModelConversionPipeline:
             target_device=target_device,
             input_resolution=input_resolution,
         ):
-            return self.cache.get_hef_path(model_name, yolo_version, task)
+            return self.cache.get_hef_path(
+                model_name, yolo_version, task, target_device=target_device
+            )
         return None
 
     def clear_cache(
@@ -621,16 +665,32 @@ class ModelConversionPipeline:
         model_name: Optional[str] = None,
         yolo_version: Optional[str] = None,
         task: Optional[YOLOTask] = None,
+        *,
+        target_device: Optional[str] = None,
     ) -> None:
         """Clear cached artifacts.
+
+        Pass model_name + yolo_version + task + target_device together
+        to clear one (model, arch); pass nothing to clear everything.
+        Partial specifications (e.g. model without arch) raise.
 
         Args:
             model_name: Model name (None to clear all)
             yolo_version: YOLO version
             task: Task type
+            target_device: Target Hailo arch — required when clearing
+                a specific (model, version, task).
         """
         if model_name and yolo_version and task:
-            self.cache.clear_cache(model_name, yolo_version, task)
+            if target_device is None:
+                raise ValueError(
+                    "clear_cache requires target_device when clearing a "
+                    "specific (model, version, task) — same model has a "
+                    "separate cache entry per arch."
+                )
+            self.cache.clear_cache(
+                model_name, yolo_version, task, target_device=target_device
+            )
         else:
             self.cache.clear_all()
 

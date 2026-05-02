@@ -71,7 +71,7 @@ def _llm_run(
     backend: str = "hailo-10h",
     tps: float = 18.5,
     hailort_version: str | None = "HailoRT 5.2.0",
-    model_name: str = "qwen2:1.5b",
+    model_name: str = "llama3.2:3b",
 ) -> dict:
     """Build a minimal benchmark-run dict with one LLMResult."""
     return {

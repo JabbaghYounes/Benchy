@@ -229,10 +229,26 @@ install_python_deps() {
         numpy \
         opencv-python-headless
 
-    # Install the benchmark package itself
+    # Install the benchmark package itself, including dev extras (pytest,
+    # pytest-cov, black, mypy). Dev extras are required because the
+    # verify sweep's step 1 runs `pytest tests/ -q` — without them
+    # verification fails immediately. See Issue 4 in
+    # resources/session_issues_2026-04-27.md.
     if [[ -f "$PROJECT_ROOT/setup.py" ]] || [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
-        info "Installing benchmark package..."
-        pip install -e "$PROJECT_ROOT"
+        info "Installing benchmark package (with dev extras)..."
+        pip install -e "$PROJECT_ROOT[dev]"
+    fi
+
+    # Fix ownership of artefacts produced by the sudo-driven install:
+    # the venv and the editable install's egg-info directory in the
+    # project root. Without the egg-info chown, subsequent unprivileged
+    # pip operations fail with "Cannot update time stamp of directory" —
+    # see Issue 5 in resources/session_issues_2026-04-27.md.
+    local actual_user
+    actual_user=${SUDO_USER:-$USER}
+    chown -R "$actual_user:$actual_user" "$VENV_DIR"
+    if [[ -d "$PROJECT_ROOT/edge_ai_benchmark.egg-info" ]]; then
+        chown -R "$actual_user:$actual_user" "$PROJECT_ROOT/edge_ai_benchmark.egg-info"
     fi
 
     success "Python dependencies installed"
@@ -292,10 +308,11 @@ pull_models() {
     # Pull LLM models for Ollama
     info "Pulling LLM models (this may take a while)..."
 
-    # 7B models
+    # Llama-only canonical sweep — one model per group (1B, 3B, 7B).
     local models=(
+        "llama3.2:1b"
+        "llama3.2:3b"
         "llama2:7b"
-        "mistral:7b"
     )
 
     for model in "${models[@]}"; do

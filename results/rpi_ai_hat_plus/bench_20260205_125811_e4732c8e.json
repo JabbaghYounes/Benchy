@@ -1,0 +1,25 @@
+{
+  "run_id": "bench_20260205_125811_e4732c8e",
+  "system_info": {
+    "platform": "rpi_ai_hat_plus",
+    "cpu_model": "Raspberry Pi 5 Model B Rev 1.0",
+    "accelerator": "None",
+    "ram_size_gb": 4.0,
+    "storage_type": "SD Card",
+    "cooling_config": "Passive",
+    "power_mode": "ondemand",
+    "os_version": "Debian GNU/Linux 12 (bookworm)",
+    "kernel_version": "6.12.62+rpt-rpi-2712",
+    "hostname": "wiregaurd",
+    "timestamp": "2026-02-05T12:58:11.675498"
+  },
+  "workload_type": "yolo",
+  "started_at": "2026-02-05T12:58:11.675593",
+  "completed_at": "2026-02-05T12:58:11.705527",
+  "yolo_results": [],
+  "llm_results": [],
+  "metadata": {
+    "profile": "default",
+    "config_dir": "/home/vpn/Documents/Benchy/configs"
+  }
+}

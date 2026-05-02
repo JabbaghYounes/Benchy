@@ -27,7 +27,7 @@ def detect_platform() -> Platform:
                 # Detect AI HAT variant - check for Hailo devices
                 # AI HAT+ ships in two variants: Hailo-8L (13 TOPS) and Hailo-8 (26 TOPS).
                 # AI HAT+ 2 uses Hailo-10H (40 TOPS INT4).
-                hailo_devices = list(Path("/dev").glob("hailo*"))
+                hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
                 if hailo_devices:
                     # Try to determine which HAT version
                     try:
@@ -123,7 +123,7 @@ def detect_hailo_device() -> Optional[str]:
         Device string (e.g., "Hailo-10H NPU") or None
     """
     # Check for device node
-    hailo_devices = list(Path("/dev").glob("hailo*"))
+    hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
     if not hailo_devices:
         return None
 
@@ -164,7 +164,7 @@ def get_hailo_device_type() -> Optional[str]:
     Returns:
         "hailo10h", "hailo8", or "hailo8l", or None
     """
-    hailo_devices = list(Path("/dev").glob("hailo*"))
+    hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
     if not hailo_devices:
         return None
 
@@ -195,7 +195,7 @@ def is_hailo_available() -> bool:
     Returns:
         True if Hailo device is detected and accessible
     """
-    hailo_devices = list(Path("/dev").glob("hailo*"))
+    hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
     if not hailo_devices:
         return False
 

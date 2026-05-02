@@ -8,6 +8,9 @@
 # Public surface
 # ----------------
 #   hw_init                       Set up results directory, counters, log dir.
+#   hw_ensure_python_deps         Self-heal: pip-install easily-missed
+#                                 Python deps into the active venv (onnx,
+#                                 onnxruntime). No-op if already present.
 #   hw_preflight_rpi_ai_hat_plus  Assert platform == AI HAT+ (Hailo-8/8L).
 #   hw_preflight_rpi_ai_hat_plus_2  Assert platform == AI HAT+ 2 (Hailo-10H).
 #   hw_run_step NAME CMD [validator-args…]
@@ -48,10 +51,20 @@ HW_TOTAL_STEPS=0   # set by entrypoints if they want a [i/N] prefix
 # ----------------------------------------------------------------------------
 
 hw_init() {
-    # Initialise state: results + logs directory under results/, timestamped.
+    # Initialise state: results + logs directory, timestamped, scoped by
+    # board so the two Pis' bundles don't intermingle in `results/`.
+    # Pass the Platform enum name as $1 (e.g. `rpi_ai_hat_plus`,
+    # `rpi_ai_hat_plus_2`, `jetson_orin_nano`) to nest under
+    # `results/<platform>/hw_verify_<ts>/`. Omit for the legacy flat
+    # `results/hw_verify_<ts>/` layout — kept so old entrypoints keep
+    # working but new entrypoints should pass it.
+    local platform="${1:-}"
+    local base="$_HW_PROJECT_ROOT/results"
+    [[ -n "$platform" ]] && base="$base/$platform"
+
     local timestamp
     timestamp="$(date '+%Y%m%d_%H%M%S')"
-    HW_RESULTS_DIR="${HW_RESULTS_DIR:-$_HW_PROJECT_ROOT/results/hw_verify_$timestamp}"
+    HW_RESULTS_DIR="${HW_RESULTS_DIR:-$base/hw_verify_$timestamp}"
     HW_LOGS_DIR="$HW_RESULTS_DIR/logs"
     mkdir -p "$HW_LOGS_DIR"
     HW_START_TIME=$(date +%s)
@@ -60,6 +73,67 @@ hw_init() {
     info "Results bundle: $HW_RESULTS_DIR"
     info "Per-step logs : $HW_LOGS_DIR"
     echo
+}
+
+# Self-heal -------------------------------------------------------------------
+
+# Ensure Python deps that are easy to miss on existing venvs are present
+# before the sweep starts. A fresh setup_rpi_ai_hat_plus*.sh install
+# pins these in setup.py install_requires AND pip-installs them
+# explicitly, but a venv created before they were added needs a top-up.
+# Without onnx, every Hailo conversion step in the YOLO sweep fails
+# immediately at the .pt → .onnx export — see Issue 8 in
+# resources/session_issues_2026-04-27.md.
+hw_ensure_python_deps() {
+    local py
+    py="$(command -v python || command -v python3)"
+    if [[ -z "$py" ]]; then
+        error "No python on PATH; activate the venv before running this script."
+        exit 2
+    fi
+
+    # module:pip-package pairs. Modules are tried via `python -c "import M"`.
+    local pairs=(
+        "onnx:onnx"
+        "onnxruntime:onnxruntime"
+    )
+    local pair module pkg
+    local missing=()
+    for pair in "${pairs[@]}"; do
+        module="${pair%%:*}"
+        pkg="${pair##*:}"
+        if ! "$py" -c "import ${module}" >/dev/null 2>&1; then
+            missing+=("$pkg")
+        fi
+    done
+
+    if (( ${#missing[@]} != 0 )); then
+        info "Self-heal: pip-installing missing deps (${missing[*]}) into the active venv..."
+        if ! "$py" -m pip install --quiet "${missing[@]}"; then
+            error "Failed to install ${missing[*]}."
+            error "Re-run scripts/setup_rpi_ai_hat_plus*.sh, or manually: pip install ${missing[*]}"
+            exit 2
+        fi
+        success "Installed missing deps: ${missing[*]}"
+    fi
+
+    # numpy ABI guard for HailoRT 4.x. The 4.x wheel was built against
+    # numpy 1.x and its METADATA declares `numpy<2`; with numpy 2.x in the
+    # venv every pybind11 set_buffer silently lands as size 0 and YOLO
+    # inference fails with "Input buffer size 0 is different than expected
+    # 4915200" on every step. Only enforce on hosts that actually have the
+    # 4.x stack installed (Hailo-8 / 8L AI HAT+) — leave AI HAT+ 2 / Jetson
+    # alone since they're on numpy-2-friendly stacks.
+    if "$py" -c "import hailo_platform, sys; sys.exit(0 if hailo_platform.__version__.startswith('4.') else 1)" >/dev/null 2>&1; then
+        if "$py" -c "import numpy, sys; sys.exit(0 if int(numpy.__version__.split('.',1)[0]) >= 2 else 1)" >/dev/null 2>&1; then
+            info "Self-heal: HailoRT 4.x stack detected with numpy>=2; pinning numpy<2 to fix ABI..."
+            if ! "$py" -m pip install --quiet 'numpy<2'; then
+                error "Failed to downgrade numpy. YOLO inference will fail with Input-buffer-size-0."
+                exit 2
+            fi
+            success "numpy pinned to <2 for HailoRT 4.x ABI compatibility"
+        fi
+    fi
 }
 
 # Preflight gates -------------------------------------------------------------
@@ -91,14 +165,45 @@ _hw_assert_platform() {
     success "Platform check OK ($detected)"
 }
 
+# _hw_assert_hefs_present <arch>
+#
+# Hard-fail if no HEFs matching `*_<arch>.hef` exist under
+# resources/hefs/. Called from each board's preflight so a fresh
+# clone (where HEFs are no longer in git) gets a clear remediation
+# message before the runner starts churning through 13 steps.
+_hw_assert_hefs_present() {
+    local arch="$1"
+    local pattern="$_HW_PROJECT_ROOT/resources/hefs/*_${arch}.hef"
+
+    # `compgen -G` tests a glob without nullglob noise / hangs.
+    if ! compgen -G "$pattern" >/dev/null; then
+        error "No ${arch} HEFs found in resources/hefs/."
+        error "Expected files matching: *_${arch}.hef"
+        error ""
+        error "Fix: stage HEFs from the GitHub Release (hefs-v1):"
+        error "  source venv/bin/activate"
+        error "  python3 scripts/fetch_prebuilt_hefs.py --arch ${arch}"
+        error ""
+        error "Air-gapped install? Drop HEFs manually into"
+        error "resources/hefs/ with canonical names — see"
+        error "docs/hailo.md 'Restricted-egress / air-gapped setups'."
+        exit 2
+    fi
+    local count
+    count="$(compgen -G "$pattern" | wc -l)"
+    success "HEFs check OK (${count} ${arch} HEFs staged)"
+}
+
 hw_preflight_rpi_ai_hat_plus() {
     info "Preflight: Pi 5 + AI HAT+ (Hailo-8 / 8L)"
     _hw_assert_platform "rpi_ai_hat_plus"
+    _hw_assert_hefs_present "hailo8"
 }
 
 hw_preflight_rpi_ai_hat_plus_2() {
     info "Preflight: Pi 5 + AI HAT+ 2 (Hailo-10H)"
     _hw_assert_platform "rpi_ai_hat_plus_2"
+    _hw_assert_hefs_present "hailo10h"
 }
 
 # Step execution --------------------------------------------------------------

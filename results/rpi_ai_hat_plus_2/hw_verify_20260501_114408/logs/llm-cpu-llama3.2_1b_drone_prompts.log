@@ -1,0 +1,50 @@
+2026-05-01 11:45:01 - benchmark.cli - INFO - Starting benchmark run: bench_20260501_114501_8ee75ea1
+2026-05-01 11:45:01 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-05-01 11:45:01 - benchmark.cli - INFO - Profile: compare
+2026-05-01 11:45:01 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-05-01 11:45:01 - benchmark.cli - INFO - Benchmarking llama3.2:1b
+2026-05-01 11:45:01 - benchmark.workloads.llm.runner - INFO - Pre-warming llama3.2:1b (timeout 1800s)...
+2026-05-01 11:45:24 - benchmark.workloads.llm.runner - INFO - Pre-warm complete in 22.5s
+2026-05-01 11:45:24 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-05-01 11:45:24 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 11:48:23 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: target_identification
+2026-05-01 11:48:23 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-01 11:56:46 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: mission_preflight
+2026-05-01 11:56:46 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/vpn/Documents/Benchy/benchmark/__main__.py", line 12, in <module>
+    sys.exit(main() or 0)
+             ^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/cli.py", line 1323, in main
+    return cmd_benchmark(args)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/cli.py", line 481, in cmd_benchmark
+    llm_results = run_llm_benchmark(
+                  ^^^^^^^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/cli.py", line 419, in run_llm_benchmark
+    results = runner.run()
+              ^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/workloads/llm/runner.py", line 889, in run
+    metrics = self._run_single_inference(prompt_text)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/workloads/llm/runner.py", line 721, in _run_single_inference
+    for chunk in self.client.generate_stream(
+  File "/home/vpn/Documents/Benchy/benchmark/workloads/llm/runner.py", line 546, in generate_stream
+    for line in response.iter_lines():
+  File "/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/requests/models.py", line 869, in iter_lines
+    for chunk in self.iter_content(
+  File "/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/requests/models.py", line 820, in generate
+    yield from self.raw.stream(chunk_size, decode_content=True)
+  File "/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/urllib3/response.py", line 1250, in stream
+    yield from self.read_chunked(amt, decode_content=decode_content)
+  File "/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/urllib3/response.py", line 1418, in read_chunked
+    self._update_chunk_length()
+  File "/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/urllib3/response.py", line 1333, in _update_chunk_length
+    line = self._fp.fp.readline()  # type: ignore[union-attr]
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/socket.py", line 706, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

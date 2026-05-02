@@ -26,6 +26,9 @@ from benchmark.workloads.yolo.conversion.validation import (
     ValidationResult,
     validate_hef_model,
 )
+# Issue 11: prebuilt HEF source layer (Pi can't compile, so we look in
+# repo + system locations before falling through to the compile path).
+from benchmark.workloads.yolo.conversion.hef_source import find_prebuilt_hef
 # Phase 4: Post-processing and metrics
 from benchmark.workloads.yolo.postprocessing import (
     YOLOPostProcessor,
@@ -162,6 +165,7 @@ class HailoBackend(YOLOBackend):
         self._vdevice = None
         self._infer_model = None
         self._configured_infer_model = None
+        self._cim_activated = False
 
         # Phase 3: Model validator for sanity checks
         self._validator = ModelValidator()
@@ -219,8 +223,9 @@ class HailoBackend(YOLOBackend):
         Returns:
             True if a Hailo device was found
         """
-        # Check for /dev/hailo* devices
-        hailo_devices = list(Path("/dev").glob("hailo*"))
+        # Check for /dev/hailo* (HailoRT 4.x) or /dev/h1x-* (HailoRT 5.x; new
+        # driver registers as hailo1x_pci and creates /dev/h1x-N nodes).
+        hailo_devices = list(Path("/dev").glob("hailo*")) + list(Path("/dev").glob("h1x-*"))
         if not hailo_devices:
             return False
 
@@ -390,6 +395,21 @@ class HailoBackend(YOLOBackend):
 
         if hef_path.exists() and not force_recompile:
             logger.info(f"Using cached HEF: {hef_path}")
+        elif not force_recompile and (
+            prebuilt := find_prebuilt_hef(
+                model_name=model_name,
+                yolo_version=yolo_version,
+                task=task,
+                arch=self.get_target_device(),
+            )
+        ):
+            # Issue 11: Pi has no Dataflow Compiler. If a prebuilt HEF
+            # is staged in resources/hefs/ or in the system package, copy
+            # it into the runtime cache and skip the compile pipeline.
+            import shutil
+            hef_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(prebuilt, hef_path)
+            logger.info(f"Cached prebuilt HEF: {prebuilt} -> {hef_path}")
         else:
             # Run the conversion pipeline
             logger.info(f"HEF not found at {hef_path}, starting conversion pipeline...")
@@ -561,23 +581,44 @@ class HailoBackend(YOLOBackend):
             raise FileNotFoundError(f"HEF file not found: {hef_path}")
 
         try:
-            from hailo_platform import HEF, VDevice, ConfigureParams, FormatType
+            from hailo_platform import VDevice, FormatType
 
             logger.info(f"Loading HEF: {hef_path}")
 
-            # Load the HEF
-            self._hef = HEF(str(hef_path))
-
-            # Create virtual device
+            # HailoRT 5.x InferModel API. The 4.x VDevice.configure +
+            # ConfigureParams.create_from_hef path was dropped in 5.x; that
+            # call now raises HAILO_NOT_IMPLEMENTED on Hailo-10H.
             self._vdevice = VDevice()
+            self._infer_model = self._vdevice.create_infer_model(str(hef_path))
 
-            # Configure the inference model
-            configure_params = ConfigureParams.create_from_hef(
-                self._hef, interface=ConfigureParams.default_interface()
-            )
-            self._configured_infer_model = self._vdevice.configure(
-                self._hef, configure_params
-            )[0]
+            # FLOAT32 in/out (5.x equivalent of the old quantized=False
+            # vstream params). Postprocessor expects float tensors.
+            self._infer_model.input().set_format_type(FormatType.FLOAT32)
+            for output_stream in self._infer_model.outputs:
+                output_stream.set_format_type(FormatType.FLOAT32)
+
+            self._configured_infer_model = self._infer_model.configure()
+            # Preserve self._hef for any external callers; the InferModel
+            # exposes the underlying HEF directly in 5.x.
+            self._hef = self._infer_model.hef
+
+            # HailoRT 4.x: the InferModel pipeline auto-deactivates after a
+            # single sync run() unless we explicitly activate it; subsequent
+            # runs then fail with HAILO_STREAM_NOT_ACTIVATED. HailoRT 5.x
+            # manages activation via the scheduler and rejects activate()
+            # outright. Detect the major version and only activate on 4.x.
+            import hailo_platform
+            hailort_major = int(hailo_platform.__version__.split(".", 1)[0])
+            if hailort_major < 5:
+                try:
+                    self._configured_infer_model.activate()
+                    self._cim_activated = True
+                except Exception as e:
+                    logger.warning(
+                        "HailoRT 4.x activate() failed (%s) — multi-run "
+                        "inference may hit HAILO_STREAM_NOT_ACTIVATED.",
+                        e,
+                    )
 
             logger.info("HEF loaded successfully")
 
@@ -674,34 +715,31 @@ class HailoBackend(YOLOBackend):
             raise RuntimeError("Post-processor not initialized. Call prepare_model() first.")
 
         try:
-            from hailo_platform import InferVStreams, InputVStreamParams, OutputVStreamParams
-
             # Phase 4: Preprocessing with timing
             preprocess_start = time.perf_counter()
             preprocessed = self._preprocess(input_data)
             preprocess_end = time.perf_counter()
             preprocess_ms = (preprocess_end - preprocess_start) * 1000
 
-            # Get input/output stream info
-            input_vstream_info = self._hef.get_input_vstream_infos()[0]
-            output_vstream_infos = self._hef.get_output_vstream_infos()
-
-            # Create vstream params
-            input_params = InputVStreamParams.make_from_network_group(
-                self._configured_infer_model, quantized=False
+            # HailoRT 5.x InferModel API. Format types were already set to
+            # FLOAT32 in _load_hef, so output buffers are float32 of the
+            # advertised shape.
+            input_stream = self._infer_model.input()
+            output_buffers = {
+                out.name: np.empty(out.shape, dtype=np.float32)
+                for out in self._infer_model.outputs
+            }
+            bindings = self._configured_infer_model.create_bindings(
+                input_buffers={input_stream.name: np.ascontiguousarray(preprocessed)},
+                output_buffers=output_buffers,
             )
-            output_params = OutputVStreamParams.make_from_network_group(
-                self._configured_infer_model, quantized=False
-            )
 
-            # Phase 4: Run inference on NPU with precise timing
+            # Phase 4: Run inference on NPU with precise timing.
+            # Bindings creation above is excluded from the NPU timing window —
+            # it's a CPU-side allocation, not part of the actual inference.
             inference_start = time.perf_counter()
-
-            with InferVStreams(
-                self._configured_infer_model, input_params, output_params
-            ) as infer_pipeline:
-                input_dict = {input_vstream_info.name: preprocessed}
-                raw_outputs = infer_pipeline.infer(input_dict)
+            self._configured_infer_model.run([bindings], timeout=10000)
+            raw_outputs = output_buffers
 
             inference_end = time.perf_counter()
             inference_ms = (inference_end - inference_start) * 1000
@@ -709,17 +747,31 @@ class HailoBackend(YOLOBackend):
             # Phase 4: Post-processing with timing
             postprocess_start = time.perf_counter()
 
-            # Update post-processor config with thresholds
-            postprocess_config = PostProcessConfig(
-                conf_threshold=conf_threshold,
-                iou_threshold=iou_threshold,
-                input_width=self._input_resolution,
-                input_height=self._input_resolution,
-                num_classes=self._postprocessor.config.num_classes,
-            )
+            # On-chip NMS dispatch. Hailo Model Zoo's prebuilt v8/v11 detection
+            # HEFs for Hailo-8 bake the NMS layer into the chip and emit a
+            # single HAILO_NMS_BY_CLASS output with shape (num_classes, 5,
+            # max_bboxes) — already-decoded detections, not raw FPN tensors.
+            # Hailo-10H detection HEFs emit raw FPN tensors instead, so the
+            # raw-tensor postprocessor handles those. Branch on is_nms so the
+            # same code path works on both AI HAT+ generations.
+            on_chip_nms_outputs = [o for o in self._infer_model.outputs if o.is_nms]
+            if on_chip_nms_outputs:
+                results = self._decode_on_chip_nms(
+                    bindings,
+                    on_chip_nms_outputs,
+                    conf_threshold,
+                )
+            else:
+                postprocess_config = PostProcessConfig(
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    input_width=self._input_resolution,
+                    input_height=self._input_resolution,
+                    num_classes=self._postprocessor.config.num_classes,
+                )
 
-            # Process outputs using the post-processor
-            results = self._postprocessor.process(raw_outputs, postprocess_config)
+                # Process outputs using the post-processor
+                results = self._postprocessor.process(raw_outputs, postprocess_config)
 
             postprocess_end = time.perf_counter()
             postprocess_ms = (postprocess_end - postprocess_start) * 1000
@@ -761,6 +813,55 @@ class HailoBackend(YOLOBackend):
         except Exception as e:
             logger.error(f"Inference failed: {e}")
             raise RuntimeError(f"Inference failed: {e}")
+
+    def _decode_on_chip_nms(
+        self,
+        bindings,
+        nms_outputs: list,
+        conf_threshold: float,
+    ) -> List[Detection]:
+        """Convert HAILO_NMS_BY_CLASS outputs directly into Detection objects.
+
+        Hailo's NMS-on-chip layer emits a packed buffer that the wrapper
+        unpacks via get_buffer(tf_format=False) into a list[num_classes] of
+        per-class numpy arrays of shape (num_dets, 5) where the 5 columns
+        are (y_min, x_min, y_max, x_max, score) in normalized [0, 1]
+        coordinates. We rescale to input-frame pixels here so downstream
+        consumers see the same units the raw-tensor postprocessor produces.
+        """
+        detections: List[Detection] = []
+        class_names = self._postprocessor.config.class_names
+        input_w = self._input_resolution
+        input_h = self._input_resolution
+        for out in nms_outputs:
+            per_class = bindings.output(out.name).get_buffer(tf_format=False)
+            for class_id, arr in enumerate(per_class):
+                if arr is None or arr.size == 0:
+                    continue
+                cname = (
+                    class_names[class_id]
+                    if class_names and class_id < len(class_names)
+                    else None
+                )
+                for row in arr:
+                    score = float(row[4])
+                    if score < conf_threshold:
+                        continue
+                    y_min, x_min, y_max, x_max = (
+                        float(row[0]), float(row[1]), float(row[2]), float(row[3])
+                    )
+                    detections.append(Detection(
+                        bbox=(
+                            x_min * input_w,
+                            y_min * input_h,
+                            x_max * input_w,
+                            y_max * input_h,
+                        ),
+                        confidence=score,
+                        class_id=class_id,
+                        class_name=cname,
+                    ))
+        return detections
 
     def _preprocess(self, input_data: np.ndarray) -> np.ndarray:
         """Preprocess input for Hailo inference.
@@ -902,11 +1003,22 @@ class HailoBackend(YOLOBackend):
     def cleanup(self) -> None:
         """Release Hailo resources."""
         if self._configured_infer_model is not None:
+            if self._cim_activated:
+                try:
+                    self._configured_infer_model.deactivate()
+                except Exception:
+                    pass
+                self._cim_activated = False
             try:
                 self._configured_infer_model.shutdown()
             except Exception:
                 pass
             self._configured_infer_model = None
+
+        # InferModel must be dropped before VDevice — InferModel keeps the
+        # VDevice alive (per HailoRT 5.x docs); releasing in the wrong order
+        # logs "Lost communication with the server".
+        self._infer_model = None
 
         if self._vdevice is not None:
             try:

@@ -1,0 +1,50 @@
+2026-04-28 19:31:37 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_193137_e5b73059
+2026-04-28 19:31:37 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-28 19:31:37 - benchmark.cli - INFO - Profile: default
+2026-04-28 19:31:37 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-28 19:31:37 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo11n-seg.pt
+2026-04-28 19:31:37 - benchmark.cli - INFO - Inferred version: v11, task: segmentation
+2026-04-28 19:31:37 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-04-28 19:31:37 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-28 19:31:37 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo11n-seg.pt
+2026-04-28 19:31:37 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo10h/v11/segmentation/yolo11n-seg/model.hef, starting conversion pipeline...
+2026-04-28 19:31:37 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo11n-seg.pt
+2026-04-28 19:31:40 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+2026-04-28 19:31:40 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.pipeline - INFO - Starting conversion pipeline for yolo11n-seg.pt
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.pipeline - INFO -   YOLO version: v11
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Task: segmentation
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Target: hailo10h
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.pipeline - INFO - Stage 1/3: ONNX Export
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.onnx_export - INFO - Exporting yolo11n-seg.pt to ONNX...
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Resolution: 640x640
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Batch size: 1
+2026-04-28 19:31:40 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Opset: 11
+[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-seg.pt to 'yolo11n-seg.pt': 11% ━─────────── 640.0KB/5.9MB 6.2MB/s 0.1s<0.8s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-seg.pt to 'yolo11n-seg.pt': 59% ━━━━━━━───── 3.5/5.9MB 28.5MB/s 0.2s<0.1s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-seg.pt to 'yolo11n-seg.pt': 100% ━━━━━━━━━━━━ 5.9MB 20.5MB/s 0.3s
+Ultralytics 8.4.11 🚀 Python-3.11.2 torch-2.10.0+cpu CPU (aarch64)
+YOLO11n-seg summary (fused): 113 layers, 2,868,664 parameters, 0 gradients, 9.7 GFLOPs
+
+[34m[1mPyTorch:[0m starting from 'yolo11n-seg.pt' with input shape (1, 3, 640, 640) BCHW and output shape(s) ((1, 116, 8400), (1, 32, 160, 160)) (5.9 MB)
+
+[34m[1mONNX:[0m starting export with onnx 1.21.0 opset 11...
+[34m[1mONNX:[0m slimming with onnxslim 0.1.91...
+[0;93m2026-04-28 19:31:44.819367778 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+[0;93m2026-04-28 19:31:44.819434445 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+[34m[1mONNX:[0m export success ✅ 2.5s, saved as 'yolo11n-seg.onnx' (11.2 MB)
+
+Export complete (4.1s)
+Results saved to [1m/home/vpn/Documents/Benchy[0m
+Predict:         yolo predict task=segment model=yolo11n-seg.onnx imgsz=640 
+Validate:        yolo val task=segment model=yolo11n-seg.onnx imgsz=640 data=/ultralytics/ultralytics/cfg/datasets/coco.yaml  
+Visualize:       https://netron.app
+2026-04-28 19:31:45 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX validation passed
+2026-04-28 19:31:45 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX exported successfully: models/hailo/v11/segmentation/yolo11n-seg/model.onnx
+2026-04-28 19:31:45 - benchmark.workloads.yolo.conversion.pipeline - INFO -   ONNX exported: models/hailo/v11/segmentation/yolo11n-seg/model.onnx
+2026-04-28 19:31:45 - benchmark.cli - ERROR -   Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v11/segmentation/yolo11n-seg/model.onnx. Please complete conversion using Hailo SDK.
+2026-04-28 19:31:45 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031/bench_20260428_193137_e5b73059.json
+
+Benchmark Complete: bench_20260428_193137_e5b73059
+----------------------------------------
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031
+Validation FAILED for /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031/bench_20260428_193137_e5b73059.json:
+  - yolo_results is empty — the runner produced no rows

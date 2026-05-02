@@ -1,0 +1,32 @@
+2026-05-01 23:48:05 - benchmark.cli - INFO - Generating report from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231807_bc08b279.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231823_42bcd8b6.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231813_b93251d2.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231802_58090bb4.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231745_c0096d5b.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231754_ff9788d4.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231828_389d1673.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231819_a0d23c5b.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231832_8663dfbd.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231750_6137187d.json
+2026-05-01 23:48:05 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/bench_20260501_231759_13df6607.json
+2026-05-01 23:48:05 - benchmark.cli - INFO - Aggregated JSON written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805.json
+2026-05-01 23:48:05 - benchmark.aggregation.csv_writer - INFO - YOLO aggregated CSV written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_yolo.csv
+2026-05-01 23:48:05 - benchmark.aggregation.csv_writer - INFO - LLM aggregated CSV written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_llm.csv
+2026-05-01 23:48:05 - benchmark.aggregation.csv_writer - INFO - Platform summary CSV written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_platforms.csv
+2026-05-01 23:48:05 - benchmark.reporting.dashboard - INFO - Dashboard written to: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_dashboard.html
+
+Report Generated: report_20260501_234805
+----------------------------------------
+YOLO results: 8
+LLM results: 5
+Platforms: 1
+
+Output files:
+  JSON: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805.json
+  YOLO CSV: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_yolo.csv
+  LLM CSV: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_llm.csv
+  PLATFORMS CSV: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_platforms.csv
+  Dashboard: /home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_dashboard.html
+
+Open dashboard in browser: file:///home/vpn/Documents/Benchy/results/hw_verify_20260501_231735/report/report_20260501_234805_dashboard.html

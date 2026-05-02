@@ -1,0 +1,25 @@
+{
+  "run_id": "bench_20260428_091437_47e9c194",
+  "system_info": {
+    "platform": "rpi_ai_hat_plus",
+    "cpu_model": "Raspberry Pi 5 Model B Rev 1.1",
+    "accelerator": "Hailo-8 NPU (26 TOPS)",
+    "ram_size_gb": 15.8,
+    "storage_type": "SD Card",
+    "cooling_config": "Active (Fan)",
+    "power_mode": "ondemand",
+    "os_version": "Debian GNU/Linux 12 (bookworm)",
+    "kernel_version": "6.12.75+rpt-rpi-2712",
+    "hostname": "raspberrypi",
+    "timestamp": "2026-04-28T09:14:37.213338"
+  },
+  "workload_type": "llm",
+  "started_at": "2026-04-28T09:14:37.213434",
+  "completed_at": "2026-04-28T09:24:37.410658",
+  "yolo_results": [],
+  "llm_results": [],
+  "metadata": {
+    "profile": "drone",
+    "config_dir": "/home/snpi/Documents/Benchy/configs"
+  }
+}

@@ -1,0 +1,35 @@
+2026-04-28 15:07:16 - benchmark.cli - INFO - Generating report from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144905_7b6932a0.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144923_36f03703.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144853_3fc6fa7a.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144847_5ebbf034.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144916_0f0ea4bd.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144927_a628367a.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144912_e944e155.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144919_a1025ce3.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144901_f5863860.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_150716_df254912.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144908_d298e5cb.json
+2026-04-28 15:07:16 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144857_70fc8373.json
+2026-04-28 15:07:16 - benchmark.cli - INFO - Aggregated JSON written to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/report/report_20260428_150716.json
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/vpn/Documents/Benchy/benchmark/__main__.py", line 5, in <module>
+    main()
+  File "/home/vpn/Documents/Benchy/benchmark/cli.py", line 1092, in main
+    return cmd_report(args)
+           ^^^^^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/cli.py", line 681, in cmd_report
+    csv_paths = csv_writer.write_all(aggregator, output_dir, report_id)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/vpn/Documents/Benchy/benchmark/aggregation/csv_writer.py", line 190, in write_all
+    self.write_llm_aggregated(llm_metrics, llm_path)
+  File "/home/vpn/Documents/Benchy/benchmark/aggregation/csv_writer.py", line 131, in write_llm_aggregated
+    writer.writerow(metric.to_dict())
+  File "/usr/lib/python3.11/csv.py", line 154, in writerow
+    return self.writer.writerow(self._dict_to_list(rowdict))
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/csv.py", line 149, in _dict_to_list
+    raise ValueError("dict contains fields not in fieldnames: "
+ValueError: dict contains fields not in fieldnames: 'parameter_group', 'ttft_median_ms', 'architecture', 'prompt_category', 'peak_memory_mb_mean', 'backend', 'hailort_version', 'tps_median', 'npu_utilization_percent_mean', 'specialization', 'npu_power_watts_mean', 'truncation_rate'

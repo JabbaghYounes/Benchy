@@ -61,6 +61,13 @@ class LLMBenchmarkConfig:
     # talking to HailoRT GenAI just means pointing api_base at its REST port.
     backend: str = "ollama-cpu"
     npu_metrics: bool = False
+    # Issue 12 - per-request HTTP read timeout for /api/generate calls in
+    # the warmup + measured loop. 600s suits llama2:7b on a Pi 5 once the
+    # weights are resident; the actual cold-load is absorbed by the
+    # prewarm step below, which uses prewarm_timeout_seconds (much larger)
+    # and runs once per model before the timed loop.
+    http_timeout_seconds: int = 600
+    prewarm_timeout_seconds: int = 1800
 
     @classmethod
     def for_lightweight_model(
@@ -91,45 +98,28 @@ class LLMBenchmarkConfig:
         )
 
 
-# Model groups as defined in PRD
-# Phase 1: Extended with 1B and 3B models per Model Expansion PRD
+# Llama-family only — three groups, one model per group.
+# See Issue 7 in resources/session_issues_2026-04-27.md for the
+# llama-only consolidation rationale.
 LLM_MODELS = {
-    "1B": ["llama3.2:1b", "granite3.1-moe:1b", "sailor2:1b"],
-    "3B": ["llama3.2:3b", "granite3.1-moe:3b", "starcoder2:3b"],
-    "7B": ["llama2:7b", "mistral:7b", "olmo2:7b"],
-    "8B": ["llama3.1:8b", "dolphin3:8b", "dolphin-llama3:8b"],
-    "9B": ["gemma2:9b"],
+    "1B": ["llama3.2:1b"],
+    "3B": ["llama3.2:3b"],
+    "7B": ["llama2:7b"],
 }
 
 
 @dataclass
 class ModelMetadata:
-    """Metadata for LLM models per Model Expansion PRD Task 1.2."""
-    parameter_group: str  # "1B", "3B", "7B", "8B", "9B"
+    """Metadata for LLM models."""
+    parameter_group: str  # "1B", "3B", "7B" (or "1.5B" on the NPU profile)
     architecture: str  # "dense" or "moe"
     specialization: str  # "general" or "code"
 
 
-# Model metadata registry - Task 1.2
 MODEL_METADATA: dict[str, ModelMetadata] = {
-    # 1B models
     "llama3.2:1b": ModelMetadata("1B", "dense", "general"),
-    "granite3.1-moe:1b": ModelMetadata("1B", "moe", "general"),
-    "sailor2:1b": ModelMetadata("1B", "dense", "general"),
-    # 3B models
     "llama3.2:3b": ModelMetadata("3B", "dense", "general"),
-    "granite3.1-moe:3b": ModelMetadata("3B", "moe", "general"),
-    "starcoder2:3b": ModelMetadata("3B", "dense", "code"),
-    # 7B models
     "llama2:7b": ModelMetadata("7B", "dense", "general"),
-    "mistral:7b": ModelMetadata("7B", "dense", "general"),
-    "olmo2:7b": ModelMetadata("7B", "dense", "general"),
-    # 8B models
-    "llama3.1:8b": ModelMetadata("8B", "dense", "general"),
-    "dolphin3:8b": ModelMetadata("8B", "dense", "general"),
-    "dolphin-llama3:8b": ModelMetadata("8B", "dense", "general"),
-    # 9B models
-    "gemma2:9b": ModelMetadata("9B", "dense", "general"),
 }
 
 
@@ -441,9 +431,18 @@ def validate_prompt_compliance(
 class OllamaClient:
     """Client for interacting with Ollama API."""
 
-    def __init__(self, base_url: str = OLLAMA_API_BASE):
+    def __init__(
+        self,
+        base_url: str = OLLAMA_API_BASE,
+        request_timeout: int = 600,
+    ):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
+        # Default per-request timeout for /api/generate. Overridable per
+        # call (the prewarm path uses a much larger value to absorb
+        # cold-load latency on slow storage). See Issue 12 in
+        # resources/session_issues_2026-04-27.md.
+        self.request_timeout = request_timeout
 
     def is_available(self) -> bool:
         """Check if Ollama server is running."""
@@ -513,6 +512,8 @@ class OllamaClient:
         top_k: int = 1,
         seed: int = 42,
         max_tokens: int = 256,
+        timeout: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ) -> Generator[dict, None, None]:
         """Generate completion with streaming response.
 
@@ -530,13 +531,15 @@ class OllamaClient:
                 "num_predict": max_tokens,
             },
         }
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
 
         try:
             response = self.session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 stream=True,
-                timeout=300,
+                timeout=timeout if timeout is not None else self.request_timeout,
             )
             response.raise_for_status()
 
@@ -556,6 +559,8 @@ class OllamaClient:
         top_k: int = 1,
         seed: int = 42,
         max_tokens: int = 256,
+        timeout: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ) -> dict:
         """Generate completion without streaming.
 
@@ -573,12 +578,14 @@ class OllamaClient:
                 "num_predict": max_tokens,
             },
         }
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
 
         try:
             response = self.session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
-                timeout=300,
+                timeout=timeout if timeout is not None else self.request_timeout,
             )
             response.raise_for_status()
             return response.json()
@@ -615,9 +622,55 @@ class LLMBenchmarkRunner:
             config: Benchmark configuration
         """
         self.config = config
-        self.client = OllamaClient(config.api_base)
+        self.client = OllamaClient(
+            config.api_base,
+            request_timeout=config.http_timeout_seconds,
+        )
         self._resource_monitor = ResourceMonitor(sample_interval=0.1)
         self._model_info: Optional[dict] = None
+
+    def _prewarm_model(self) -> None:
+        """Issue 12: trigger an Ollama cold-load outside the timed loop.
+
+        Cold-loading 7B weights from SD storage on a Pi 5 routinely
+        exceeds the per-request timeout, which would otherwise fire on
+        the first warmup iteration and abort the whole prompt set. We
+        issue a single one-token generate with ``keep_alive: -1`` so
+        the model stays resident for the rest of the run, using the
+        config's prewarm_timeout_seconds (default 1800s) so the cold
+        path has room. Failures are logged but not raised — if prewarm
+        fails the benchmark loop will surface the real error itself.
+        """
+        logger.info(
+            f"Pre-warming {self.config.model_name} "
+            f"(timeout {self.config.prewarm_timeout_seconds}s)..."
+        )
+        start = time.perf_counter()
+        try:
+            self.client.generate(
+                model=self.config.model_name,
+                prompt=" ",  # one-token, no real work
+                temperature=0.0,
+                top_p=1.0,
+                top_k=1,
+                seed=self.config.seed,
+                max_tokens=1,
+                timeout=self.config.prewarm_timeout_seconds,
+                # Ollama 0.14+ rejects bare "-1" with `time: missing unit
+                # in duration "-1"` — pass a negative duration string so
+                # the parser accepts it; magnitude is irrelevant since
+                # Ollama treats any negative duration as "keep forever".
+                keep_alive="-1m",
+            )
+        except requests.RequestException as e:
+            logger.warning(
+                f"Prewarm failed for {self.config.model_name}: {e}. "
+                "Proceeding with the timed loop; the first request will "
+                "carry the cold-load cost."
+            )
+            return
+        elapsed = time.perf_counter() - start
+        logger.info(f"Pre-warm complete in {elapsed:.1f}s")
 
     def _ensure_model_available(self) -> bool:
         """Ensure the model is available, pulling if necessary."""
@@ -762,8 +815,6 @@ class LLMBenchmarkRunner:
                 "1B": 2.0,
                 "3B": 4.0,
                 "7B": 8.0,
-                "8B": 10.0,
-                "9B": 12.0,
             }.get(self.config.model_size, 4.0)
 
             mem_status = check_memory_preflight(min_memory_gb)
@@ -779,6 +830,11 @@ class LLMBenchmarkRunner:
         # Ensure model is available
         if not self._ensure_model_available():
             raise RuntimeError(f"Failed to load model: {self.config.model_name}")
+
+        # Issue 12: cold-load the model with a long timeout BEFORE the
+        # warmup loop, so a slow Pi-side load doesn't trip the much
+        # tighter per-request timeout used during measurement.
+        self._prewarm_model()
 
         # Get model metadata for prompt selection
         metadata = get_model_metadata(self.config.model_name)

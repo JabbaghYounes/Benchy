@@ -1,0 +1,20 @@
+2026-04-28 14:49:01 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_144901_f5863860
+2026-04-28 14:49:01 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-28 14:49:01 - benchmark.cli - INFO - Profile: default
+2026-04-28 14:49:01 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-28 14:49:01 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo26n-obb.pt
+2026-04-28 14:49:01 - benchmark.cli - INFO - Inferred version: v26, task: obb
+2026-04-28 14:49:01 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-04-28 14:49:01 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-28 14:49:01 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo26n-obb.pt
+2026-04-28 14:49:01 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo10h/v26/obb/yolo26n-obb/model.hef, starting conversion pipeline...
+2026-04-28 14:49:01 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo26n-obb.pt
+2026-04-28 14:49:02 - benchmark.workloads.yolo.conversion.onnx_export - WARNING - ONNX export not available: No module named 'onnx'
+2026-04-28 14:49:03 - benchmark.cli - ERROR -   Failed: ONNX export not available. Install ultralytics: pip install ultralytics onnx
+2026-04-28 14:49:03 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144901_f5863860.json
+
+Benchmark Complete: bench_20260428_144901_f5863860
+----------------------------------------
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844
+Validation FAILED for /home/vpn/Documents/Benchy/results/hw_verify_20260428_144844/bench_20260428_144901_f5863860.json:
+  - yolo_results is empty — the runner produced no rows

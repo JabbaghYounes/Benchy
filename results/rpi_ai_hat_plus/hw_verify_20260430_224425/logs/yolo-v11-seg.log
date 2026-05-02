@@ -1,0 +1,29 @@
+2026-04-30 22:44:39 - benchmark.cli - INFO - Starting benchmark run: bench_20260430_224439_ef95ab77
+2026-04-30 22:44:39 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-04-30 22:44:39 - benchmark.cli - INFO - Profile: default
+2026-04-30 22:44:39 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-30 22:44:39 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo11n-seg.pt
+2026-04-30 22:44:39 - benchmark.cli - INFO - Inferred version: v11, task: segmentation
+2026-04-30 22:44:39 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo8
+2026-04-30 22:44:39 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-30 22:44:39 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo11n-seg.pt
+2026-04-30 22:44:39 - benchmark.workloads.yolo.conversion.hef_source - INFO - No prebuilt HEF for v11/segmentation/n/hailo8. Drop a file named 'v11_segmentation_n_hailo8.hef' into /home/snpi/Documents/Benchy/resources/hefs (compile on x86_64), or rely on the conversion pipeline (which requires the Hailo Dataflow Compiler — x86_64 only).
+2026-04-30 22:44:39 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo8/v11/segmentation/yolo11n-seg/model.hef, starting conversion pipeline...
+2026-04-30 22:44:39 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo11n-seg.pt
+2026-04-30 22:44:41 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+2026-04-30 22:44:41 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO - Starting conversion pipeline for yolo11n-seg.pt
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO -   YOLO version: v11
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Task: segmentation
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Target: hailo8
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO - Stage 1/3: ONNX Export
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX already exists at models/hailo/v11/segmentation/yolo11n-seg/model.onnx
+2026-04-30 22:44:41 - benchmark.workloads.yolo.conversion.pipeline - INFO -   ONNX exported: models/hailo/v11/segmentation/yolo11n-seg/model.onnx
+2026-04-30 22:44:41 - benchmark.cli - ERROR -   Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v11/segmentation/yolo11n-seg/model.onnx. Please complete conversion using Hailo SDK.
+2026-04-30 22:44:41 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/hw_verify_20260430_224425/bench_20260430_224439_ef95ab77.json
+
+Benchmark Complete: bench_20260430_224439_ef95ab77
+----------------------------------------
+Results saved to: /home/snpi/Documents/Benchy/results/hw_verify_20260430_224425
+Validation FAILED for /home/snpi/Documents/Benchy/results/hw_verify_20260430_224425/bench_20260430_224439_ef95ab77.json:
+  - yolo_results is empty — the runner produced no rows

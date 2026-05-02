@@ -1,0 +1,126 @@
+Drop prebuilt HEF files in this directory using the convention:
+
+    <yolo_version>_<task>_<model_size>_<arch>.hef
+
+Examples:
+    v8_detection_n_hailo8.hef
+    v8_segmentation_n_hailo8.hef
+    v11_pose_s_hailo8l.hef
+    v11_obb_n_hailo8.hef
+
+Where:
+    yolo_version  one of: v8, v11, v26
+    task          one of: detection, classification, segmentation, pose, obb
+    model_size    one of: n, s, m, l, x
+    arch          one of: hailo8 (Pi 5 + AI HAT+ 26 TOPS),
+                          hailo8l (Pi 5 + AI HAT+ 13 TOPS),
+                          hailo10h (Pi 5 + AI HAT+ 2)
+
+The benchmark runner (benchmark/workloads/yolo/conversion/hef_source.py)
+also looks in /usr/share/hailo-models/ which the
+rpicam-apps-hailo-postprocess Debian package populates with a curated
+subset of Hailo Model Zoo HEFs — those don't need to be re-staged here.
+
+HEFs must be compiled on x86_64 Linux with the Hailo Dataflow Compiler
+(licensed via Hailo Developer Zone) and copied across; aarch64 / Pi
+cannot compile them. See docs/hailo.md "Prebuilt HEF source layer" and
+Issue 11 in resources/session_issues_2026-04-27.md.
+
+Two workstation entry points stage HEFs here automatically with the
+canonical naming above:
+
+  python -m benchmark compile --hw-arch hailo10h --model yolov8n-seg.pt
+    -> stages resources/hefs/v8_segmentation_n_hailo10h.hef
+
+  scripts/fetch_prebuilt_hefs.py --arch both
+    -> downloads from the Hailo Model Zoo S3 catalogue below and
+       stages everything the Zoo publishes for hailo8 + hailo10h
+
+Both write directly into this directory; commit + push and the Pi
+runtime will pick the HEFs up via hef_source.find_prebuilt_hef on next
+verify.
+
+----
+
+Source: Hailo Model Zoo public S3 catalogue. URL pattern:
+
+    https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/<model_zoo_version>/<arch>/<filename>.hef
+
+Where <model_zoo_version> is e.g. v2.16.0 (paired with HailoRT 4.20.x)
+or v2.18.0 (paired with HailoRT 4.22+); <arch> is `hailo8` or
+`hailo8l`; <filename> follows the Model Zoo's own convention which
+tends to be `<family><size>` for detection (e.g. yolov8n.hef) and
+`<family><size>_<task>` for everything else (e.g. yolov8n_seg.hef,
+yolov8s_pose.hef). Browse the available HEFs at:
+
+    https://github.com/hailo-ai/hailo_model_zoo
+    docs/public_models/HAILO8/HAILO8_object_detection.rst
+    docs/public_models/HAILO8/HAILO8_instance_segmentation.rst
+    docs/public_models/HAILO8/HAILO8_pose_estimation.rst
+
+Currently staged in this directory:
+
+  Hailo-8 (Model Zoo v2.16.0 + workstation-compiled):
+    v8_detection_n_hailo8.hef       <- yolov8n.hef        (Zoo)
+    v8_detection_s_hailo8.hef       <- yolov8s.hef        (Zoo)
+    v8_detection_m_hailo8.hef       <- yolov8m.hef        (Zoo)
+    v8_detection_l_hailo8.hef       <- yolov8l.hef        (Zoo)
+    v8_detection_x_hailo8.hef       <- yolov8x.hef        (Zoo)
+    v11_detection_n_hailo8.hef      <- yolov11n.hef       (Zoo)
+    v11_detection_s_hailo8.hef      <- yolov11s.hef       (Zoo)
+    v11_detection_m_hailo8.hef      <- yolov11m.hef       (Zoo)
+    v8_segmentation_n_hailo8.hef    <- yolov8n_seg.hef    (Zoo)
+    v8_segmentation_s_hailo8.hef    <- yolov8s_seg.hef    (Zoo)
+    v8_segmentation_m_hailo8.hef    <- yolov8m_seg.hef    (Zoo)
+    v8_pose_s_hailo8.hef            <- yolov8s_pose.hef   (Zoo)
+    v8_pose_m_hailo8.hef            <- yolov8m_pose.hef   (Zoo)
+    v11_pose_n_hailo8.hef           <- yolo11n-pose.pt    (workstation, 2026-04-29)
+    v8_obb_n_hailo8.hef             <- yolov8n-obb.pt     (workstation, 2026-04-30)
+    v11_obb_n_hailo8.hef            <- yolo11n-obb.pt     (workstation, 2026-04-30)
+    v26_detection_n_hailo8.hef      <- yolo26n.pt         (workstation, 2026-04-30, MODEL_SCRIPT_OVERRIDES)
+    v26_obb_n_hailo8.hef            <- yolo26n-obb.pt     (workstation, 2026-04-30)
+    v26_pose_n_hailo8.hef           <- yolo26n-pose.pt    (workstation, 2026-04-30)
+
+  Hailo-10H (workstation-compiled, 2026-04-29 / 2026-04-30):
+    v8_detection_n_hailo10h.hef     <- yolov8n.pt
+    v8_detection_s_hailo10h.hef     <- yolov8s.pt
+    v11_detection_n_hailo10h.hef    <- yolo11n.pt
+    v11_segmentation_n_hailo10h.hef <- yolo11n-seg.pt
+    v11_pose_n_hailo10h.hef         <- yolo11n-pose.pt
+    v8_obb_n_hailo10h.hef           <- yolov8n-obb.pt
+    v11_obb_n_hailo10h.hef          <- yolo11n-obb.pt
+    v26_obb_n_hailo10h.hef          <- yolo26n-obb.pt
+    v26_segmentation_n_hailo10h.hef <- yolo26n-seg.pt
+    v26_pose_n_hailo10h.hef         <- yolo26n-pose.pt
+
+Notes / coverage gaps as of 2026-04-30 (post-retry sweep):
+- The Model Zoo does NOT publish OBB HEFs for any YOLO version, but
+  workstation-compiled HEFs cover v8, v11, and v26 OBB at size 'n'
+  on both arches as of the 2026-04-30 retry sweep. See
+  resources/session_notes_2026-04-29_nvidia_workstation.md
+  "Retry sweep" for the END_NODE_TABLE additions that unblocked them.
+- The Model Zoo does NOT publish pose at the 'n' size — only 's' and
+  'm'. We stage v11_pose_n_hailo8.hef and v26_pose_n_hailo8.hef from
+  workstation. v8_pose_n_hailo8.hef is still missing; the verify
+  script falls back to yolov8s-pose.pt for that step.
+- v11 segmentation does not fit Hailo-8's compute budget regardless
+  of compile flags — hailo10h-only. See pitfalls.md § 11.
+- v26 segmentation on Hailo-8 is **confirmed unfixable** as of
+  2026-04-30 step (b): six different ALLS override variants attempted
+  (matmul_decomposition + four precision_mode permutations), all
+  hit the v26-head-attention multi-output matmul1 rejection that
+  Hailo-8 hardware does not accept in any supported precision mode.
+  Compiles fine on hailo10h (more chip headroom). See pitfalls.md
+  § 12.
+- v26 detection on hailo10h is NOT supported by Hailo's own YAML
+  (yolo26n.yaml declares supported_hw_arch: [hailo8, hailo8l]).
+  Skip; not a tooling bug. See pitfalls.md § 13.
+- v26 detection on Hailo-8 now compiles cleanly with the new
+  MODEL_SCRIPT_OVERRIDES infrastructure in
+  benchmark/workloads/yolo/conversion/hef_compiler.py — the
+  per-layer precision_mode=a16_w16 overrides for dw1..8, conv61/77/91/64/80/94,
+  output_layer1..6 mirror Hailo's official yolo26n.alls.
+- Classification is the only remaining task family with no
+  END_NODE_TABLE entry (v8/v11/v26 cls). No workstation HEFs at
+  size 'n' for cls; the runtime falls back to other backends if
+  asked.

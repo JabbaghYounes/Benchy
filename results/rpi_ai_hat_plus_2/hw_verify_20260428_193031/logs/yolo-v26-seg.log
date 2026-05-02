@@ -1,0 +1,52 @@
+2026-04-28 19:31:47 - benchmark.cli - INFO - Starting benchmark run: bench_20260428_193147_3fb1a5a2
+2026-04-28 19:31:47 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-28 19:31:47 - benchmark.cli - INFO - Profile: default
+2026-04-28 19:31:47 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-28 19:31:47 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo26n-seg.pt
+2026-04-28 19:31:47 - benchmark.cli - INFO - Inferred version: v26, task: segmentation
+2026-04-28 19:31:47 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-04-28 19:31:47 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-28 19:31:47 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo26n-seg.pt
+2026-04-28 19:31:47 - benchmark.workloads.yolo.backends.hailo - INFO - HEF not found at models/hailo/hailo10h/v26/segmentation/yolo26n-seg/model.hef, starting conversion pipeline...
+2026-04-28 19:31:47 - benchmark.workloads.yolo.backends.hailo - INFO - Starting model conversion for yolo26n-seg.pt
+2026-04-28 19:31:50 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo SDK not available for HAR generation. Only ONNX export will be performed.
+2026-04-28 19:31:50 - benchmark.workloads.yolo.backends.hailo - WARNING - Hailo Dataflow Compiler not available for HEF compilation. Pipeline will stop at HAR.
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.pipeline - INFO - Starting conversion pipeline for yolo26n-seg.pt
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.pipeline - INFO -   YOLO version: v26
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Task: segmentation
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.pipeline - INFO -   Target: hailo10h
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.pipeline - INFO - Stage 1/3: ONNX Export
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.onnx_export - INFO - Exporting yolo26n-seg.pt to ONNX...
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Resolution: 640x640
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Batch size: 1
+2026-04-28 19:31:50 - benchmark.workloads.yolo.conversion.onnx_export - INFO -   Opset: 11
+[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-seg.pt to 'yolo26n-seg.pt': 13% ━╸────────── 880.0KB/6.4MB 8.5MB/s 0.1s<0.6s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-seg.pt to 'yolo26n-seg.pt': 59% ━━━━━━━───── 3.8/6.4MB 29.2MB/s 0.2s<0.1s[KDownloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-seg.pt to 'yolo26n-seg.pt': 100% ━━━━━━━━━━━━ 6.4MB 21.9MB/s 0.3s
+Ultralytics 8.4.11 🚀 Python-3.11.2 torch-2.10.0+cpu CPU (aarch64)
+YOLO26n-seg summary (fused): 139 layers, 2,722,980 parameters, 0 gradients, 9.1 GFLOPs
+
+[34m[1mPyTorch:[0m starting from 'yolo26n-seg.pt' with input shape (1, 3, 640, 640) BCHW and output shape(s) ((1, 300, 38), (1, 32, 160, 160)) (6.4 MB)
+
+[34m[1mONNX:[0m starting export with onnx 1.21.0 opset 11...
+/home/vpn/Documents/Benchy/venv/lib/python3.11/site-packages/torch/onnx/_internal/torchscript_exporter/symbolic_opset11.py:954: UserWarning: Exporting aten::index operator of advanced indexing in opset 11 is achieved by combination of multiple ONNX operators, including Reshape, Transpose, Concat, and Gather. If indices include negative values, the exported graph will produce incorrect results.
+  return opset9.index(g, self, index)
+[34m[1mONNX:[0m slimming with onnxslim 0.1.91...
+[0;93m2026-04-28 19:31:54.589767503 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+[0;93m2026-04-28 19:31:54.589827596 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"[m
+[34m[1mONNX:[0m export success ✅ 3.0s, saved as 'yolo26n-seg.onnx' (10.7 MB)
+
+Export complete (4.6s)
+Results saved to [1m/home/vpn/Documents/Benchy[0m
+Predict:         yolo predict task=segment model=yolo26n-seg.onnx imgsz=640 
+Validate:        yolo val task=segment model=yolo26n-seg.onnx imgsz=640 data=/home/lq/codes/ultralytics/ultralytics/cfg/datasets/coco.yaml  
+Visualize:       https://netron.app
+2026-04-28 19:31:55 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX validation passed
+2026-04-28 19:31:55 - benchmark.workloads.yolo.conversion.onnx_export - INFO - ONNX exported successfully: models/hailo/v26/segmentation/yolo26n-seg/model.onnx
+2026-04-28 19:31:55 - benchmark.workloads.yolo.conversion.pipeline - INFO -   ONNX exported: models/hailo/v26/segmentation/yolo26n-seg/model.onnx
+2026-04-28 19:31:55 - benchmark.cli - ERROR -   Failed: ONNX file generated but Hailo SDK not available. ONNX file at: models/hailo/v26/segmentation/yolo26n-seg/model.onnx. Please complete conversion using Hailo SDK.
+2026-04-28 19:31:55 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031/bench_20260428_193147_3fb1a5a2.json
+
+Benchmark Complete: bench_20260428_193147_3fb1a5a2
+----------------------------------------
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031
+Validation FAILED for /home/vpn/Documents/Benchy/results/hw_verify_20260428_193031/bench_20260428_193147_3fb1a5a2.json:
+  - yolo_results is empty — the runner produced no rows

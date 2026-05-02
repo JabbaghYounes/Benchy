@@ -9,10 +9,12 @@ This benchmark suite provides comprehensive performance evaluation for:
 - **Computer Vision**: YOLO inference (v8, v11, v26) across all five tasks —
   detection, classification, OBB, segmentation, and pose — on Hailo NPU,
   Jetson GPU, or PyTorch CPU.
-- **Local LLM Inference**: Ollama-based models (1.5B, 7B, 8B, 9B groups) on
-  CPU; or via HailoRT GenAI's Ollama-compatible REST endpoint on the
-  Hailo-10H NPU (qwen2:1.5b, qwen2.5-{instruct,coder}:1.5b,
-  deepseek_r1_distill_qwen:1.5b, llama3.2:3b).
+- **Local LLM Inference**: Llama-only policy. CPU side (1B / 3B / 7B):
+  `llama3.2:1b`, `llama3.2:3b`, `llama2:7b` via Ollama. NPU side (1B
+  only): `llama3.2:1b` — the only llama-family prebuilt HEF in the
+  HailoRT 5.3.0 GenAI Model Zoo — via HailoRT GenAI's Ollama-compatible
+  REST endpoint. Cross-backend comparison is only at the 1B level (no
+  3B or 7B HEFs ship in the zoo).
 - **Backend axis**: Every `LLMResult` is tagged with a backend label
   (`ollama-cpu` / `ollama-cuda` / `hailo-10h`) and the dashboard splits
   CPU and NPU runs into separate filterable rows.
@@ -28,6 +30,28 @@ This benchmark suite provides comprehensive performance evaluation for:
 v26 entries clear the conversion + postprocessor pipeline but lack public
 Hailo Model Zoo backing; hardware verification (the HW-verify runners
 below) is what moves them from experimental to verified.
+
+**HEF availability** (separate from postprocessor coverage above) lives
+in `resources/hefs/`. As of 2026-04-30 (post-step-b), 29 HEFs are
+staged across the two arches:
+
+- **Hailo-8** (19): v8 det n/s/m/l/x, v11 det n/s/m, v8 seg n/s/m,
+  v8 pose s/m, v11 pose n, v8 obb n, v11 obb n, v26 det n, v26 obb n,
+  v26 pose n.
+- **Hailo-10H** (10): v8 det n/s, v11 det n, v11 seg n, v11 pose n,
+  v8 obb n, v11 obb n, v26 obb n, v26 seg n, v26 pose n.
+
+Remaining gaps, all explained: v8 pose at size n (Hailo Model Zoo
+publishes only s/m); v11 seg on Hailo-8 (chip-side capacity miss —
+h10h-only, `pitfalls.md` § 11); v26 seg on Hailo-8 (confirmed
+hardware-unfittable — head attention's multi-output matmul1 cannot
+be ingested by Hailo-8 in any supported precision mode after six
+override variants attempted; h10h-only, `pitfalls.md` § 12); v26
+detection on Hailo-10H (not supported by Hailo's own
+`yolo26n.yaml`, `pitfalls.md` § 13); classification across all
+three YOLO versions (no postprocessor priority). See
+`resources/hefs/NAMING.txt` for the full inventory and
+`docs/compilation/pitfalls.md` § 10-13 for the gating issues.
 
 ### Supported Platforms
 
@@ -53,18 +77,30 @@ cd Benchy
 
 ### 2. Platform Setup
 
-Run the appropriate setup script for your hardware:
+Run the appropriate setup script for your hardware. **`sudo` is required**
+(the script installs apt packages, udev rules, and the kernel
+HailoRT/PCIe driver). Pass `--pull-models` to also pre-pull the three
+llama LLM models (`llama3.2:1b` / `llama3.2:3b` / `llama2:7b`, ~7 GB
+total) so the LLM benchmarks can run without an extra `ollama pull`
+step:
 
 ```bash
 # NVIDIA Jetson Orin Nano
-./scripts/setup_jetson_orin_nano.sh
+sudo ./scripts/setup_jetson_orin_nano.sh --pull-models
 
 # Raspberry Pi with AI HAT+
-./scripts/setup_rpi_ai_hat_plus.sh
+sudo ./scripts/setup_rpi_ai_hat_plus.sh --pull-models
 
 # Raspberry Pi with AI HAT+ 2
-./scripts/setup_rpi_ai_hat_plus_2.sh
+sudo ./scripts/setup_rpi_ai_hat_plus_2.sh --pull-models
 ```
+
+> **AI HAT+ 2 caveat (verified 2026-04-28).** On Pi OS Bookworm the setup script cannot complete the HailoRT 5.x install — Raspberry Pi's apt repo has no `hailo-h10-all` package and caps at HailoRT 4.20.0, which doesn't recognise the Hailo-10H. The script reports SUCCESS but leaves you on 4.x with the chip invisible (`/dev/hailo0` missing, `hailortcli scan` empty). The HailoRT 5.x driver/userspace/firmware/Python-wheel and the GenAI model-zoo `.deb` must currently be downloaded manually from the [Hailo Developer Zone](https://hailo.ai/developer-zone/) (free account). See `docs/hailo.md` § "LLM on Hailo-10H → Setup (high level)" for the full step-by-step procedure.
+
+Drop `--pull-models` if you only need YOLO benchmarks or want a leaner
+install (~7 GB smaller). The setup script also installs the project's
+`[dev]` extras (pytest / black / mypy) into the venv so the verify
+runners' first pytest step works out of the box.
 
 ### 3. Activate the Virtual Environment
 
@@ -94,17 +130,27 @@ pass/fail summary. Continue-on-failure: a single broken model doesn't
 abort the rest of the sweep, and the exit code reflects only blocking
 (non-experimental) failures.
 
+Both scripts produce identical 13-step bundles (vision sweep
+det/obb/seg/pose × v8/v11/v26 + LLM-on-NPU + LLM-on-CPU comparison row
++ auto-generated dashboard) so the two boards' result directories are
+directly diff-able. The LLM-on-NPU step writes a documented
+`[unsupported-on-this-hw]` stub on AI HAT+ (no onboard SDRAM, can't
+host LLMs) and a real run on AI HAT+ 2.
+
 ```bash
-# Pi 5 + AI HAT+ (Hailo-8 / 8L) — vision sweep (det/obb/seg/pose × v8/v11/v26)
+# Pi 5 + AI HAT+ (Hailo-8 / 8L)
 ./scripts/verify_ai_hat_plus.sh
 
-# Pi 5 + AI HAT+ 2 (Hailo-10H) — same vision sweep + LLM-on-NPU + auto-dashboard
+# Pi 5 + AI HAT+ 2 (Hailo-10H)
 ./scripts/verify_ai_hat_plus_2.sh
 ```
 
-Output lands in `results/hw_verify_<timestamp>/` (per-step `.log`s,
-`bench_*.json` artefacts, and on AI HAT+ 2 a generated `report/`
-dashboard). v26 entries are tagged `[experimental]` and counted
+Output lands in `results/<platform>/hw_verify_<timestamp>/` — i.e.
+`results/rpi_ai_hat_plus/hw_verify_<ts>/` for the AI HAT+ board and
+`results/rpi_ai_hat_plus_2/hw_verify_<ts>/` for the AI HAT+ 2 board —
+so the two Pis' bundles don't intermingle when both push to the same
+repo. Each bundle holds per-step `.log`s, `bench_*.json` artefacts, and
+a generated `report/` dashboard. v26 entries are tagged `[experimental]` and counted
 separately at the end so a v26 failure doesn't read as a project
 regression.
 
@@ -112,11 +158,12 @@ regression.
 
 | Profile | YOLO | LLM | Use Case |
 |---------|------|-----|----------|
-| **default** | v8 detection, nano size | llama2:7b across q4_K_M / q5_K_M / q8_0 (quant sweep) | Quick validation + INT-quant baseline |
-| **full** | All versions, all tasks, all sizes | All CPU model groups (7B / 8B / 9B) | Thorough evaluation |
+| **default** | v8 detection, nano size | llama2:7b (bare tag, no quant sweep) | Quick CPU smoke test |
+| **full** | All versions, all tasks, all sizes | llama3.2:1b + llama3.2:3b + llama2:7b (1B / 3B / 7B llama groups) | Thorough evaluation |
 | **drone** | v8/v11/v26 detection at 1280, sizes n/s/m, VisDrone dataset | llama2:7b on the curated drone prompt set (scene / target / mission / telemetry / hazard) | Realistic small-object aerial detection |
 | **drone_full** | Detection + OBB + seg + pose at 1280, sizes n/s — broadest drone-relevant Hailo sweep | _(YOLO-only)_ | Exercises every Phase 3 task at altitude-realistic resolution |
-| **npu** | _(LLM-only)_ | qwen2:1.5b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+| **npu** | _(LLM-only)_ | llama3.2:1b on the Hailo-10H NPU via HailoRT GenAI on `:8000`, drone prompt set (only llama HEF in HailoRT 5.3.0 zoo; no 3B/7B HEFs ship) | LLM-on-NPU comparison row (AI HAT+ 2 only) |
+| **compare** | _(LLM-only)_ | llama3.2:1b on Ollama CPU + drone prompt set — RAM-safe CPU mirror of the `npu` profile | True 1B-vs-1B cross-backend (NPU vs CPU) comparison row; used by `verify_ai_hat_plus_2.sh`. Fits any Pi 5 (4 GB or 8 GB), unlike `drone` which needs 8 GB for llama2:7b |
 
 Profiles are configured in `configs/yolo_benchmark.yaml` and
 `configs/llm_benchmark.yaml`. They can declare `input_resolution`,
@@ -139,6 +186,9 @@ per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 | [CLI Reference](docs/cli.md) | Full command reference with examples |
 | [Workloads](docs/workloads.md) | YOLO and LLM benchmark details, metrics, and model groups |
 | [Hailo NPU](docs/hailo.md) | Hailo-8 / 8L / 10H integration, model conversion, and limitations |
+| [HEF Compilation](docs/hef_compilation.md) | Workstation-side `.pt → .hef` workflow, CLI flags, calibration options |
+| [NVIDIA Workstation Bring-up](docs/compilation/nvidia_workstation_setup.md) | Step-by-step setup for a CUDA-equipped compile box (required for gap-model HEFs) |
+| [Compilation Pitfalls](docs/compilation/pitfalls.md) | Known compilation failure modes and fixes |
 | [Methodology](docs/methodology.md) | Benchmark methodology and reproducibility |
 | [Output & Configuration](docs/output.md) | Result formats, dashboard, and YAML configuration |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and fixes |
@@ -151,11 +201,11 @@ per-task `datasets:`, `prompt_set`, `quants` + `quant_tag_template`, and
 - pyyaml >= 6.0
 - numpy >= 1.21.0
 - ultralytics >= 8.0.0
+- onnx >= 1.14.0, onnxruntime >= 1.15.0 (drive the `.pt → .onnx → .har → .hef` Hailo conversion pipeline; pinned in `setup.py:install_requires`)
 
 ### Hailo NPU (Raspberry Pi only)
 - hailo-platform >= 4.17.0 (HailoRT SDK)
 - hailo-dataflow-compiler >= 3.26.0 (for model compilation)
-- onnx >= 1.14.0, onnxruntime >= 1.15.0
 
 ## Contributing
 

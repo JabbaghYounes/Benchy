@@ -127,7 +127,7 @@ detect_platform() {
         hailo_found=true
     fi
 
-    if ls /dev/hailo* 2>/dev/null; then
+    if ls /dev/hailo* /dev/h1x-* 2>/dev/null; then
         success "Hailo device node found"
         hailo_found=true
     fi
@@ -389,25 +389,43 @@ install_python_deps() {
     # Install Hailo Model Zoo utilities if available
     pip install hailo-model-zoo 2>/dev/null || warn "Hailo Model Zoo not available"
 
-    # Install benchmark suite dependencies
+    # Install benchmark suite dependencies. onnx + onnxruntime are
+    # required by the Hailo conversion pipeline (.pt → .onnx → .har →
+    # .hef); without them every YOLO step in verify_ai_hat_plus_2.sh
+    # fails at ONNX export. They are also pinned in setup.py
+    # install_requires so `pip install -e .` below pulls them, but
+    # listing them here too keeps fresh installs explicit.
     info "Installing benchmark dependencies..."
     pip install \
         psutil \
         requests \
         pyyaml \
         numpy \
-        opencv-python-headless
+        opencv-python-headless \
+        onnx \
+        onnxruntime
 
-    # Install the benchmark package itself
+    # Install the benchmark package itself, including dev extras (pytest,
+    # pytest-cov, black, mypy). Dev extras are required because step 1 of
+    # scripts/verify_ai_hat_plus_2.sh runs `pytest tests/ -q` — without
+    # them the verify sweep fails immediately. See Issue 4 in
+    # resources/session_issues_2026-04-27.md.
     if [[ -f "$PROJECT_ROOT/setup.py" ]] || [[ -f "$PROJECT_ROOT/pyproject.toml" ]]; then
-        info "Installing benchmark package..."
-        pip install -e "$PROJECT_ROOT"
+        info "Installing benchmark package (with dev extras)..."
+        pip install -e "$PROJECT_ROOT[dev]"
     fi
 
-    # Fix ownership
+    # Fix ownership of artefacts produced by the sudo-driven install:
+    # the venv and the editable install's egg-info directory in the
+    # project root. Without the egg-info chown, subsequent unprivileged
+    # pip operations fail with "Cannot update time stamp of directory" —
+    # see Issue 5 in resources/session_issues_2026-04-27.md.
     local actual_user
     actual_user=${SUDO_USER:-$USER}
     chown -R "$actual_user:$actual_user" "$VENV_DIR"
+    if [[ -d "$PROJECT_ROOT/edge_ai_benchmark.egg-info" ]]; then
+        chown -R "$actual_user:$actual_user" "$PROJECT_ROOT/edge_ai_benchmark.egg-info"
+    fi
 
     success "Python dependencies installed"
 }
@@ -528,17 +546,20 @@ install_hailort_genai() {
         warn "and run: sudo dpkg -i hailo_gen_ai_model_zoo_<ver>_arm64.deb"
     fi
 
-    # The npu profile in configs/llm_benchmark.yaml starts on qwen2:1.5b.
-    # We do not pre-pull it from this script — the hailo-ollama server has
-    # to be running for /api/pull, and starting the server here would
-    # complicate teardown. Instead, document the manual step.
+    # The npu profile in configs/llm_benchmark.yaml uses llama3.2:1b —
+    # the only llama-family prebuilt HEF in the HailoRT 5.3.0 GenAI Model
+    # Zoo (5.1.1 had llama3.2:3b but Hailo dropped it). See Issue 7 in
+    # resources/session_issues_2026-04-27.md for the llama-only policy.
+    # We do not pre-pull it from this script — the hailo-ollama server
+    # has to be running for /api/pull, and starting the server here
+    # would complicate teardown. Instead, document the manual step.
     success "hailo-apps + hailo-ollama install attempted"
     info "Next steps to enable --profile npu (per docs/hailo.md):"
     info "  1. source $HAILO_APPS_DIR/setup_env.sh"
     info "  2. hailo-ollama   # starts the GenAI REST server on :$HAILO_OLLAMA_PORT"
     info "  3. curl --silent http://localhost:$HAILO_OLLAMA_PORT/api/pull \\"
     info "       -H 'Content-Type: application/json' \\"
-    info "       -d '{\"model\": \"qwen2:1.5b\", \"stream\": true}'"
+    info "       -d '{\"model\": \"llama3.2:1b\", \"stream\": true}'"
     info "  4. python -m benchmark run llm --profile npu"
 }
 
@@ -594,11 +615,11 @@ pull_models() {
     # Pull LLM models for Ollama
     info "Pulling LLM models (this may take a while)..."
 
-    # Models suitable for Pi 5 with AI HAT+ 2
+    # Llama-only canonical sweep — one model per group (1B, 3B, 7B).
     local models=(
+        "llama3.2:1b"
+        "llama3.2:3b"
         "llama2:7b"
-        "mistral:7b"
-        "gemma2:9b"
     )
 
     for model in "${models[@]}"; do
@@ -726,6 +747,26 @@ print_usage_instructions() {
     fi
 }
 
+# Stage prebuilt HEFs from the GitHub Release. Network failure here is
+# non-fatal — the user can re-run the fetcher anytime, and the verify
+# scripts gate on HEFs being present so they'll know if anything's
+# missing at run time. See scripts/fetch_prebuilt_hefs.py and
+# docs/hailo.md for the full source story.
+stage_prebuilt_hefs() {
+    info "Staging prebuilt HEFs (--arch hailo10h) from hefs-v1 release..."
+
+    # Fetcher uses Python stdlib only, but route through the venv's
+    # python3 to guarantee >=3.10 (uses PEP 604 union syntax).
+    if "$VENV_DIR/bin/python3" "$SCRIPT_DIR/fetch_prebuilt_hefs.py" --arch hailo10h; then
+        success "HEFs staged in resources/hefs/"
+    else
+        warn "HEF fetch failed — re-run later with:"
+        warn "  source venv/bin/activate"
+        warn "  python3 scripts/fetch_prebuilt_hefs.py --arch hailo10h"
+        warn "Verify scripts will refuse to start without HEFs present."
+    fi
+}
+
 # Main execution
 main() {
     info "Starting Raspberry Pi 5 AI HAT+ 2 setup for Edge AI Benchmark Suite"
@@ -744,6 +785,7 @@ main() {
     configure_performance
     setup_venv
     install_python_deps
+    stage_prebuilt_hefs
     install_ollama
 
     if [[ "$WITH_GENAI" == true ]]; then

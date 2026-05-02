@@ -41,8 +41,8 @@ def _make_llm_result(
     tps: float = 12.5,
 ) -> LLMResult:
     return LLMResult(
-        model_name="qwen2:1.5b",
-        model_size="1.5B",
+        model_name="llama3.2:3b",
+        model_size="3B",
         prompt_id="scene_description",
         prompt_tokens=42,
         output_tokens=120,

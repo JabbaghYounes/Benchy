@@ -23,34 +23,39 @@ def llm_cfg() -> dict:
     return yaml.safe_load(LLM_CONFIG.read_text())
 
 
-def test_default_profile_declares_quant_sweep(llm_cfg):
+def test_default_profile_does_not_declare_quant_sweep(llm_cfg):
+    # Llama-only policy (2026-04-27): chat-quant variants are too heavy
+    # on disk for an SD-card-backed Pi (~16 GB combined for the three
+    # llama2:7b chat-quants). The default profile now ships a single
+    # bare tag. Re-add `quants:` and `quant_tag_template:` to opt back
+    # in — see configs/llm_benchmark.yaml comment + git history.
     default = llm_cfg["default"]
-    assert default["quants"] == ["q4_K_M", "q5_K_M", "q8_0"]
-    assert default["quant_tag_template"] == "{base}-chat-{quant}"
+    assert "quants" not in default
+    assert "quant_tag_template" not in default
 
 
-def test_default_profile_expands_to_three_tags(llm_cfg):
+def test_default_profile_expands_to_single_tag(llm_cfg):
+    # With no quant sweep declared, _expand_quant_sweep returns the
+    # model list unchanged — exactly one Ollama tag per model.
     default = llm_cfg["default"]
     expanded = _expand_quant_sweep(
-        default["models"], default["quants"], default["quant_tag_template"]
+        default["models"],
+        default.get("quants", []),
+        default.get("quant_tag_template", "{base}-{quant}"),
     )
-    assert expanded == [
-        "llama2:7b-chat-q4_K_M",
-        "llama2:7b-chat-q5_K_M",
-        "llama2:7b-chat-q8_0",
-    ]
+    assert expanded == ["llama2:7b"]
 
 
 def test_expand_with_default_template():
-    out = _expand_quant_sweep(["llama3.1:8b"], ["q4_K_M", "q8_0"])
-    assert out == ["llama3.1:8b-q4_K_M", "llama3.1:8b-q8_0"]
+    out = _expand_quant_sweep(["llama3.2:3b"], ["q4_K_M", "q8_0"])
+    assert out == ["llama3.2:3b-q4_K_M", "llama3.2:3b-q8_0"]
 
 
 def test_expand_with_instruct_template():
     out = _expand_quant_sweep(
-        ["mistral:7b"], ["q4_K_M", "q5_K_M"], "{base}-instruct-{quant}"
+        ["llama3.2:3b"], ["q4_K_M", "q5_K_M"], "{base}-instruct-{quant}"
     )
-    assert out == ["mistral:7b-instruct-q4_K_M", "mistral:7b-instruct-q5_K_M"]
+    assert out == ["llama3.2:3b-instruct-q4_K_M", "llama3.2:3b-instruct-q5_K_M"]
 
 
 def test_expand_cross_product():
@@ -60,8 +65,8 @@ def test_expand_cross_product():
 
 
 def test_no_quants_returns_models_unchanged():
-    out = _expand_quant_sweep(["llama2:7b", "mistral:7b"], [])
-    assert out == ["llama2:7b", "mistral:7b"]
+    out = _expand_quant_sweep(["llama3.2:1b", "llama2:7b"], [])
+    assert out == ["llama3.2:1b", "llama2:7b"]
 
 
 def test_no_quants_returns_a_copy():

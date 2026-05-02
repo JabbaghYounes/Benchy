@@ -1,0 +1,32 @@
+2026-04-30 22:45:17 - benchmark.cli - INFO - Starting benchmark run: bench_20260430_224517_75a6fabb
+2026-04-30 22:45:17 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-30 22:45:17 - benchmark.cli - INFO - Profile: compare
+2026-04-30 22:45:17 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-04-30 22:45:17 - benchmark.cli - INFO - Benchmarking llama3.2:1b
+2026-04-30 22:45:18 - benchmark.workloads.llm.runner - INFO - Pre-warming llama3.2:1b (timeout 1800s)...
+2026-04-30 22:45:18 - benchmark.workloads.llm.runner - ERROR - Generation failed: 400 Client Error: Bad Request for url: http://localhost:11434/api/generate
+2026-04-30 22:45:18 - benchmark.workloads.llm.runner - WARNING - Prewarm failed for llama3.2:1b: 400 Client Error: Bad Request for url: http://localhost:11434/api/generate. Proceeding with the timed loop; the first request will carry the cold-load cost.
+2026-04-30 22:45:18 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-04-30 22:45:18 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-30 22:48:45 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: target_identification
+2026-04-30 22:48:45 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-30 22:56:52 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: mission_preflight
+2026-04-30 22:56:52 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-30 23:05:09 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: telemetry_interpretation
+2026-04-30 23:05:09 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-30 23:06:57 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: hazard_reasoning
+2026-04-30 23:06:57 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-04-30 23:15:12 - benchmark.cli - INFO -   [scene_description] TPS: 7.01, TTFT: 453.3ms
+2026-04-30 23:15:12 - benchmark.cli - INFO -   [target_identification] TPS: 6.93, TTFT: 453.2ms
+2026-04-30 23:15:12 - benchmark.cli - INFO -   [mission_preflight] TPS: 6.80, TTFT: 454.5ms
+2026-04-30 23:15:12 - benchmark.cli - INFO -   [telemetry_interpretation] TPS: 7.05, TTFT: 472.8ms
+2026-04-30 23:15:12 - benchmark.cli - INFO -   [hazard_reasoning] TPS: 6.77, TTFT: 451.1ms
+2026-04-30 23:15:12 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436/bench_20260430_224517_75a6fabb.json
+2026-04-30 23:15:12 - benchmark.cli - INFO - LLM CSV results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436/bench_20260430_224517_75a6fabb_llm.csv
+
+Benchmark Complete: bench_20260430_224517_75a6fabb
+----------------------------------------
+LLM prompts benchmarked: 5
+  Average tokens/sec: 6.91
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436
+OK: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436/bench_20260430_224517_75a6fabb.json (5 llm result row(s))

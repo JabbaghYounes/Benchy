@@ -1,0 +1,26 @@
+2026-04-30 22:44:50 - benchmark.cli - INFO - Starting benchmark run: bench_20260430_224450_f3d10bfd
+2026-04-30 22:44:50 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-04-30 22:44:50 - benchmark.cli - INFO - Profile: default
+2026-04-30 22:44:50 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-04-30 22:44:50 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolo11n-obb.pt
+2026-04-30 22:44:50 - benchmark.cli - INFO - Inferred version: v11, task: obb
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-04-30 22:44:50 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-04-30 22:44:50 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolo11n-obb.pt
+2026-04-30 22:44:50 - benchmark.workloads.yolo.conversion.hef_source - INFO - Using prebuilt HEF from repo: /home/vpn/Documents/Benchy/resources/hefs/v11_obb_n_hailo10h.hef
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - INFO - Cached prebuilt HEF: /home/vpn/Documents/Benchy/resources/hefs/v11_obb_n_hailo10h.hef -> models/hailo/hailo10h/v11/obb/yolo11n-obb/model.hef
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - INFO - Running model sanity check (Phase 3)...
+2026-04-30 22:44:50 - benchmark.workloads.yolo.conversion.validation - INFO - Validating HEF model: models/hailo/hailo10h/v11/obb/yolo11n-obb/model.hef
+2026-04-30 22:44:50 - benchmark.workloads.yolo.conversion.validation - INFO -   Task: obb
+2026-04-30 22:44:50 - benchmark.workloads.yolo.conversion.validation - WARNING - Model validation FAILED: ["Inference test failed: type object 'ConfigureParams' has no attribute 'default_interface'"]
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - WARNING - Model validation FAILED
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - ERROR -   Error: Inference test failed: type object 'ConfigureParams' has no attribute 'default_interface'
+2026-04-30 22:44:50 - benchmark.workloads.yolo.backends.hailo - WARNING -   Warning: Could not detect class count from output shapes
+2026-04-30 22:44:50 - benchmark.cli - ERROR -   Failed: Model validation failed: Inference test failed: type object 'ConfigureParams' has no attribute 'default_interface'. HEF file may be corrupted or incompatible.
+2026-04-30 22:44:50 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436/bench_20260430_224450_f3d10bfd.json
+
+Benchmark Complete: bench_20260430_224450_f3d10bfd
+----------------------------------------
+Results saved to: /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436
+Validation FAILED for /home/vpn/Documents/Benchy/results/hw_verify_20260430_224436/bench_20260430_224450_f3d10bfd.json:
+  - yolo_results is empty — the runner produced no rows

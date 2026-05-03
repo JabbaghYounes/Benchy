@@ -49,7 +49,10 @@ from benchmark.workloads.yolo.conversion.har_generator import (
 # Update procedure when we capture a new hint: add the end-nodes to
 # END_NODE_TABLE and remove the (version, task) tuple from this set.
 KNOWN_GAPS = {
-    ("v8", YOLOTask.POSE),
+    # Classification across all three YOLO versions — backend supports
+    # it but no postprocessor priority yet, so no compile path either.
+    # ("v8", YOLOTask.POSE) was a gap until 2026-05-03 (hefs-v2 prep);
+    # END_NODE_TABLE entry now lives in har_generator.py.
     ("v8", YOLOTask.CLASSIFICATION),
     ("v11", YOLOTask.CLASSIFICATION),
     ("v26", YOLOTask.CLASSIFICATION),
@@ -106,8 +109,9 @@ def test_get_end_nodes_returns_list_or_none():
     nodes = get_end_nodes("v11", YOLOTask.SEGMENTATION)
     assert nodes == END_NODE_TABLE[("v11", YOLOTask.SEGMENTATION)]
 
-    # A combination that's intentionally not in the table.
-    assert get_end_nodes("v8", YOLOTask.POSE) is None
+    # A combination that's intentionally not in the table —
+    # classification has no compile path priority (KNOWN_GAPS above).
+    assert get_end_nodes("v8", YOLOTask.CLASSIFICATION) is None
 
 
 # --------------------------------------------- pipeline -> HARGeneratorConfig wiring
@@ -206,14 +210,17 @@ def test_end_nodes_none_for_table_miss(monkeypatch, tmp_path):
     pipeline = ModelConversionPipeline()
     pipeline.har_generator = _SpyGenerator()
 
-    onnx_path = tmp_path / "yolov8n-pose.onnx"
+    # Classification is the live "table miss" example after hefs-v2
+    # added the v8 pose entry. Pick something Benchy claims to support
+    # in HAILO_SUPPORTED_TASKS but with no END_NODE_TABLE entry.
+    onnx_path = tmp_path / "yolov8n-cls.onnx"
     onnx_path.write_bytes(b"x")
 
     pipeline._run_har_generation(
         onnx_path=onnx_path,
-        model_name="yolov8n-pose.pt",
+        model_name="yolov8n-cls.pt",
         yolo_version="v8",
-        task=YOLOTask.POSE,
+        task=YOLOTask.CLASSIFICATION,
         config=ConversionConfig(target_device="hailo10h"),
     )
 

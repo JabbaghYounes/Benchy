@@ -82,6 +82,26 @@ END_NODE_TABLE: dict = {
         "/model.22/cv4.2/cv4.2.2/Conv",
         "/model.22/proto/cv3/act/Mul",
     ],
+    # YOLOv8 pose — no Hailo Model Zoo YAML for v8-pose; derived by
+    # analogy with v11-pose (same head shape, head module at /model.22
+    # for v8 vs /model.23 for v11). Without these explicit end-nodes
+    # the SDK auto-detects /model.22/dfl/Reshape, /model.22/Concat_4,
+    # /model.22/Sigmoid which trip UnsupportedShuffleLayerError on
+    # /model.22/dfl/Transpose and /model.22/Reshape_10, plus
+    # UnsupportedModelError on /model.22/Sub|Add_1 (constant shape
+    # (1,2,8400) not broadcastable to [1,8400,2]). Truncating before
+    # the DFL block keeps it host-side, matching how v11-pose ships.
+    ("v8", YOLOTask.POSE): [
+        "/model.22/cv2.0/cv2.0.2/Conv",
+        "/model.22/cv3.0/cv3.0.2/Conv",
+        "/model.22/cv4.0/cv4.0.2/Conv",
+        "/model.22/cv2.1/cv2.1.2/Conv",
+        "/model.22/cv3.1/cv3.1.2/Conv",
+        "/model.22/cv4.1/cv4.1.2/Conv",
+        "/model.22/cv2.2/cv2.2.2/Conv",
+        "/model.22/cv3.2/cv3.2.2/Conv",
+        "/model.22/cv4.2/cv4.2.2/Conv",
+    ],
     # YOLOv11 detection — verbatim from yolov11n.yaml.
     ("v11", YOLOTask.DETECTION): [
         "/model.23/cv2.0/cv2.0.2/Conv",

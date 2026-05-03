@@ -107,6 +107,31 @@ MODEL_SCRIPT_OVERRIDES: dict = {
         "output_layer4, output_layer5, output_layer6], "
         "precision_mode=a16_w16)",
     ],
+    # YOLOv8 pose — derived from hailo_model_zoo/cfg/alls/generic/
+    # yolov8s_pose.alls. The headline knob is
+    # allocator_param(automatic_reshapes=disabled): with auto-reshape
+    # placement enabled, the allocator's search space explodes and
+    # v8s-pose times out the per-context 1h watchdog on hailo10h
+    # (5 contexts, all timeouts; partition+allocation total 1h11m).
+    # Disabling auto-reshape forces a simpler placement the allocator
+    # finds quickly. v8n-pose maps fine without this override (3.3M
+    # params, 4 contexts) but it's harmless to apply uniformly.
+    #
+    # The 16-bit output_layer overrides on positions 3/6/9 target the
+    # keypoint head (cv4.0/cv4.1/cv4.2 in END_NODE_TABLE order) where
+    # 8-bit quantization noise hurts pose accuracy more than box/class.
+    # Equalization is disabled because the official ALLS does so
+    # (empirically degrades pose accuracy). Finetune learning_rate is
+    # the value Hailo Model Zoo uses for the pose family.
+    ("v8", YOLOTask.POSE): [
+        "pre_quantization_optimization(equalization, policy=disabled)",
+        "quantization_param(output_layer3, precision_mode=a16_w16)",
+        "quantization_param(output_layer6, precision_mode=a16_w16)",
+        "quantization_param(output_layer9, precision_mode=a16_w16)",
+        "post_quantization_optimization("
+        "finetune, policy=enabled, learning_rate=0.00015)",
+        "allocator_param(automatic_reshapes=disabled)",
+    ],
 }
 
 

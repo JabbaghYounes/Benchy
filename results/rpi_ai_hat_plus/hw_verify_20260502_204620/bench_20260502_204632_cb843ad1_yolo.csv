@@ -1,0 +1,2 @@
+platform,cpu_model,accelerator,ram_size_gb,model_name,yolo_version,task,input_resolution,latency_first_ms,latency_mean_ms,latency_std_ms,latency_min_ms,latency_max_ms,latency_p50_ms,latency_p95_ms,throughput_fps,map_score,precision,recall,cpu_percent,accelerator_percent,memory_used_mb,power_idle_watts,power_inference_watts,warmup_runs,measured_runs
+rpi_ai_hat_plus,Raspberry Pi 5 Model B Rev 1.1,Hailo-8 NPU (26 TOPS),15.8,yolov8n-obb.pt,v8,obb,640x640,13.892,13.914,0.127,13.811,14.212,13.86,14.212,71.87,,,,15.4,,8820.8,,,3,10

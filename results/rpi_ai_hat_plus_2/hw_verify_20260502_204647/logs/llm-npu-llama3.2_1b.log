@@ -1,0 +1,33 @@
+2026-05-02 20:47:45 - benchmark.cli - INFO - Starting benchmark run: bench_20260502_204745_dc34f479
+2026-05-02 20:47:45 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-05-02 20:47:45 - benchmark.cli - INFO - Profile: npu
+2026-05-02 20:47:45 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-05-02 20:47:45 - benchmark.cli - INFO - Benchmarking llama3.2:1b
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - ERROR - Failed to get model info: 500 Server Error: Internal Server Error for url: http://localhost:8000/api/show
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - INFO - Pre-warming llama3.2:1b (timeout 1800s)...
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - ERROR - Generation failed: 500 Server Error: Internal Server Error for url: http://localhost:8000/api/generate
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - WARNING - Prewarm failed for llama3.2:1b: 500 Server Error: Internal Server Error for url: http://localhost:8000/api/generate. Proceeding with the timed loop; the first request will carry the cold-load cost.
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-05-02 20:47:45 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-02 20:48:30 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: target_identification
+2026-05-02 20:48:30 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-02 20:49:29 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: mission_preflight
+2026-05-02 20:49:29 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-02 20:55:04 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: telemetry_interpretation
+2026-05-02 20:55:04 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-02 20:57:52 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: hazard_reasoning
+2026-05-02 20:57:52 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-02 20:58:46 - benchmark.cli - INFO -   [scene_description] TPS: 10.54, TTFT: 454.0ms
+2026-05-02 20:58:46 - benchmark.cli - INFO -   [target_identification] TPS: 10.24, TTFT: 458.5ms
+2026-05-02 20:58:46 - benchmark.cli - INFO -   [mission_preflight] TPS: 10.08, TTFT: 452.6ms
+2026-05-02 20:58:46 - benchmark.cli - INFO -   [telemetry_interpretation] TPS: 10.08, TTFT: 456.0ms
+2026-05-02 20:58:46 - benchmark.cli - INFO -   [hazard_reasoning] TPS: 10.29, TTFT: 456.7ms
+2026-05-02 20:58:46 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260502_204647/bench_20260502_204745_dc34f479.json
+2026-05-02 20:58:46 - benchmark.cli - INFO - LLM CSV results written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260502_204647/bench_20260502_204745_dc34f479_llm.csv
+
+Benchmark Complete: bench_20260502_204745_dc34f479
+----------------------------------------
+LLM prompts benchmarked: 5
+  Average tokens/sec: 10.25
+Results saved to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260502_204647
+OK: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260502_204647/bench_20260502_204745_dc34f479.json (5 llm result row(s))

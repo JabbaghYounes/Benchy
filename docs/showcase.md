@@ -1,10 +1,13 @@
 # Benchy Cross-Platform Showcase
 
-> Aggregated results across **2 platforms × 5+ verify runs** of the Benchy
-> hardware-verification suite, run on the actual edge AI hardware. Source
-> bundles in [`results/rpi_ai_hat_plus/`](../results/rpi_ai_hat_plus/) and
-> [`results/rpi_ai_hat_plus_2/`](../results/rpi_ai_hat_plus_2/); aggregated
-> CSVs in this directory; full interactive dashboard at
+> Aggregated results across **2 platforms × 6+ verify runs** of the Benchy
+> hardware-verification suite, run on the actual edge AI hardware (most
+> recent runs include the post-`hef→main` migration verify on both Pis,
+> which exercised the new `hefs-v1` GitHub-Release HEF-fetch flow
+> end-to-end). Source bundles in
+> [`results/rpi_ai_hat_plus/`](../results/rpi_ai_hat_plus/) and
+> [`results/rpi_ai_hat_plus_2/`](../results/rpi_ai_hat_plus_2/);
+> aggregated CSVs in this directory; full interactive dashboard at
 > [`docs/showcase/dashboard.html`](showcase/dashboard.html).
 
 ## Headline prescription
@@ -49,22 +52,20 @@ Hailo-8, INT4 on Hailo-10H), no CPU fallback.
 
 | Model | Task | AI HAT+ throughput | AI HAT+ 2 throughput | AI HAT+ wins |
 |---|---|---:|---:|---:|
-| `yolov8n` | detection | **100.65 ± 1.03 FPS** | 14.91 ± 0.09 FPS | **6.8×** |
-| `yolov8n-obb` | obb | **71.57 ± 1.18 FPS** | 16.10 ± 0.04 FPS | **4.4×** |
-| `yolo11n-obb` | obb | **57.77 ± 1.52 FPS** | 15.93 ± 0.08 FPS | **3.6×** |
-| `yolo11n-pose` | pose | **54.35 ± 0.21 FPS** | 15.39 ± 0.22 FPS | **3.5×** |
-| `yolo26n-obb` | obb | **59.69 ± 2.04 FPS** | 18.34 ± 0.09 FPS | **3.3×** |
-| `yolo26n-pose` | pose | **43.41 ± 0.03 FPS** | 16.39 ± 0.08 FPS | **2.6×** |
+| `yolov8n` | detection | **100.75 ± 0.75 FPS** | 14.91 ± 0.09 FPS | **6.8×** |
+| `yolov8s-pose` | pose | **87.33 ± 1.64 FPS** | _(no h10h HEF — see gaps)_ | — |
+| `yolov8n-obb` | obb | **71.67 ± 0.85 FPS** | 16.09 ± 0.04 FPS | **4.5×** |
+| `yolov8n-seg` | segmentation | **62.84 ± 1.16 FPS** | 12.30 FPS¹ | **5.1×** |
+| `yolo26n-obb` | obb | **60.10 ± 1.61 FPS** | 18.31 ± 0.10 FPS | **3.3×** |
+| `yolo11n-obb` | obb | **58.02 ± 1.16 FPS** | 15.93 ± 0.08 FPS | **3.6×** |
+| `yolo11n-pose` | pose | **54.49 ± 0.29 FPS** | 15.40 ± 0.21 FPS | **3.5×** |
+| `yolo26n-pose` | pose | **43.04 ± 0.65 FPS** | 16.39 ± 0.07 FPS | **2.6×** |
 
-Plus AI HAT+ has data for two models AI HAT+ 2 doesn't yet (hailo10h HEFs
-in different release batches):
+¹ `v8 seg n hailo10h` has only one verify run so far — the HEF was
+added in `hefs-v1` (commit `4ca0efb`) and only the post-merge run on
+2026-05-03 picked it up. Std will tighten with subsequent verify runs.
 
-| Model | Task | AI HAT+ throughput |
-|---|---|---:|
-| `yolov8n-seg` | segmentation | **63.45 ± 0.69 FPS** |
-| `yolov8s-pose` | pose | **87.96 ± 1.74 FPS** |
-
-And AI HAT+ 2 has segmentation models AI HAT+ doesn't yet (different
+AI HAT+ 2 also has segmentation models AI HAT+ doesn't yet (different
 verify HEF coverage):
 
 | Model | Task | AI HAT+ 2 throughput |
@@ -78,12 +79,14 @@ verify HEF coverage):
 
 | Model | AI HAT+ latency | AI HAT+ 2 latency |
 |---|---:|---:|
-| `yolov8n` det | **9.94 ms** | 67.07 ms |
-| `yolov8n-obb` | **13.97 ms** | 62.10 ms |
-| `yolo11n-obb` | **17.32 ms** | 62.76 ms |
-| `yolo11n-pose` | **18.40 ms** | 65.01 ms |
-| `yolo26n-obb` | **16.76 ms** | 54.54 ms |
-| `yolo26n-pose` | **23.04 ms** | 61.01 ms |
+| `yolov8n` det | **9.93 ms** | 67.06 ms |
+| `yolov8s-pose` | **11.45 ms** | _(no h10h HEF)_ |
+| `yolov8n-obb` | **13.95 ms** | 62.14 ms |
+| `yolov8n-seg` | **15.92 ms** | 81.31 ms |
+| `yolo26n-obb` | **16.65 ms** | 54.61 ms |
+| `yolo11n-obb` | **17.24 ms** | 62.77 ms |
+| `yolo11n-pose` | **18.35 ms** | 64.96 ms |
+| `yolo26n-pose` | **23.24 ms** | 61.00 ms |
 
 For real-time vision pipelines (>30 FPS), the AI HAT+ comfortably
 clears that bar across every standard model. The AI HAT+ 2 is in the
@@ -104,18 +107,19 @@ different hardware.
 
 | Backend | Decode TPS (mean ± std) | Speedup vs CPU |
 |---|---:|---:|
-| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.05 – 10.51 TPS** | **1.45× – 1.54×** |
-| Pi 5 CPU (`ollama`) | 6.79 – 6.99 TPS | baseline |
+| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.08 – 10.52 TPS** | **1.45× – 1.55×** |
+| Pi 5 CPU (`ollama`) | 6.81 – 6.98 TPS | baseline |
 
-Per-prompt breakdown (5 drone prompt categories):
+Per-prompt breakdown (5 drone prompt categories), aggregated across
+all post-2026-05-02 verify runs:
 
 | Prompt category | NPU TPS | CPU TPS | Speedup |
 |---|---:|---:|---:|
-| `scene_description` | 10.51 ± 0.04 | 6.99 ± 0.10 | 1.50× |
-| `target_identification` | 10.14 ± 0.09 | 6.79 ± 0.17 | 1.49× |
-| `mission_preflight` | 10.08 ± 0.04 | 6.83 ± 0.11 | 1.48× |
-| `telemetry_interpretation` | 10.09 ± 0.04 | 6.96 ± 0.08 | 1.45× |
-| `hazard_reasoning` | 10.45 ± 0.18 | 6.80 ± 0.10 | 1.54× |
+| `scene_description` | 10.52 ± 0.03 | 6.98 ± 0.10 | 1.51× |
+| `target_identification` | 10.15 ± 0.09 | 6.81 ± 0.17 | 1.49× |
+| `mission_preflight` | 10.08 ± 0.04 | 6.84 ± 0.10 | 1.47× |
+| `telemetry_interpretation` | 10.09 ± 0.04 | 6.97 ± 0.07 | 1.45× |
+| `hazard_reasoning` | 10.43 ± 0.17 | 6.82 ± 0.10 | 1.53× |
 
 ### TTFT (prefill latency) — essentially identical
 
@@ -159,8 +163,14 @@ and the cross-platform fairness rules — see
    comparison** — only trust the same-Pi NPU-vs-CPU comparison from the
    AI HAT+ 2 Pi (where both backends run on identical hardware).
 2. **AI HAT+ LLM-CPU number is anomalously low** (~0.62 TPS vs the
-   AI HAT+ 2 Pi's CPU at ~6.92 TPS for the same model). Single run only,
-   pre-LLM-polish-commits. Not a meaningful data point until re-measured.
+   AI HAT+ 2 Pi's CPU at ~6.88 TPS for the same model). Persists across
+   10 measurements on the post-merge run, so it's not a fluke or a
+   pre-polish artifact — likely root cause is the AI HAT+ Pi pulling a
+   different `llama3.2:1b` quantization (Q8_0 explicit per the per-run
+   CSV vs Q4 default), or something thermal/governor-related.
+   Investigation pending; doesn't affect the prescription since
+   inter-board CPU comparison is invalid anyway (different RAM, different
+   ollama state).
 3. **Power consumption not captured** in these bundles
    (`power_watts: null`) — the prescription is throughput-only, not
    perf/watt. Intuitively the Hailo-10H draws more (higher clock + onboard

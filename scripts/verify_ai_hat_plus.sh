@@ -26,9 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=hw_verify_common.sh
 source "$SCRIPT_DIR/hw_verify_common.sh"
 
-# 1 (sanity) + 9 (Phase 3 a/b/c × v8/v11/v26) + 1 (pytest)
-# + 1 (LLM-on-NPU stub) + 1 (LLM-on-CPU comparison row) = 13 steps.
-HW_TOTAL_STEPS=13
+# 1 (sanity) + 10 (Phase 3 a/b/c × v8/v11/v26 + v8-pose-n) + 1 (pytest)
+# + 1 (LLM-on-NPU stub) + 1 (LLM-on-CPU comparison row) = 14 steps.
+HW_TOTAL_STEPS=14
 
 hw_init rpi_ai_hat_plus
 hw_ensure_python_deps
@@ -66,11 +66,14 @@ hw_run_step "yolo-v26-seg [experimental]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
 
-# Phase 3c — Pose. Size 's' instead of the 'n' used elsewhere because
-# the Hailo Model Zoo only publishes pose HEFs at sizes s and m (no n).
-# Verify is a smoke test, not a benchmark — the size mismatch is fine
-# here, but consumer-facing benchmark profiles should keep sizes
-# consistent. See Issue 11 in resources/session_issues_2026-04-27.md.
+# Phase 3c — Pose. v8 runs both n (added in hefs-v3 — closes the
+# previous Hailo Model Zoo gap on hailo8) and s (the historical step,
+# kept so the multi-size v8-pose family produced in hefs-v3 has a
+# smoke test beyond just the nano size). v11 / v26 stay at 'n' for
+# symmetry with the AI HAT+ 2 script.
+hw_run_step "yolo-v8-pose-n" \
+    "python -m benchmark run yolo --backend hailo --yolo-model yolov8n-pose.pt --output $HW_RESULTS_DIR" \
+    --workload yolo --task pose --backend hailo
 hw_run_step "yolo-v8-pose" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolov8s-pose.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task pose --backend hailo

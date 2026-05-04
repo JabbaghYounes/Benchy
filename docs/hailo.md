@@ -67,39 +67,44 @@ keypoints are small enough (17 × 3 floats per detection) to ship in
 `PoseResult.to_dict()`. v26-pose is **experimental** for the same
 reason as v26-obb / v26-seg.
 
-### HEF availability in `hefs-v2`
+### HEF availability in `hefs-v3`
 
 Backend-supported (table above) is a separate axis from "is there a
 prebuilt HEF you can actually run." The Benchy GitHub Release
-[`hefs-v2`](https://github.com/JabbaghYounes/Benchy/releases/tag/hefs-v2)
-ships **32 HEFs** that the fetcher
+[`hefs-v3`](https://github.com/JabbaghYounes/Benchy/releases/tag/hefs-v3)
+ships **35 HEFs** that the fetcher
 (`scripts/fetch_prebuilt_hefs.py`) stages into `resources/hefs/` on
 first setup:
 
-- **Hailo-8 (19):** v8 det n/s/m/l/x, v11 det n/s/m, v26 det n,
-  v8 seg n/s/m, v8 pose s/m, v11 pose n, v8 obb n, v11 obb n,
+- **Hailo-8 (20):** v8 det n/s/m/l/x, v11 det n/s/m, v26 det n,
+  v8 seg n/s/m, v8 pose n/s/m, v11 pose n, v8 obb n, v11 obb n,
   v26 obb n, v26 pose n.
-- **Hailo-10H (13):** v8 det n/s, v11 det n, v8 seg n, v11 seg n,
-  v8 pose n/s, v11 pose n, v8 obb n, v11 obb n, v26 obb n,
+- **Hailo-10H (15):** v8 det n/s, v11 det n, v8 seg n, v11 seg n,
+  v8 pose n/s/m/l, v11 pose n, v8 obb n, v11 obb n, v26 obb n,
   v26 seg n, v26 pose n.
 
-`hefs-v2` adds two HEFs over `hefs-v1` (`v8 pose n_hailo10h` and
-`v8 pose s_hailo10h`) — both unblocked by the
-`("v8", YOLOTask.POSE)` `END_NODE_TABLE` entry +
-`MODEL_SCRIPT_OVERRIDES` ALLS recipe added in the 2026-05-03
-workstation session (commits in
-`har_generator.py` / `hef_compiler.py`; full session log in
-`resources/session_notes_2026-05-03_hefs-v2_release_prep.md`).
+`hefs-v3` adds three HEFs over `hefs-v2`: `v8 pose m_hailo10h` +
+`v8 pose l_hailo10h` (both unblocked by the same `END_NODE_TABLE` /
+`MODEL_SCRIPT_OVERRIDES` recipe from `hefs-v2`, plus a `batch_size=4`
+finetune override added in 2026-05-04 to fit `v8l-pose` QAT in 11 GB
+VRAM) and `v8 pose n_hailo8` which closes the long-standing Hailo
+Model Zoo gap on Hailo-8 — Zoo only ever shipped `s/m` for Hailo-8.
+Full session log in
+`resources/session_notes_2026-05-04_hefs-v3_release_prep.md`.
+
+`hefs-v2` previously added two HEFs over `hefs-v1` (`v8 pose n_hailo10h`
+and `v8 pose s_hailo10h`); v1 itself baselined at 30 HEFs. See the
+release pages and corresponding `session_notes_*.md` files for the
+v1 → v2 → v3 incremental history.
 
 #### Known gaps (each understood)
 
 | Missing HEF | Cause | Status |
 |---|---|---|
-| `v8 pose n_hailo8` | Hailo Model Zoo publishes pose at sizes s/m only for Hailo-8 | Use `s` instead |
 | `v11 seg_hailo8` | Chip-side FPS budget overflow — compiles fine on Hailo-10H. See `docs/compilation/pitfalls.md` § 11 | h10h-only |
 | `v26 seg_hailo8` | Hardware-unfittable — v26 head attention's multi-output `matmul1` cannot be ingested by Hailo-8 in any supported precision mode (six override variants attempted). See `pitfalls.md` § 12 | h10h-only |
 | `v26 det_hailo10h` | Not supported by Hailo's own `yolo26n.yaml` (`supported_hw_arch: [hailo8, hailo8l]` only). See `pitfalls.md` § 13 | h8-only |
-| `v8 pose m/l_hailo10h`, `v11 pose s/m/l_hailo10h` | Not yet attempted — the v8 pose `END_NODE_TABLE` patch should unblock them but they're not in the compile matrix yet | Future work |
+| `v8 pose x_hailo10h`, `v11 pose s/m/l_hailo10h` | Not yet attempted — the v8 pose `END_NODE_TABLE` patch should unblock them but they're not in the compile matrix yet | Future work |
 | Classification (all three YOLO versions, both arches) | No postprocessor priority yet — backend supports it but no HEFs compiled | Future work |
 
 See `resources/hefs/NAMING.txt` for the full inventory and
@@ -229,14 +234,14 @@ the release automatically when the Zoo returns 404/403:
 scripts/fetch_prebuilt_hefs.py --arch hailo10h
 # Tries Zoo S3 first per the existing path; for HEFs the Zoo doesn't
 # publish, falls back to the release pinned by HEFS_RELEASE_TAG (in
-# scripts/fetch_prebuilt_hefs.py — currently "hefs-v2"). Verifies
+# scripts/fetch_prebuilt_hefs.py — currently "hefs-v3"). Verifies
 # SHA-256 against the release's manifest.json before staging into
 # resources/hefs/. Mismatch is a hard fail; partial files are deleted.
 ```
 
 The release is the canonical home for the workstation-compiled HEFs
 listed in `resources/session_notes_2026-04-29_nvidia_workstation.md`
-and `resources/session_notes_2026-05-03_hefs-v2_release_prep.md`. To
+and `resources/session_notes_2026-05-04_hefs-v3_release_prep.md`. To
 pin a different release version (reproducing an older verify run),
 pass `--release-tag hefs-vN`. The full release catalogue, per-HEF
 provenance, and compile-environment metadata (DFC version, calibration

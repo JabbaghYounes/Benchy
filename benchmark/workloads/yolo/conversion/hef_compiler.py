@@ -122,14 +122,19 @@ MODEL_SCRIPT_OVERRIDES: dict = {
     # 8-bit quantization noise hurts pose accuracy more than box/class.
     # Equalization is disabled because the official ALLS does so
     # (empirically degrades pose accuracy). Finetune learning_rate is
-    # the value Hailo Model Zoo uses for the pose family.
+    # the value Hailo Model Zoo uses for the pose family. batch_size=4
+    # (default is 8) is required for v8l-pose QAT to fit in 11 GB VRAM
+    # on the workstation 2080 Ti — added during hefs-v3 prep, see
+    # resources/session_notes_2026-05-04_hefs-v3_release_prep.md.
+    # Smaller pose variants fit at batch=8 but inherit the override
+    # harmlessly via the (v8, POSE) key.
     ("v8", YOLOTask.POSE): [
         "pre_quantization_optimization(equalization, policy=disabled)",
         "quantization_param(output_layer3, precision_mode=a16_w16)",
         "quantization_param(output_layer6, precision_mode=a16_w16)",
         "quantization_param(output_layer9, precision_mode=a16_w16)",
         "post_quantization_optimization("
-        "finetune, policy=enabled, learning_rate=0.00015)",
+        "finetune, policy=enabled, learning_rate=0.00015, batch_size=4)",
         "allocator_param(automatic_reshapes=disabled)",
     ],
 }

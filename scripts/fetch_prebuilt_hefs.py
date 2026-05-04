@@ -38,7 +38,7 @@ Usage::
     scripts/fetch_prebuilt_hefs.py --arch hailo8
     scripts/fetch_prebuilt_hefs.py --arch hailo10h --dry-run
     scripts/fetch_prebuilt_hefs.py --arch both --source release
-    scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v2
+    scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v3
 """
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ ARCHES = tuple(DEFAULT_ZOO_VERSIONS.keys())
 # reproducible. The release tip is mirrored in
 # /tmp/benchy-hefs-v1/release_notes.md (during the publish flow) and on
 # the GitHub release page.
-HEFS_RELEASE_TAG = "hefs-v2"
+HEFS_RELEASE_TAG = "hefs-v3"
 
 GITHUB_RELEASE_BASE_URL = (
     "https://github.com/JabbaghYounes/Benchy/releases/download"

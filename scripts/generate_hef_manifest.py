@@ -10,7 +10,7 @@ as a GitHub Release asset alongside the HEFs themselves.
 Usage::
 
     python3 scripts/generate_hef_manifest.py
-    python3 scripts/generate_hef_manifest.py --release-tag hefs-v2
+    python3 scripts/generate_hef_manifest.py --release-tag hefs-v3
     python3 scripts/generate_hef_manifest.py --output -    # stdout
     python3 scripts/generate_hef_manifest.py --hefs-dir /tmp/staged-hefs
 
@@ -47,7 +47,11 @@ DEFAULT_HEFS_DIR = REPO_ROOT / "resources" / "hefs"
 # produced this exact binary. Audit verified against `git log` on `hef`
 # branch up to commit b199532 (2026-05-02) for the original 30 HEFs;
 # extended for hefs-v2 with the two v8 pose hailo10h HEFs from the
-# 2026-05-03 workstation session (END_NODE_TABLE patch landed pre-compile).
+# 2026-05-03 workstation session (END_NODE_TABLE patch landed pre-compile);
+# extended for hefs-v3 with two larger v8 pose hailo10h HEFs (m, l) plus
+# the previously-missing hailo8 v8n-pose, all from the 2026-05-04
+# workstation session (finetune batch_size=4 ALLS override added to fit
+# v8l-pose QAT in 11 GB VRAM — same patch is harmless on smaller variants).
 PROVENANCE: dict[str, str] = {
     # Hailo Model Zoo v2.16.0 — 13 HEFs, all hailo8
     "v8_detection_n_hailo8.hef":      "zoo-v2.16.0",
@@ -97,6 +101,17 @@ PROVENANCE: dict[str, str] = {
     # same patch — wasn't in the original missing list.
     "v8_pose_s_hailo10h.hef":          "workstation-rtx2080ti-2026-05-03",
     "v8_pose_n_hailo10h.hef":          "workstation-rtx2080ti-2026-05-03",
+
+    # Workstation 2026-05-04 hefs-v3 release prep — 3 HEFs
+    # MODEL_SCRIPT_OVERRIDES finetune batch_size=4 patch landed in
+    # hef_compiler.py before compile, allowing v8l-pose QAT to fit in
+    # 11 GB VRAM on the 2080 Ti. v8_pose_m/l_hailo10h extend the
+    # AI HAT+ 2 v8 pose family to n/s/m/l. v8_pose_n_hailo8 closes
+    # the matching AI HAT+ gap (Hailo Model Zoo v2.16.0 ships pose s/m
+    # for hailo8 but not n).
+    "v8_pose_m_hailo10h.hef":          "workstation-rtx2080ti-2026-05-04",
+    "v8_pose_l_hailo10h.hef":          "workstation-rtx2080ti-2026-05-04",
+    "v8_pose_n_hailo8.hef":            "workstation-rtx2080ti-2026-05-04",
 }
 
 
@@ -201,8 +216,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--release-tag",
-        default="hefs-v2",
-        help="Release tag to embed in the manifest (default: hefs-v2)",
+        default="hefs-v3",
+        help="Release tag to embed in the manifest (default: hefs-v3)",
     )
     args = parser.parse_args()
 

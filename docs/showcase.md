@@ -179,10 +179,12 @@ and the cross-platform fairness rules — see
    memory bandwidth becomes more of a bottleneck on Hailo-8; the gap may
    shrink. Early signal from AI HAT+'s `yolov8s-pose` (87.96 FPS) and
    `yolov8n-seg` (63.45 FPS) suggests the lead holds at small-medium sizes.
-5. **HEF coverage gaps mean some cells are blank** — `v8 seg n` for
-   `hailo10h` was missing from the verify until release `hefs-v1`;
-   `v8 pose s` for `hailo10h` is still missing (deferred to `hefs-v2`).
-   Re-running verify after each release batch fills more cells.
+5. **HEF coverage gaps mean some cells are blank** — `v8 seg n_hailo10h`
+   was closed in `hefs-v1`; `v8 pose n_hailo10h` and
+   `v8 pose s_hailo10h` were closed in `hefs-v2` (workstation rebuild
+   after the `("v8", YOLOTask.POSE)` `END_NODE_TABLE` patch). Empty
+   AI HAT+ 2 cells in the tables above will fill in as Pi verify
+   bundles for those HEFs accumulate.
 6. **Both Pis run the same verify code** off the same `main` branch
    commits. Differences are hardware, not software.
 

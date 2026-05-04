@@ -92,13 +92,13 @@ scripts/fetch_prebuilt_hefs.py --arch both --dry-run
 scripts/fetch_prebuilt_hefs.py --arch both --overwrite
 
 # Pin to a specific release batch (reproducing an older verify run)
-scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v1
+scripts/fetch_prebuilt_hefs.py --arch hailo10h --release-tag hefs-v1   # pin to an older release
 ```
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Connection refused` / DNS error | Air-gapped or restricted egress | Manual-drop path in `docs/hailo.md` ("Restricted-egress / air-gapped setups"); runtime checks `resources/hefs/` first |
-| `HTTP 404` on a release asset | Requested HEF isn't in the pinned `HEFS_RELEASE_TAG` (e.g. `v8_pose_s_hailo10h.hef` is not in `hefs-v1`) | Check the release notes for the "still needed" list; bump `HEFS_RELEASE_TAG` if a newer release covers it; or workstation-compile via `scripts/compile_workstation_hefs.sh` |
+| `HTTP 404` on a release asset | Requested HEF isn't in the pinned `HEFS_RELEASE_TAG` | Check the release notes for the "still needed" / "Known gaps" list; bump `HEFS_RELEASE_TAG` if a newer release covers it; or workstation-compile via `scripts/compile_workstation_hefs.sh` |
 | `HTTP 403` on a Zoo URL | Hailo Model Zoo S3 hasn't published this combo (expected for OBB / v26 / Hailo-10H subset) | Expected — fetcher falls through to the release path automatically. Only a problem if `--source zoo` was passed explicitly |
 | `HTTP 429` rate-limited | Anonymous GitHub API caps at ~60 req/hr per IP | Wait an hour, or set `GITHUB_TOKEN` env var (~5000/hr authenticated) |
 | `sha256 ... != manifest ...` | Partial download or asset re-upload against the same tag | Delete the file in `resources/hefs/` and re-run with `--overwrite`. Persistent mismatches mean the release manifest is out of sync — open an issue |

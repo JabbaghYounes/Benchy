@@ -52,10 +52,10 @@ This benchmark suite evaluates:
 
 Backend support (table) and HEF availability (which models actually
 have prebuilts ready to run) are separate axes. The
-[`hefs-v1`](https://github.com/JabbaghYounes/Benchy/releases/tag/hefs-v1)
-release ships 30 prebuilt HEFs covering the verified cells, with
+[`hefs-v2`](https://github.com/JabbaghYounes/Benchy/releases/tag/hefs-v2)
+release ships 32 prebuilt HEFs covering the verified cells, with
 documented gaps for chip-unfittable combos. Full inventory + gap
-explanations in [`docs/hailo.md`](docs/hailo.md#hef-availability-in-hefs-v1).
+explanations in [`docs/hailo.md`](docs/hailo.md#hef-availability-in-hefs-v2).
 
 ### Supported Platforms
 

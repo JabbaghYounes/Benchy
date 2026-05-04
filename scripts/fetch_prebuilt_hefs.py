@@ -82,7 +82,7 @@ ARCHES = tuple(DEFAULT_ZOO_VERSIONS.keys())
 # reproducible. The release tip is mirrored in
 # /tmp/benchy-hefs-v1/release_notes.md (during the publish flow) and on
 # the GitHub release page.
-HEFS_RELEASE_TAG = "hefs-v1"
+HEFS_RELEASE_TAG = "hefs-v2"
 
 GITHUB_RELEASE_BASE_URL = (
     "https://github.com/JabbaghYounes/Benchy/releases/download"

@@ -55,14 +55,22 @@ hw_run_step "yolo-v26-obb [experimental]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-obb.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task obb --backend hailo
 
-# Phase 3b — Segmentation.
+# Phase 3b — Segmentation. v8 works on Hailo-8; v11 and v26 are
+# documented chip-incompatible on this silicon (see pitfalls.md § 11
+# for v11n-seg "Failed to reach required FPS" and § 12 for v26n-seg's
+# unfittable matmul1 — six override variants attempted, none worked).
+# Both are kept in the sweep tagged [unsupported-on-this-hw] so the
+# bundle records the failure mode for cross-platform comparison
+# against the AI HAT+ 2 (where the same models do work) without
+# gating the AI HAT+ exit code. Same pattern as the LLM-on-NPU stub
+# below.
 hw_run_step "yolo-v8-seg" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolov8n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
-hw_run_step "yolo-v11-seg" \
+hw_run_step "yolo-v11-seg [unsupported-on-this-hw]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo11n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
-hw_run_step "yolo-v26-seg [experimental]" \
+hw_run_step "yolo-v26-seg [unsupported-on-this-hw]" \
     "python -m benchmark run yolo --backend hailo --yolo-model yolo26n-seg.pt --output $HW_RESULTS_DIR" \
     --workload yolo --task segmentation --backend hailo
 

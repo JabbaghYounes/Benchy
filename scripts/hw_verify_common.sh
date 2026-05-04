@@ -180,7 +180,7 @@ _hw_assert_hefs_present() {
         error "No ${arch} HEFs found in resources/hefs/."
         error "Expected files matching: *_${arch}.hef"
         error ""
-        error "Fix: stage HEFs from the GitHub Release (hefs-v1):"
+        error "Fix: stage HEFs from the GitHub Release (pinned in HEFS_RELEASE_TAG):"
         error "  source venv/bin/activate"
         error "  python3 scripts/fetch_prebuilt_hefs.py --arch ${arch}"
         error ""

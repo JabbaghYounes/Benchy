@@ -637,7 +637,7 @@ print_usage_instructions() {
 # being present so they'll know if anything's missing at run time. See
 # scripts/fetch_prebuilt_hefs.py and docs/hailo.md for the full source story.
 stage_prebuilt_hefs() {
-    info "Staging prebuilt HEFs (--arch hailo8) from hefs-v1 release..."
+    info "Staging prebuilt HEFs (--arch hailo8) from the pinned hefs-vN release..."
 
     # Fetcher uses Python stdlib only, but route through the venv's
     # python3 to guarantee >=3.10 (uses PEP 604 union syntax).

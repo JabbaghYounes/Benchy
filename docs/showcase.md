@@ -1,10 +1,11 @@
 # Benchy Cross-Platform Showcase
 
-> Aggregated results across **2 platforms × 6+ verify runs** of the Benchy
-> hardware-verification suite, run on the actual edge AI hardware (most
-> recent runs include the post-`hef→main` migration verify on both Pis,
-> which exercised the new `hefs-v1` GitHub-Release HEF-fetch flow
-> end-to-end). Source bundles in
+> Aggregated results across **2 platforms × 7+ verify runs** of the Benchy
+> hardware-verification suite, run on the actual edge AI hardware. Most
+> recent run on AI HAT+ 2 (2026-05-04) is the first **13/13 clean** sweep
+> on that board — exercises the `hefs-v2` release end-to-end, including
+> the newly-added `v8_pose_s_hailo10h.hef` that closed the last verify
+> gap. Source bundles in
 > [`results/rpi_ai_hat_plus/`](../results/rpi_ai_hat_plus/) and
 > [`results/rpi_ai_hat_plus_2/`](../results/rpi_ai_hat_plus_2/);
 > aggregated CSVs in this directory; full interactive dashboard at
@@ -53,7 +54,7 @@ Hailo-8, INT4 on Hailo-10H), no CPU fallback.
 | Model | Task | AI HAT+ throughput | AI HAT+ 2 throughput | AI HAT+ wins |
 |---|---|---:|---:|---:|
 | `yolov8n` | detection | **100.75 ± 0.75 FPS** | 14.91 ± 0.09 FPS | **6.8×** |
-| `yolov8s-pose` | pose | **87.33 ± 1.64 FPS** | _(no h10h HEF — see gaps)_ | — |
+| `yolov8s-pose` | pose | **87.33 ± 1.64 FPS** | 14.88 FPS¹ | **5.9×** |
 | `yolov8n-obb` | obb | **71.67 ± 0.85 FPS** | 16.09 ± 0.04 FPS | **4.5×** |
 | `yolov8n-seg` | segmentation | **62.84 ± 1.16 FPS** | 12.30 FPS¹ | **5.1×** |
 | `yolo26n-obb` | obb | **60.10 ± 1.61 FPS** | 18.31 ± 0.10 FPS | **3.3×** |
@@ -61,9 +62,10 @@ Hailo-8, INT4 on Hailo-10H), no CPU fallback.
 | `yolo11n-pose` | pose | **54.49 ± 0.29 FPS** | 15.40 ± 0.21 FPS | **3.5×** |
 | `yolo26n-pose` | pose | **43.04 ± 0.65 FPS** | 16.39 ± 0.07 FPS | **2.6×** |
 
-¹ `v8 seg n hailo10h` has only one verify run so far — the HEF was
-added in `hefs-v1` (commit `4ca0efb`) and only the post-merge run on
-2026-05-03 picked it up. Std will tighten with subsequent verify runs.
+¹ `v8 seg n hailo10h` and `v8 pose s hailo10h` each have one verify run
+on AI HAT+ 2 so far — the seg HEF landed in `hefs-v1` (picked up by
+the 2026-05-03 verify), the pose HEF in `hefs-v2` (picked up by the
+2026-05-04 verify). Stds will tighten with subsequent runs.
 
 AI HAT+ 2 also has segmentation models AI HAT+ doesn't yet (different
 verify HEF coverage):
@@ -80,7 +82,7 @@ verify HEF coverage):
 | Model | AI HAT+ latency | AI HAT+ 2 latency |
 |---|---:|---:|
 | `yolov8n` det | **9.93 ms** | 67.06 ms |
-| `yolov8s-pose` | **11.45 ms** | _(no h10h HEF)_ |
+| `yolov8s-pose` | **11.45 ms** | 67.22 ms |
 | `yolov8n-obb` | **13.95 ms** | 62.14 ms |
 | `yolov8n-seg` | **15.92 ms** | 81.31 ms |
 | `yolo26n-obb` | **16.65 ms** | 54.61 ms |
@@ -107,7 +109,7 @@ different hardware.
 
 | Backend | Decode TPS (mean ± std) | Speedup vs CPU |
 |---|---:|---:|
-| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.08 – 10.52 TPS** | **1.45× – 1.55×** |
+| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.09 – 10.50 TPS** | **1.45× – 1.52×** |
 | Pi 5 CPU (`ollama`) | 6.81 – 6.98 TPS | baseline |
 
 Per-prompt breakdown (5 drone prompt categories), aggregated across
@@ -115,11 +117,11 @@ all post-2026-05-02 verify runs:
 
 | Prompt category | NPU TPS | CPU TPS | Speedup |
 |---|---:|---:|---:|
-| `scene_description` | 10.52 ± 0.03 | 6.98 ± 0.10 | 1.51× |
-| `target_identification` | 10.15 ± 0.09 | 6.81 ± 0.17 | 1.49× |
-| `mission_preflight` | 10.08 ± 0.04 | 6.84 ± 0.10 | 1.47× |
-| `telemetry_interpretation` | 10.09 ± 0.04 | 6.97 ± 0.07 | 1.45× |
-| `hazard_reasoning` | 10.43 ± 0.17 | 6.82 ± 0.10 | 1.53× |
+| `scene_description` | 10.50 ± 0.06 | 6.98 ± 0.09 | 1.50× |
+| `target_identification` | 10.15 ± 0.08 | 6.81 ± 0.16 | 1.49× |
+| `mission_preflight` | 10.09 ± 0.04 | 6.84 ± 0.10 | 1.47× |
+| `telemetry_interpretation` | 10.09 ± 0.04 | 6.98 ± 0.09 | 1.45× |
+| `hazard_reasoning` | 10.42 ± 0.16 | 6.84 ± 0.11 | 1.52× |
 
 ### TTFT (prefill latency) — essentially identical
 
@@ -180,12 +182,20 @@ and the cross-platform fairness rules — see
    shrink. Early signal from AI HAT+'s `yolov8s-pose` (87.96 FPS) and
    `yolov8n-seg` (63.45 FPS) suggests the lead holds at small-medium sizes.
 5. **HEF coverage gaps mean some cells are blank** — `v8 seg n_hailo10h`
-   was closed in `hefs-v1`; `v8 pose n_hailo10h` and
-   `v8 pose s_hailo10h` were closed in `hefs-v2` (workstation rebuild
-   after the `("v8", YOLOTask.POSE)` `END_NODE_TABLE` patch). Empty
-   AI HAT+ 2 cells in the tables above will fill in as Pi verify
-   bundles for those HEFs accumulate.
-6. **Both Pis run the same verify code** off the same `main` branch
+   was closed in `hefs-v1`; `v8 pose s_hailo10h` was closed in `hefs-v2`
+   (workstation rebuild after the `("v8", YOLOTask.POSE)` `END_NODE_TABLE`
+   patch). Both have a single AI HAT+ 2 verify run so far; stds will
+   tighten with subsequent sweeps. The bonus `v8 pose n_hailo10h.hef`
+   that hefs-v2 also published is in the release but not exercised by
+   the current verify scripts (which run pose at size `s` only) — easy
+   addition if you want broader pose coverage.
+6. **AI HAT+ verify last ran 2026-05-02; AI HAT+ 2 last ran 2026-05-04.**
+   The AI HAT+ 2 numbers therefore include the most recent code state
+   (post-merge, hefs-v2 fetch) while AI HAT+ numbers are from the
+   post-merge run only. No qualitative change expected from re-running
+   AI HAT+ — its YOLO numbers are highly repeatable (stds <2 FPS) and
+   no AI HAT+-relevant code changed in hefs-v2.
+7. **Both Pis run the same verify code** off the same `main` branch
    commits. Differences are hardware, not software.
 
 ## Reproduce

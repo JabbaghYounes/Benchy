@@ -1,0 +1,39 @@
+2026-05-04 14:00:10 - benchmark.cli - INFO - Starting benchmark run: bench_20260504_140010_c3415ceb
+2026-05-04 14:00:10 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus_2
+2026-05-04 14:00:10 - benchmark.cli - INFO - Profile: default
+2026-05-04 14:00:10 - benchmark.cli - INFO - Running YOLO benchmarks...
+2026-05-04 14:00:10 - benchmark.cli - INFO - Using CLI-specified YOLO model: yolov8n-obb.pt
+2026-05-04 14:00:10 - benchmark.cli - INFO - Inferred version: v8, task: obb
+2026-05-04 14:00:10 - benchmark.workloads.yolo.backends.hailo - INFO - Detected Hailo device: hailo10h
+2026-05-04 14:00:10 - benchmark.workloads.yolo.runner - INFO - Using backend: hailo
+2026-05-04 14:00:10 - benchmark.workloads.yolo.runner - INFO - Preparing model: yolov8n-obb.pt
+2026-05-04 14:00:10 - benchmark.workloads.yolo.backends.hailo - INFO - Using cached HEF: models/hailo/hailo10h/v8/obb/yolov8n-obb/model.hef
+2026-05-04 14:00:10 - benchmark.workloads.yolo.backends.hailo - INFO - Running model sanity check (Phase 3)...
+2026-05-04 14:00:10 - benchmark.workloads.yolo.conversion.validation - INFO - Validating HEF model: models/hailo/hailo10h/v8/obb/yolov8n-obb/model.hef
+2026-05-04 14:00:10 - benchmark.workloads.yolo.conversion.validation - INFO -   Task: obb
+2026-05-04 14:00:11 - benchmark.workloads.yolo.conversion.validation - INFO - Test inference successful in 73.00ms
+2026-05-04 14:00:11 - benchmark.workloads.yolo.conversion.validation - INFO - Model validation PASSED
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO - Model validation PASSED
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO -   Input layers: 1
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO -   Output layers: 9
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO -   Detected classes: 15
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO -   Test inference: 73.00ms
+2026-05-04 14:00:11 - benchmark.workloads.yolo.backends.hailo - INFO - Loading HEF: models/hailo/hailo10h/v8/obb/yolov8n-obb/model.hef
+2026-05-04 14:00:12 - benchmark.workloads.yolo.backends.hailo - INFO - HEF loaded successfully
+2026-05-04 14:00:12 - benchmark.workloads.yolo.backends.hailo - INFO - Initialized post-processor for obb with 15 classes
+2026-05-04 14:00:12 - benchmark.workloads.yolo.runner - INFO - Starting benchmark: 3 warmup, 10 measured runs (Phase 5 enforcement)
+2026-05-04 14:00:12 - benchmark.workloads.yolo.execution - INFO - Starting warmup phase: 3 runs (excluded from metrics)
+2026-05-04 14:00:12 - benchmark.workloads.yolo.execution - INFO - Starting measurement phase: 10 runs
+2026-05-04 14:00:13 - benchmark.workloads.yolo.execution - INFO - Benchmark complete: 10 measured runs
+2026-05-04 14:00:13 - benchmark.workloads.yolo.runner - INFO - Running validation for accuracy metrics...
+2026-05-04 14:00:13 - benchmark.workloads.yolo.runner - INFO - Validation not available for Hailo backend
+2026-05-04 14:00:13 - benchmark.cli - INFO -   [hailo] Throughput: 16.06 FPS, Latency: 62.28ms
+2026-05-04 14:00:13 - benchmark.cli - INFO - JSON results written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140010_c3415ceb.json
+2026-05-04 14:00:13 - benchmark.cli - INFO - YOLO CSV results written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140010_c3415ceb_yolo.csv
+
+Benchmark Complete: bench_20260504_140010_c3415ceb
+----------------------------------------
+YOLO models benchmarked: 1
+  Average throughput: 16.06 FPS
+Results saved to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953
+OK: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140010_c3415ceb.json (1 yolo result row(s))

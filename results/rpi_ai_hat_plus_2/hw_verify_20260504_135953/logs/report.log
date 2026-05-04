@@ -1,0 +1,33 @@
+2026-05-04 14:45:39 - benchmark.cli - INFO - Generating report from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140018_7ceb4267.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140041_58c95ba1.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140014_b588688e.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_141634_7e905108.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140010_c3415ceb.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140054_c5d5bceb.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140029_7d64d846.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140022_315e6e92.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140035_cd959a82.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140050_575f45f5.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140046_9a2afb16.json
+2026-05-04 14:45:39 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/bench_20260504_140005_c12028ec.json
+2026-05-04 14:45:39 - benchmark.cli - INFO - Aggregated JSON written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539.json
+2026-05-04 14:45:39 - benchmark.aggregation.csv_writer - INFO - YOLO aggregated CSV written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_yolo.csv
+2026-05-04 14:45:39 - benchmark.aggregation.csv_writer - INFO - LLM aggregated CSV written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_llm.csv
+2026-05-04 14:45:39 - benchmark.aggregation.csv_writer - INFO - Platform summary CSV written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_platforms.csv
+2026-05-04 14:45:39 - benchmark.reporting.dashboard - INFO - Dashboard written to: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_dashboard.html
+
+Report Generated: report_20260504_144539
+----------------------------------------
+YOLO results: 10
+LLM results: 10
+Platforms: 1
+
+Output files:
+  JSON: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539.json
+  YOLO CSV: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_yolo.csv
+  LLM CSV: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_llm.csv
+  PLATFORMS CSV: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_platforms.csv
+  Dashboard: /home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_dashboard.html
+
+Open dashboard in browser: file:///home/vpn/Documents/Benchy/results/rpi_ai_hat_plus_2/hw_verify_20260504_135953/report/report_20260504_144539_dashboard.html

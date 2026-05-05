@@ -25,7 +25,11 @@ hosting at all. The data reflects exactly that engineering trade.
 
 ![YOLO throughput, head-to-head](docs/showcase/charts/yolo_throughput_comparison.png)
 
+![YOLO per-frame latency, head-to-head (lower is better)](docs/showcase/charts/yolo_latency_comparison.png)
+
 ![LLM llama3.2:1b decode throughput, NPU vs CPU on the same Pi](docs/showcase/charts/llm_npu_vs_cpu.png)
+
+![LLM llama3.2:1b prefill latency (TTFT), NPU vs CPU — essentially identical](docs/showcase/charts/llm_ttft.png)
 
 ## Overview
 

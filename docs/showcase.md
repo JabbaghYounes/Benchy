@@ -1,11 +1,11 @@
 # Benchy Cross-Platform Showcase
 
-> Aggregated results across **2 platforms × 7+ verify runs** of the Benchy
+> Aggregated results across **2 platforms × 8+ verify runs** of the Benchy
 > hardware-verification suite, run on the actual edge AI hardware. Most
-> recent run on AI HAT+ 2 (2026-05-04) is the first **13/13 clean** sweep
-> on that board — exercises the `hefs-v2` release end-to-end, including
-> the newly-added `v8_pose_s_hailo10h.hef` that closed the last verify
-> gap. Source bundles in
+> recent runs (both Pis, 2026-05-05) exercise the `hefs-v3` release
+> end-to-end — adds `v8_pose_n_hailo8.hef` (closes the AI HAT+ pose gap)
+> plus `v8_pose_m_hailo10h.hef` and `v8_pose_l_hailo10h.hef` (extends
+> the AI HAT+ 2 v8 pose family to n/s/m/l). Source bundles in
 > [`results/rpi_ai_hat_plus/`](../results/rpi_ai_hat_plus/) and
 > [`results/rpi_ai_hat_plus_2/`](../results/rpi_ai_hat_plus_2/);
 > aggregated CSVs in this directory; full interactive dashboard at
@@ -36,7 +36,7 @@ exactly that engineering trade.
 | LLM-on-NPU capable | No | **Yes** (~6B params via HailoRT GenAI) |
 | HailoRT version | 4.x | 5.x |
 | HEF supported tasks | det / cls / OBB / seg / pose | det / cls / OBB / seg / pose |
-| Verify-suite count | 13 steps | 13 steps |
+| Verify-suite count | 14 steps (12 active + 2 `[unsupported-on-this-hw]` advisory: v11n-seg, v26n-seg) | 14 steps (all active) |
 
 Both Pis are the same Pi 5 form factor connected over PCIe per the HAT+
 spec. AI HAT+ ships in 13 TOPS (Hailo-8L) and 26 TOPS (Hailo-8) variants;
@@ -53,27 +53,31 @@ Hailo-8, INT4 on Hailo-10H), no CPU fallback.
 
 | Model | Task | AI HAT+ throughput | AI HAT+ 2 throughput | AI HAT+ wins |
 |---|---|---:|---:|---:|
-| `yolov8n` | detection | **100.75 ± 0.75 FPS** | 14.91 ± 0.09 FPS | **6.8×** |
-| `yolov8s-pose` | pose | **87.33 ± 1.64 FPS** | 14.88 FPS¹ | **5.9×** |
-| `yolov8n-obb` | obb | **71.67 ± 0.85 FPS** | 16.09 ± 0.04 FPS | **4.5×** |
-| `yolov8n-seg` | segmentation | **62.84 ± 1.16 FPS** | 12.30 FPS¹ | **5.1×** |
-| `yolo26n-obb` | obb | **60.10 ± 1.61 FPS** | 18.31 ± 0.10 FPS | **3.3×** |
-| `yolo11n-obb` | obb | **58.02 ± 1.16 FPS** | 15.93 ± 0.08 FPS | **3.6×** |
-| `yolo11n-pose` | pose | **54.49 ± 0.29 FPS** | 15.40 ± 0.21 FPS | **3.5×** |
-| `yolo26n-pose` | pose | **43.04 ± 0.65 FPS** | 16.39 ± 0.07 FPS | **2.6×** |
+| `yolov8n` | detection | **101.36 ± 1.36 FPS** | 14.91 ± 0.08 FPS | **6.8×** |
+| `yolov8s-pose` | pose | **87.56 ± 1.42 FPS** | 14.82 ± 0.08 FPS | **5.9×** |
+| `yolov8n-obb` | obb | **71.97 ± 0.91 FPS** | 16.09 ± 0.04 FPS | **4.5×** |
+| `yolov8n-pose` | pose | **65.96 FPS¹** | 15.61 FPS¹ | **4.2×** |
+| `yolov8n-seg` | segmentation | **63.66 ± 1.89 FPS** | 12.12 ± 0.31 FPS | **5.3×** |
+| `yolo26n-obb` | obb | **60.36 ± 1.41 FPS** | 18.30 ± 0.10 FPS | **3.3×** |
+| `yolo11n-obb` | obb | **58.17 ± 0.99 FPS** | 15.91 ± 0.10 FPS | **3.7×** |
+| `yolo11n-pose` | pose | **54.24 ± 0.56 FPS** | 15.41 ± 0.19 FPS | **3.5×** |
+| `yolo26n-pose` | pose | **43.11 ± 0.55 FPS** | 16.40 ± 0.06 FPS | **2.6×** |
 
-¹ `v8 seg n hailo10h` and `v8 pose s hailo10h` each have one verify run
-on AI HAT+ 2 so far — the seg HEF landed in `hefs-v1` (picked up by
-the 2026-05-03 verify), the pose HEF in `hefs-v2` (picked up by the
-2026-05-04 verify). Stds will tighten with subsequent runs.
+¹ `yolov8n-pose` has a single verify run on each Pi so far — both HEFs
+(`v8_pose_n_hailo8` and the existing `v8_pose_n_hailo10h`) only became
+mutually present in `hefs-v3` (2026-05-04), and the `yolo-v8-pose-n`
+verify step was added in the same release. Stds will tighten with
+subsequent sweeps.
 
-AI HAT+ 2 also has segmentation models AI HAT+ doesn't yet (different
-verify HEF coverage):
+AI HAT+ 2 also has segmentation models the AI HAT+ chip can't physically
+run (Hailo-8 chip-incompatible per `docs/compilation/pitfalls.md` §§
+11-12 — both are tagged `[unsupported-on-this-hw]` in the AI HAT+ verify
+script and produce empty bench rows there):
 
 | Model | Task | AI HAT+ 2 throughput |
 |---|---|---:|
-| `yolo11n-seg` | segmentation | 12.14 ± 0.07 FPS |
-| `yolo26n-seg` | segmentation | 12.35 ± 0.10 FPS |
+| `yolo11n-seg` | segmentation | 12.14 ± 0.12 FPS |
+| `yolo26n-seg` | segmentation | 12.31 ± 0.17 FPS |
 
 ### Latency (lower is better)
 
@@ -81,14 +85,15 @@ verify HEF coverage):
 
 | Model | AI HAT+ latency | AI HAT+ 2 latency |
 |---|---:|---:|
-| `yolov8n` det | **9.93 ms** | 67.06 ms |
-| `yolov8s-pose` | **11.45 ms** | 67.22 ms |
-| `yolov8n-obb` | **13.95 ms** | 62.14 ms |
-| `yolov8n-seg` | **15.92 ms** | 81.31 ms |
-| `yolo26n-obb` | **16.65 ms** | 54.61 ms |
-| `yolo11n-obb` | **17.24 ms** | 62.77 ms |
-| `yolo11n-pose` | **18.35 ms** | 64.96 ms |
-| `yolo26n-pose` | **23.24 ms** | 61.00 ms |
+| `yolov8n` det | **9.87 ms** | 67.05 ms |
+| `yolov8s-pose` | **11.42 ms** | 67.49 ms |
+| `yolov8n-obb` | **13.90 ms** | 62.15 ms |
+| `yolov8n-pose` | **15.16 ms** | 64.07 ms |
+| `yolov8n-seg` | **15.72 ms** | 82.57 ms |
+| `yolo26n-obb` | **16.57 ms** | 54.65 ms |
+| `yolo11n-obb` | **17.20 ms** | 62.85 ms |
+| `yolo11n-pose` | **18.44 ms** | 64.90 ms |
+| `yolo26n-pose` | **23.20 ms** | 60.98 ms |
 
 For real-time vision pipelines (>30 FPS), the AI HAT+ comfortably
 clears that bar across every standard model. The AI HAT+ 2 is in the
@@ -109,19 +114,19 @@ different hardware.
 
 | Backend | Decode TPS (mean ± std) | Speedup vs CPU |
 |---|---:|---:|
-| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.09 – 10.50 TPS** | **1.45× – 1.52×** |
-| Pi 5 CPU (`ollama`) | 6.81 – 6.98 TPS | baseline |
+| **Hailo-10H NPU** (`hailo-ollama` GenAI) | **10.09 – 10.48 TPS** (9 runs/prompt) | **1.45× – 1.53×** |
+| Pi 5 CPU (`ollama`) | 6.83 – 6.99 TPS (11 runs/prompt) | baseline |
 
 Per-prompt breakdown (5 drone prompt categories), aggregated across
 all post-2026-05-02 verify runs:
 
 | Prompt category | NPU TPS | CPU TPS | Speedup |
 |---|---:|---:|---:|
-| `scene_description` | 10.50 ± 0.06 | 6.98 ± 0.09 | 1.50× |
-| `target_identification` | 10.15 ± 0.08 | 6.81 ± 0.16 | 1.49× |
-| `mission_preflight` | 10.09 ± 0.04 | 6.84 ± 0.10 | 1.47× |
-| `telemetry_interpretation` | 10.09 ± 0.04 | 6.98 ± 0.09 | 1.45× |
-| `hazard_reasoning` | 10.42 ± 0.16 | 6.84 ± 0.11 | 1.52× |
+| `scene_description` | 10.48 ± 0.07 | 6.98 ± 0.09 | 1.50× |
+| `target_identification` | 10.18 ± 0.12 | 6.83 ± 0.17 | 1.49× |
+| `mission_preflight` | 10.09 ± 0.04 | 6.86 ± 0.11 | 1.47× |
+| `telemetry_interpretation` | 10.11 ± 0.07 | 6.99 ± 0.08 | 1.45× |
+| `hazard_reasoning` | 10.43 ± 0.15 | 6.85 ± 0.11 | 1.53× |
 
 ### TTFT (prefill latency) — essentially identical
 
@@ -135,8 +140,13 @@ speedup lives, and where it matters for long-form generation.
 ## Methodology
 
 - **Test rig**: each Pi runs the same `verify_ai_hat_plus*.sh` script —
-  13 steps (vision sweep + LLM-on-CPU + LLM-on-NPU) — multiple times
-  across multiple days. All bundles live under `results/<platform>/`.
+  14 steps (vision sweep + `yolo-v8-pose-n` added in `hefs-v3` +
+  LLM-on-CPU + LLM-on-NPU) — multiple times across multiple days. All
+  bundles live under `results/<platform>/`. On AI HAT+, two seg steps
+  are tagged `[unsupported-on-this-hw]` because Hailo-8 silicon can't
+  fit `yolo11n-seg` (chip-side FPS budget overflow) or `yolo26n-seg`
+  (matmul1 unfittable) — they record the failure mode for cross-platform
+  comparison without gating exit code.
 - **Aggregation**: results grouped by `(platform, model_name, task)`
   for YOLO and `(platform, backend, prompt_id)` for LLM. Mean / std /
   min / max computed per group across all runs. Stub rows
@@ -181,20 +191,21 @@ and the cross-platform fairness rules — see
    memory bandwidth becomes more of a bottleneck on Hailo-8; the gap may
    shrink. Early signal from AI HAT+'s `yolov8s-pose` (87.96 FPS) and
    `yolov8n-seg` (63.45 FPS) suggests the lead holds at small-medium sizes.
-5. **HEF coverage gaps mean some cells are blank** — `v8 seg n_hailo10h`
-   was closed in `hefs-v1`; `v8 pose s_hailo10h` was closed in `hefs-v2`
-   (workstation rebuild after the `("v8", YOLOTask.POSE)` `END_NODE_TABLE`
-   patch). Both have a single AI HAT+ 2 verify run so far; stds will
-   tighten with subsequent sweeps. The bonus `v8 pose n_hailo10h.hef`
-   that hefs-v2 also published is in the release but not exercised by
-   the current verify scripts (which run pose at size `s` only) — easy
-   addition if you want broader pose coverage.
-6. **AI HAT+ verify last ran 2026-05-02; AI HAT+ 2 last ran 2026-05-04.**
-   The AI HAT+ 2 numbers therefore include the most recent code state
-   (post-merge, hefs-v2 fetch) while AI HAT+ numbers are from the
-   post-merge run only. No qualitative change expected from re-running
-   AI HAT+ — its YOLO numbers are highly repeatable (stds <2 FPS) and
-   no AI HAT+-relevant code changed in hefs-v2.
+5. **HEF coverage gaps closed incrementally across releases** —
+   `v8 seg n_hailo10h` closed in `hefs-v1`; `v8 pose n/s_hailo10h`
+   closed in `hefs-v2`; `v8 pose m/l_hailo10h` and `v8 pose n_hailo8`
+   closed in `hefs-v3` (2026-05-04). The `yolov8n-pose` head-to-head
+   row in this showcase is the first cross-platform datapoint enabled
+   by hefs-v3 — both Pis ran it for the first time on 2026-05-05; std
+   bands will appear once subsequent verify sweeps land. Remaining
+   gaps (v8 pose x_hailo10h; v11 seg/pose s/m/l_hailo10h;
+   classification across the board) are documented in
+   [`docs/hailo.md`](hailo.md#hef-availability-in-hefs-v3).
+6. **Both Pis last ran 2026-05-05** (AI HAT+ commit `07bd2a3`,
+   AI HAT+ 2 commit `27ce056`) — first synchronous sweep after the
+   hefs-v3 release. AI HAT+ numbers are highly repeatable (stds
+   <2 FPS); AI HAT+ 2 numbers come from a deeper history (10-11 runs
+   per cell) since that board has been the active development target.
 7. **Both Pis run the same verify code** off the same `main` branch
    commits. Differences are hardware, not software.
 

@@ -1,0 +1,16 @@
+2026-05-05 02:11:56 - benchmark.cli - INFO - Starting benchmark run: bench_20260505_021156_17db976f
+2026-05-05 02:11:56 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-05-05 02:11:56 - benchmark.cli - INFO - Profile: npu
+2026-05-05 02:11:56 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-05-05 02:11:56 - benchmark.cli - ERROR - Profile 'npu' requires Platform.RPI_AI_HAT_PLUS_2 (Hailo-10H NPU); detected platform is 'rpi_ai_hat_plus'. Emitting unsupported-on-this-hardware stub rows so the dashboard shows an explicit zero bar. Use --platform rpi_ai_hat_plus_2 to override only if HailoRT GenAI is actually reachable at http://localhost:8000.
+2026-05-05 02:11:56 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021156_17db976f.json
+2026-05-05 02:11:56 - benchmark.cli - INFO - LLM CSV results written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021156_17db976f_llm.csv
+
+Benchmark Complete: bench_20260505_021156_17db976f
+----------------------------------------
+LLM prompts benchmarked: 1
+  Average tokens/sec: 0.00
+Results saved to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117
+Validation FAILED for /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021156_17db976f.json:
+  - llm_results[0] (llama3.2:1b): tokens_per_second=0.0, expected > 0
+  - llm_results[0] (llama3.2:1b): hailort_version not populated; expected NPU run via hailo-ollama

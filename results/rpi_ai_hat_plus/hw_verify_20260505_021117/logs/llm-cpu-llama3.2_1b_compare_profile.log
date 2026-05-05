@@ -1,0 +1,31 @@
+2026-05-05 02:11:57 - benchmark.cli - INFO - Starting benchmark run: bench_20260505_021157_a0683f05
+2026-05-05 02:11:57 - benchmark.cli - INFO - Platform: rpi_ai_hat_plus
+2026-05-05 02:11:57 - benchmark.cli - INFO - Profile: compare
+2026-05-05 02:11:57 - benchmark.cli - INFO - Running LLM benchmarks...
+2026-05-05 02:11:57 - benchmark.cli - INFO - Benchmarking llama3.2:1b
+2026-05-05 02:11:57 - benchmark.workloads.llm.runner - INFO - Pre-warming llama3.2:1b (timeout 1800s)...
+2026-05-05 02:12:44 - benchmark.workloads.llm.runner - INFO - Pre-warm complete in 46.5s
+2026-05-05 02:12:44 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: scene_description
+2026-05-05 02:12:44 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-05 02:45:57 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: target_identification
+2026-05-05 02:45:57 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-05 04:16:26 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: mission_preflight
+2026-05-05 04:16:26 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-05 05:46:50 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: telemetry_interpretation
+2026-05-05 05:46:50 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-05 06:06:52 - benchmark.workloads.llm.runner - INFO - Benchmarking prompt: hazard_reasoning
+2026-05-05 06:06:52 - benchmark.workloads.llm.runner - INFO -   Warmup runs: 3, Measured runs: 10
+2026-05-05 07:37:26 - benchmark.cli - INFO -   [scene_description] TPS: 0.63, TTFT: 1923.0ms
+2026-05-05 07:37:26 - benchmark.cli - INFO -   [target_identification] TPS: 0.62, TTFT: 1921.9ms
+2026-05-05 07:37:26 - benchmark.cli - INFO -   [mission_preflight] TPS: 0.62, TTFT: 1921.7ms
+2026-05-05 07:37:26 - benchmark.cli - INFO -   [telemetry_interpretation] TPS: 0.63, TTFT: 1929.3ms
+2026-05-05 07:37:26 - benchmark.cli - INFO -   [hazard_reasoning] TPS: 0.62, TTFT: 1920.3ms
+2026-05-05 07:37:26 - benchmark.cli - INFO - JSON results written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021157_a0683f05.json
+2026-05-05 07:37:26 - benchmark.cli - INFO - LLM CSV results written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021157_a0683f05_llm.csv
+
+Benchmark Complete: bench_20260505_021157_a0683f05
+----------------------------------------
+LLM prompts benchmarked: 5
+  Average tokens/sec: 0.62
+Results saved to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117
+OK: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021157_a0683f05.json (5 llm result row(s))

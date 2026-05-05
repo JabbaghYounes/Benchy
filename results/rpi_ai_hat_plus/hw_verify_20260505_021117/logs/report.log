@@ -1,0 +1,34 @@
+2026-05-05 07:37:27 - benchmark.cli - INFO - Generating report from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021132_cb2feea1.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021150_461f6964.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021146_2fbf7ca3.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021131_856eacdd.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021157_a0683f05.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021130_4a4c1025.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021134_6ad4dd21.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021154_379297ad.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021155_b1261573.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021151_bfa0178b.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021156_17db976f.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021135_3cd1b5de.json
+2026-05-05 07:37:27 - benchmark.aggregation.aggregator - INFO - Loading results from: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/bench_20260505_021142_6e159235.json
+2026-05-05 07:37:27 - benchmark.cli - INFO - Aggregated JSON written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727.json
+2026-05-05 07:37:27 - benchmark.aggregation.csv_writer - INFO - YOLO aggregated CSV written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_yolo.csv
+2026-05-05 07:37:27 - benchmark.aggregation.csv_writer - INFO - LLM aggregated CSV written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_llm.csv
+2026-05-05 07:37:27 - benchmark.aggregation.csv_writer - INFO - Platform summary CSV written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_platforms.csv
+2026-05-05 07:37:27 - benchmark.reporting.dashboard - INFO - Dashboard written to: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_dashboard.html
+
+Report Generated: report_20260505_073727
+----------------------------------------
+YOLO results: 9
+LLM results: 6
+Platforms: 1
+
+Output files:
+  JSON: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727.json
+  YOLO CSV: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_yolo.csv
+  LLM CSV: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_llm.csv
+  PLATFORMS CSV: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_platforms.csv
+  Dashboard: /home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_dashboard.html
+
+Open dashboard in browser: file:///home/snpi/Documents/Benchy/results/rpi_ai_hat_plus/hw_verify_20260505_021117/report/report_20260505_073727_dashboard.html

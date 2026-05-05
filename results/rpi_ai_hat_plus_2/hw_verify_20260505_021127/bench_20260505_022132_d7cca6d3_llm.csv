@@ -1,0 +1,6 @@
+platform,cpu_model,accelerator,ram_size_gb,model_name,model_size,quantization,backend,prompt_tokens,output_tokens,ttft_ms,tokens_per_second,total_latency_ms,ttft_mean_ms,ttft_std_ms,tps_mean,tps_std,latency_mean_ms,latency_std_ms,cpu_percent,accelerator_percent,memory_used_mb,power_watts,npu_utilization_percent,npu_power_watts,hailort_version,warmup_runs,measured_runs
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,llama3.2:1b,1B,Q8_0,ollama-cpu,69,92,453.4,6.95,13695.5,456.67,5.48,7.03,0.21,13550.49,409.12,96.2,,2481.5,,,,,3,10
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,llama3.2:1b,1B,Q8_0,ollama-cpu,58,256,457.36,7.13,36343.14,457.8,3.61,7.08,0.11,36619.84,567.74,98.0,,2477.2,,,,,3,10
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,llama3.2:1b,1B,Q8_0,ollama-cpu,57,256,461.99,6.93,37376.43,456.61,4.29,6.98,0.15,37128.98,804.48,97.7,,2482.8,,,,,3,10
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,llama3.2:1b,1B,Q8_0,ollama-cpu,77,54,453.01,7.4,7754.84,455.93,4.35,7.01,0.43,8186.01,492.48,94.9,,2492.0,,,,,3,10
+rpi_ai_hat_plus_2,Raspberry Pi 5 Model B Rev 1.0,Hailo-10H NPU,4.0,llama3.2:1b,1B,Q8_0,ollama-cpu,65,256,454.56,7.21,35970.17,455.9,2.36,6.93,0.31,37449.05,1728.71,97.5,,2491.7,,,,,3,10

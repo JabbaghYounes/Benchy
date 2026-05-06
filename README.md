@@ -23,17 +23,49 @@ tuned for convnets. The Hailo-10H trades raw vision throughput for
 40 TOPS at INT4 + 8 GB onboard SDRAM, which is what enables LLM
 hosting at all. The data reflects exactly that engineering trade.
 
+Charts — click any row to expand:
+
+<details>
+<summary><strong>YOLO throughput</strong> — head-to-head, Hailo-8 vs Hailo-10H</summary>
+
 ![YOLO throughput, head-to-head](docs/showcase/charts/yolo_throughput_comparison.png)
 
-![YOLO per-frame latency, head-to-head (lower is better)](docs/showcase/charts/yolo_latency_comparison.png)
+</details>
 
-![AI HAT+ Hailo-8 per-platform throughput — every benchmarked model, sorted desc](docs/showcase/charts/yolo_per_platform_hailo8.png)
+<details>
+<summary><strong>YOLO latency</strong> — head-to-head, lower is better</summary>
 
-![AI HAT+ 2 Hailo-10H per-platform throughput — includes Hailo-10H-only seg models](docs/showcase/charts/yolo_per_platform_hailo10h.png)
+![YOLO per-frame latency, head-to-head](docs/showcase/charts/yolo_latency_comparison.png)
 
-![LLM llama3.2:1b decode throughput, NPU vs CPU on the same Pi](docs/showcase/charts/llm_npu_vs_cpu.png)
+</details>
 
-![LLM llama3.2:1b prefill latency (TTFT), NPU vs CPU — essentially identical](docs/showcase/charts/llm_ttft.png)
+<details>
+<summary><strong>AI HAT+ (Hailo-8)</strong> per-platform throughput — every benchmarked model, sorted desc</summary>
+
+![AI HAT+ Hailo-8 per-platform throughput](docs/showcase/charts/yolo_per_platform_hailo8.png)
+
+</details>
+
+<details>
+<summary><strong>AI HAT+ 2 (Hailo-10H)</strong> per-platform throughput — includes Hailo-10H-only seg models</summary>
+
+![AI HAT+ 2 Hailo-10H per-platform throughput](docs/showcase/charts/yolo_per_platform_hailo10h.png)
+
+</details>
+
+<details>
+<summary><strong>LLM decode throughput</strong> — `llama3.2:1b`, NPU vs CPU on the same Pi</summary>
+
+![LLM llama3.2:1b decode throughput, NPU vs CPU](docs/showcase/charts/llm_npu_vs_cpu.png)
+
+</details>
+
+<details>
+<summary><strong>LLM prefill latency (TTFT)</strong> — NPU vs CPU, essentially identical</summary>
+
+![LLM llama3.2:1b prefill latency (TTFT), NPU vs CPU](docs/showcase/charts/llm_ttft.png)
+
+</details>
 
 ## Overview
 

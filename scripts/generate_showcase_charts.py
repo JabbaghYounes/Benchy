@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.use("Agg")  # headless
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.patches import Patch
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -33,6 +34,13 @@ BACKEND_LABEL = {
 BACKEND_COLOR = {
     "hailo-10h": "#2ca02c",    # green
     "ollama-cpu": "#d62728",   # red
+}
+TASK_COLOR = {
+    "detection":    "#1f77b4",  # blue
+    "obb":          "#ff7f0e",  # orange
+    "segmentation": "#2ca02c",  # green
+    "pose":         "#d62728",  # red
+    "classification": "#9467bd",  # purple
 }
 
 
@@ -134,6 +142,78 @@ def yolo_latency_chart():
     print(f"  wrote {out}")
 
 
+def yolo_per_platform_charts():
+    """One figure per platform showing every model that platform has data
+    for — no intersection filter. Bars colored by task. Sorted by FPS
+    descending so the chart reads as a 'what this chip can do' overview.
+
+    Hailo-10H picks up `yolo11n-seg` and `yolo26n-seg` here that the
+    head-to-head chart drops (the AI HAT+ marks both as
+    `[unsupported-on-this-hw]`)."""
+    rows = load_csv(DATA_DIR / "yolo_by_platform.csv")
+    by_plat = {"rpi_ai_hat_plus": [], "rpi_ai_hat_plus_2": []}
+    for r in rows:
+        if r["platform"] in by_plat:
+            by_plat[r["platform"]].append(r)
+
+    out_paths = {
+        "rpi_ai_hat_plus":   CHARTS_DIR / "yolo_per_platform_hailo8.png",
+        "rpi_ai_hat_plus_2": CHARTS_DIR / "yolo_per_platform_hailo10h.png",
+    }
+
+    for plat, plat_rows in by_plat.items():
+        if not plat_rows:
+            print(f"  no rows for {plat} — skipping per-platform chart")
+            continue
+
+        # Sort by FPS desc so the chart cascades from fastest to slowest.
+        plat_rows = sorted(plat_rows,
+                           key=lambda r: float(r["throughput_mean_fps"]),
+                           reverse=True)
+        models = [r["model_name"].replace(".pt", "") for r in plat_rows]
+        fps = [float(r["throughput_mean_fps"]) for r in plat_rows]
+        std = [float(r["throughput_std_fps"]) for r in plat_rows]
+        tasks = [r["task"] for r in plat_rows]
+        colors = [TASK_COLOR.get(t, "#999999") for t in tasks]
+
+        fig, ax = plt.subplots(figsize=(10, 5.5))
+        x = np.arange(len(models))
+        ax.bar(x, fps, yerr=std, color=colors, capsize=3)
+
+        # Annotate FPS above each bar.
+        for i, (f, s) in enumerate(zip(fps, std)):
+            ax.text(i, f + s + max(fps) * 0.01, f"{f:.1f}",
+                    ha="center", va="bottom", fontsize=8, color="dimgray")
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(models, rotation=30, ha="right")
+        ax.set_ylabel("Throughput (FPS, mean ± std)")
+        ax.set_title(
+            f"YOLO inference throughput on {PLATFORM_LABEL[plat]} — "
+            f"all benchmarked models, 640×640"
+        )
+        ax.grid(axis="y", alpha=0.3)
+        ax.set_ylim(0, max(fps) * 1.18)
+
+        # Manual task legend (bars don't carry a label, just a colour).
+        seen = []
+        legend_handles = []
+        for t in tasks:
+            if t in seen:
+                continue
+            seen.append(t)
+            legend_handles.append(
+                Patch(color=TASK_COLOR.get(t, "#999999"), label=t.title())
+            )
+        ax.legend(handles=legend_handles, loc="upper right", title="Task")
+
+        fig.tight_layout()
+        out = out_paths[plat]
+        fig.savefig(out, dpi=150)
+        plt.close(fig)
+        print(f"  wrote {out}  ({len(models)} models)")
+
+
 def llm_npu_vs_cpu_chart():
     """Bar chart: NPU vs CPU TPS on AI HAT+ 2, per drone prompt.
     Authoritative LLM comparison — both backends on the same Pi."""
@@ -231,6 +311,7 @@ def main():
     CHARTS_DIR.mkdir(parents=True, exist_ok=True)
     yolo_throughput_chart()
     yolo_latency_chart()
+    yolo_per_platform_charts()
     llm_npu_vs_cpu_chart()
     llm_ttft_chart()
 

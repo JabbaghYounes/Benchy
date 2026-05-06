@@ -1,0 +1,3 @@
+model_name,yolo_version,task,input_resolution,num_runs,latency_mean_ms,latency_std_ms,latency_min_ms,latency_max_ms,latency_p50_ms,latency_p95_ms,throughput_mean_fps,throughput_std_fps,throughput_min_fps,throughput_max_fps,map_mean,map_std,precision_mean,recall_mean,cpu_percent_mean,accelerator_percent_mean,memory_used_mb_mean,power_watts_mean
+yolov8n.pt,v8,detection,640x640,1,541.818,0,541.818,541.818,539.148,554.691,1.85,0,1.85,1.85,0.4461,,0.6395,0.5368,33.3,,4831.9,
+yolo26n.pt,v26,detection,640x640,1,460.921,0,460.921,460.921,456.388,517.192,2.17,0,2.17,2.17,0.4788,,0.665,0.559,41.2,,5179.1,

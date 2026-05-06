@@ -100,6 +100,25 @@ clears that bar across every standard model. The AI HAT+ 2 is in the
 12-18 FPS range — fine for periodic inference (drone snapshots,
 surveillance triggers) but not for high-rate video.
 
+### Per-platform breakdown — every model each chip can run
+
+The head-to-head charts above filter to models present on **both**
+boards. The two charts below drop that filter — each Pi shows its
+full benchmarked-model set, so the AI HAT+ 2's segmentation coverage
+(`yolo11n-seg`, `yolo26n-seg` — both chip-incompatible on Hailo-8) is
+visible. Bars are coloured by task and sorted descending.
+
+![AI HAT+ — Hailo-8 per-platform throughput](showcase/charts/yolo_per_platform_hailo8.png)
+
+![AI HAT+ 2 — Hailo-10H per-platform throughput](showcase/charts/yolo_per_platform_hailo10h.png)
+
+Hailo-8 lists 9 models; Hailo-10H lists 11 (gains the two Hailo-10H-
+only seg HEFs). Bigger size variants (m / l / x) exist as HEFs on
+both chips for several families but aren't exercised by the verify
+sweep yet — see follow-ups 6 and 7 in
+[`resources/session_notes_2026-05-05_hefs-v3_followups.md`](../resources/session_notes_2026-05-05_hefs-v3_followups.md)
+for the path to populate them.
+
 ## LLM inference — `llama3.2:1b`, drone prompt set
 
 The **AI HAT+ 2 with HailoRT GenAI is the only platform** in this

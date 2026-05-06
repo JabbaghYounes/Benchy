@@ -124,42 +124,91 @@ write a workstation prompt for the seg gap analogous to
 `/tmp/benchy-hefs-v3-instructions.md`, stage into `resources/hefs/`,
 regenerate manifest, publish `hefs-v4`.
 
-## 7. Per-platform size-scaling charts in the showcase
+## 7. Per-platform charts in the showcase (chart code landed; verify expansion pending)
 
-**State:** Single chart in `docs/showcase/charts/`
-(`yolo_throughput_comparison.png`) is intersection-only — bigger
-HEFs that exist on only one chip don't appear at all, even when the
-hardware can run them well. User asked specifically about not seeing
-v8 det m/l/x in the results picture (Hailo-8 has them, Hailo-10H
-doesn't yet → filtered out).
+**State (updated 2026-05-06):** Chart code shipped —
+`scripts/generate_showcase_charts.py:yolo_per_platform_charts()`
+produces `yolo_per_platform_hailo8.png` (9 models) and
+`yolo_per_platform_hailo10h.png` (11 models, gains
+`yolo11n-seg` + `yolo26n-seg`); both are embedded in
+`docs/showcase.md` under "Per-platform breakdown" and in
+`README.md`. The remaining work is **populating bigger sizes** —
+verify scripts still only exercise `n` (and `yolov8s-pose`), so
+the per-platform charts max out at the same nano models as the
+head-to-head plus the two Hailo-10H-only seg rows.
 
-**Why it's deferred:** Two-stage prerequisite. Even before writing
-new chart code:
-
-1. **No data exists yet.** Verify scripts only run `yolov8n.pt`
-   for detection, `yolov8n-seg.pt`, and `yolov8{n,s}-pose.pt`. The
-   bigger HEFs already staged in `resources/hefs/` are never
-   exercised by any benchmark. Per-platform charts can't be
-   populated until verify steps are added for them.
-2. **Chart additions** then layer on top once data lands.
+**Why it's deferred:** Adding verify steps for `m / l / x` sizes
+adds wall time per sweep — needs deliberate scheduling, not just
+a code change.
 
 **To do:**
 
 1. Expand `scripts/verify_ai_hat_plus.sh` with size-ladder steps
-   that match the staged HEFs: `yolo-v8-detection-{s,m,l,x}`,
+   that match the staged Hailo-8 HEFs: `yolo-v8-detection-{s,m,l,x}`,
    `yolo-v8-seg-{s,m}`, `yolo-v8-pose-m`. Re-run on the AI HAT+ Pi.
 2. Expand `scripts/verify_ai_hat_plus_2.sh` with whatever ladder
-   Hailo-10H has after item 6 lands (today: `s` for det,
-   `s/m/l` for pose).
-3. Add `yolo_per_platform_size_chart()` to
-   `scripts/generate_showcase_charts.py` — bar group per size, one
-   colour per task, separate figure per chip. Empty slots stay
-   blank rather than being dropped.
-4. Embed the new charts in `docs/showcase.md` under a new
-   "Single-chip size scaling" section, distinct from the
-   head-to-head section so the comparison story doesn't get
-   diluted.
+   Hailo-10H has after item 6 lands (today: `s` for det, `s/m/l`
+   for pose).
+3. Re-run `aggregate_by_platform.py` →
+   `generate_showcase_charts.py` → `regenerate_showcase_dashboard.py`.
+   Existing per-platform chart code will pick up the new rows
+   automatically — no chart edits needed unless we want size-axis
+   grouping (e.g. n / s / m / l / x as a secondary x-axis).
 
-Charts already work this way for the LLM TTFT figure (single-axis,
-not intersection-filtered) — the function shape is a copy-paste
-starting point.
+## 8. Jetson Orin Nano: GPU not selected during third-party run
+
+**State:** A CSV from a Jetson Orin Nano run was added at
+`results/jetson_orin_nano/jetson-run.csv` on 2026-05-06
+(downloaded from a third-party — not run locally). The numbers
+strongly suggest the GPU was never engaged:
+
+| Model | FPS | Latency |
+|---|---:|---:|
+| `yolov8n` | 1.85 | 541.8 ms |
+| `yolo26n` | 2.17 | 460.9 ms |
+
+A Jetson Orin Nano on the Ampere GPU should hit ~50+ FPS on
+yolov8n at 640×640. 1.85 FPS is in PyTorch-CPU territory.
+Corroborating signs in the CSV columns:
+
+- `accelerator_percent_mean` is empty (GPU collector never reported)
+- `power_watts_mean` is empty
+- `cpu_percent_mean` is 33-41% (load is on the CPU)
+- `num_runs=1` (no std bands, single-sample)
+
+**Why it's deferred:** No local Jetson hardware available. Without
+hands on the device it's not possible to debug backend selection
+or repair the run. **Do not embed these numbers in the showcase or
+README** — they would mislead viewers about Jetson Orin Nano's
+actual performance ceiling.
+
+**To investigate when a Jetson is in hand:**
+
+1. Confirm `python -m benchmark info` reports
+   `Platform.JETSON_ORIN_NANO` (otherwise `detect_platform()` in
+   `benchmark/metrics/collectors.py` is failing on this kit, and
+   the platform-aware backend selection won't trigger).
+2. Confirm `python -m benchmark backends` lists a CUDA-capable
+   backend as available; verify with
+   `python -c "import torch; print(torch.cuda.is_available())"`.
+   On JetPack, torch must be the NVIDIA-published wheel — the PyPI
+   wheel is CPU-only.
+3. Inspect `benchmark/workloads/yolo/backends/registry.py` and
+   `pytorch.py` — if Jetson auto-selects pytorch but pytorch falls
+   back to CPU silently because `torch.cuda.is_available() is
+   False`, that's the smoking gun.
+4. Re-run with `python -m benchmark run yolo` (auto-select) and
+   confirm `accelerator_percent_mean` / `power_watts_mean` are
+   populated in the resulting `bench_*.json`. A correct GPU run
+   should also drop CPU usage well below the 33-41% range from
+   the existing CSV.
+5. Once verified `bench_*.json` files exist under
+   `results/jetson_orin_nano/`,
+   `scripts/aggregate_by_platform.py` will pick the platform up
+   automatically (no code changes needed). The chart generator's
+   intersection-filter (`yolo_throughput_chart`) currently
+   hardcodes the two Hailo platforms — `yolo_per_platform_charts`
+   does not, so Jetson would appear as a third per-platform figure
+   with zero edits. Adding Jetson to the head-to-head chart needs
+   a small rework of the platform pair logic in
+   `scripts/generate_showcase_charts.py`.

@@ -27,6 +27,10 @@ hosting at all. The data reflects exactly that engineering trade.
 
 ![YOLO per-frame latency, head-to-head (lower is better)](docs/showcase/charts/yolo_latency_comparison.png)
 
+![AI HAT+ Hailo-8 per-platform throughput — every benchmarked model, sorted desc](docs/showcase/charts/yolo_per_platform_hailo8.png)
+
+![AI HAT+ 2 Hailo-10H per-platform throughput — includes Hailo-10H-only seg models](docs/showcase/charts/yolo_per_platform_hailo10h.png)
+
 ![LLM llama3.2:1b decode throughput, NPU vs CPU on the same Pi](docs/showcase/charts/llm_npu_vs_cpu.png)
 
 ![LLM llama3.2:1b prefill latency (TTFT), NPU vs CPU — essentially identical](docs/showcase/charts/llm_ttft.png)

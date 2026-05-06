@@ -23,14 +23,13 @@ tuned for convnets. The Hailo-10H trades raw vision throughput for
 40 TOPS at INT4 + 8 GB onboard SDRAM, which is what enables LLM
 hosting at all. The data reflects exactly that engineering trade.
 
-Charts — click any row to expand:
+## Charts
 
-<details>
-<summary><strong>YOLO throughput</strong> — head-to-head, Hailo-8 vs Hailo-10H</summary>
+The headline comparison — YOLO throughput, Hailo-8 vs Hailo-10H:
 
 ![YOLO throughput, head-to-head](docs/showcase/charts/yolo_throughput_comparison.png)
 
-</details>
+Additional charts — click any row to expand:
 
 <details>
 <summary><strong>YOLO latency</strong> — head-to-head, lower is better</summary>

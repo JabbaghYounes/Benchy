@@ -98,3 +98,68 @@ gets weird.
 `scripts/aggregate_by_platform.py` → `generate_showcase_charts.py`
 → `regenerate_showcase_dashboard.py` after pushes to refresh the
 showcase numbers with std bands.
+
+## 6. Close the Hailo-10H size-ladder gap (`hefs-v4` scope)
+
+**State:** Hailo-8 has the full v8 detection ladder (n/s/m/l/x) and
+v8-seg up to `m` staged in hefs-v3. Hailo-10H tops out at v8 det `s`
+and has no v8-seg HEFs at sizes above `n`. This is what blocks the
+head-to-head chart in `docs/showcase.md` from showing scaling beyond
+nano — `scripts/generate_showcase_charts.py:yolo_throughput_chart`
+filters to the intersection of models present on both Pis (line 51),
+so any model only on one chip is dropped.
+
+| Missing HEF | Path |
+|---|---|
+| `v8 det m/l/x_hailo10h` | Likely Hailo Model Zoo S3 prebuilts (detection sizes are usually published). Try `scripts/fetch_prebuilt_hefs.py --arch hailo10h --dry-run` first to see what's available without re-compiling. |
+| `v8 seg s/m_hailo10h` | Workstation gap-model compile, same path as the hefs-v3 sweep on `node01`. `(v8, SEGMENTATION)` `END_NODE_TABLE` entry already exists. v8m-seg likely needs `batch_size=4` in `MODEL_SCRIPT_OVERRIDES` (same VRAM bottleneck that bit v8l-pose). |
+
+**Why it's deferred:** Verify scripts only exercise nano sizes
+today, so even closing the gap doesn't immediately surface in any
+chart — must be paired with item 7 to be visible. Pure HEF coverage
+is otherwise non-blocking.
+
+**To do:** Pull what the Model Zoo publishes via the fetcher,
+write a workstation prompt for the seg gap analogous to
+`/tmp/benchy-hefs-v3-instructions.md`, stage into `resources/hefs/`,
+regenerate manifest, publish `hefs-v4`.
+
+## 7. Per-platform size-scaling charts in the showcase
+
+**State:** Single chart in `docs/showcase/charts/`
+(`yolo_throughput_comparison.png`) is intersection-only — bigger
+HEFs that exist on only one chip don't appear at all, even when the
+hardware can run them well. User asked specifically about not seeing
+v8 det m/l/x in the results picture (Hailo-8 has them, Hailo-10H
+doesn't yet → filtered out).
+
+**Why it's deferred:** Two-stage prerequisite. Even before writing
+new chart code:
+
+1. **No data exists yet.** Verify scripts only run `yolov8n.pt`
+   for detection, `yolov8n-seg.pt`, and `yolov8{n,s}-pose.pt`. The
+   bigger HEFs already staged in `resources/hefs/` are never
+   exercised by any benchmark. Per-platform charts can't be
+   populated until verify steps are added for them.
+2. **Chart additions** then layer on top once data lands.
+
+**To do:**
+
+1. Expand `scripts/verify_ai_hat_plus.sh` with size-ladder steps
+   that match the staged HEFs: `yolo-v8-detection-{s,m,l,x}`,
+   `yolo-v8-seg-{s,m}`, `yolo-v8-pose-m`. Re-run on the AI HAT+ Pi.
+2. Expand `scripts/verify_ai_hat_plus_2.sh` with whatever ladder
+   Hailo-10H has after item 6 lands (today: `s` for det,
+   `s/m/l` for pose).
+3. Add `yolo_per_platform_size_chart()` to
+   `scripts/generate_showcase_charts.py` — bar group per size, one
+   colour per task, separate figure per chip. Empty slots stay
+   blank rather than being dropped.
+4. Embed the new charts in `docs/showcase.md` under a new
+   "Single-chip size scaling" section, distinct from the
+   head-to-head section so the comparison story doesn't get
+   diluted.
+
+Charts already work this way for the LLM TTFT figure (single-axis,
+not intersection-filtered) — the function shape is a copy-paste
+starting point.

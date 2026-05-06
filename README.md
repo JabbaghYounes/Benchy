@@ -98,11 +98,27 @@ source venv/bin/activate
 python -m benchmark run all                   # quick (default profile)
 python -m benchmark run all --profile full    # comprehensive
 
-# 4. Hardware verification (Hailo boards) — 13-step sweep with
+# 4. Hardware verification (Hailo boards) — 14-step sweep with
 #    per-step logs, JSON validation, and a final pass/fail summary.
-#    Output lands in results/<platform>/hw_verify_<timestamp>/.
+#    Output lands in results/<platform>/hw_verify_<timestamp>/ and
+#    already includes an auto-generated dashboard at report/.
 ./scripts/verify_ai_hat_plus.sh      # AI HAT+ (Hailo-8 / 8L)
 ./scripts/verify_ai_hat_plus_2.sh    # AI HAT+ 2 (Hailo-10H)
+
+# 5. Plot results — aggregate the per-run JSON/CSVs in results/ into
+#    summary tables + a self-contained HTML dashboard with charts and
+#    Backend / Platform / Task filter chips. `report` is `aggregate`
+#    + `dashboard` combined; open the resulting HTML in any browser.
+#    (Step 4's verify scripts already produce a dashboard per bundle —
+#    this step is for ad-hoc `run all` outputs from step 3.)
+python -m benchmark report
+# Or run the stages individually:
+python -m benchmark aggregate                 # group-safe summary CSVs
+python -m benchmark dashboard                 # self-contained HTML
+
+# Cross-platform comparison from a list of per-run JSONs (e.g. one
+# bench_*.json copied off each Pi after step 3 / step 4):
+python -m benchmark verify results/bench_*.json
 ```
 
 > **AI HAT+ 2 caveat (Pi OS Bookworm).** The setup script can't fully

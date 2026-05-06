@@ -71,3 +71,4 @@ documents/
 
 # Local editor / agent state — not part of the project.
 .claude/
+CLAUDE.md
